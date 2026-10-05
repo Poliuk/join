@@ -1,3 +1,4 @@
+import AppKit
 import ServiceManagement
 import SwiftUI
 import JoinCore
@@ -5,7 +6,9 @@ import JoinCore
 @MainActor
 struct GeneralTab: View {
     @Environment(AppModel.self) private var model
-    @State private var launchAtLogin = GeneralTab.registeredForLogin
+    /// Read from the system on appear and whenever the app or the Settings window comes back, so
+    /// approving Join! in System Settings clears the hint. Never read or written in a fixture run.
+    @State private var launchAtLogin = false
     @State private var launchAtLoginError: String?
     /// Whether "Custom…" is chosen; it stays chosen while the custom value happens to match a preset.
     @State private var customLeadTime = false
@@ -23,11 +26,11 @@ struct GeneralTab: View {
 
         VStack(alignment: .leading, spacing: 22) {
             SettingsBox {
-                SettingsSwitchRow(title: "Open at login", isOn: $launchAtLogin, separator: false)
-                if let launchAtLoginError {
-                    Text(launchAtLoginError)
+                SettingsSwitchRow(title: "Open at login", isOn: openAtLogin, separator: false, enabled: !model.isFixture)
+                if let note = model.isFixture ? SettingsOptions.openAtLoginFixtureNote : launchAtLoginError {
+                    Text(note)
                         .font(.subheadline)
-                        .foregroundStyle(.red)
+                        .foregroundStyle(model.isFixture ? Color.secondary : Color.red)
                         .fixedSize(horizontal: false, vertical: true)
                         .padding(.bottom, 8)
                 }
@@ -121,36 +124,56 @@ struct GeneralTab: View {
         }
         .padding(SettingsMetrics.panePadding)
         .onAppear {
-            launchAtLogin = Self.registeredForLogin
-            if SMAppService.mainApp.status == .requiresApproval { launchAtLoginError = Self.loginApprovalHint }
+            refreshLaunchAtLogin()
             leadMinutesDraft = Int(preferences.leadTime) / 60
             customLeadTime = !SettingsOptions.isPresetLeadTime(preferences.leadTime)
         }
-        .onChange(of: launchAtLogin) { _, enabled in applyLaunchAtLogin(enabled) }
         .onChange(of: preferences.leadTime) { _, newValue in
             leadMinutesDraft = Int(newValue) / 60
             if !SettingsOptions.isPresetLeadTime(newValue) { customLeadTime = true }
         }
+        .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
+            refreshLaunchAtLogin()
+        }
+        .onReceive(NotificationCenter.default.publisher(for: NSWindow.didBecomeKeyNotification)) { notification in
+            if (notification.object as? NSWindow)?.identifier == .settingsWindow { refreshLaunchAtLogin() }
+        }
     }
 
-    /// Registered but waiting for approval in System Settings still shows as on, so turning the
-    /// switch off can withdraw the request.
-    private nonisolated static var registeredForLogin: Bool {
-        let status = SMAppService.mainApp.status
-        return status == .enabled || status == .requiresApproval
+    // MARK: Open at login
+
+    /// Only the user's clicks reach the login item; refreshing from the system just updates the switch.
+    private var openAtLogin: Binding<Bool> {
+        Binding(get: { launchAtLogin }, set: { setLaunchAtLogin($0) })
     }
 
-    private static let loginApprovalHint = "Allow Join! in System Settings › General › Login Items to open it at login."
+    private static var loginItemStatus: LoginItemStatus {
+        switch SMAppService.mainApp.status {
+        case .enabled: return .enabled
+        case .requiresApproval: return .requiresApproval
+        case .notFound: return .notFound
+        case .notRegistered: return .notRegistered
+        @unknown default: return .notRegistered
+        }
+    }
 
-    private func applyLaunchAtLogin(_ enabled: Bool) {
-        // Also reached when the switch is synced from the system or reverted after an error.
-        guard enabled != Self.registeredForLogin else { return }
+    private func refreshLaunchAtLogin() {
+        guard !model.isFixture else { return }
+        let status = Self.loginItemStatus
+        launchAtLogin = SettingsOptions.opensAtLogin(status)
+        launchAtLoginError = SettingsOptions.openAtLoginHint(status)
+    }
+
+    private func setLaunchAtLogin(_ enabled: Bool) {
+        guard !model.isFixture else { return }
         do {
-            try LaunchAtLogin.setEnabled(enabled)
-            launchAtLoginError = SMAppService.mainApp.status == .requiresApproval ? Self.loginApprovalHint : nil
+            if enabled != SettingsOptions.opensAtLogin(Self.loginItemStatus) {
+                try LaunchAtLogin.setEnabled(enabled)
+            }
+            refreshLaunchAtLogin()
         } catch {
+            refreshLaunchAtLogin()
             launchAtLoginError = error.localizedDescription
-            launchAtLogin = Self.registeredForLogin
         }
     }
 
