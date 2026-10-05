@@ -33,6 +33,10 @@ final class StatusItemController: NSObject, NSWindowDelegate {
     private lazy var panel: MenuBarPanelWindow = makePanel()
     private var naturalHeight: CGFloat = 200
     private var isTrackingMenu = false
+    /// The header menu that is open, so closing the panel can close it too.
+    private var trackingMenu: NSMenu?
+    /// Set when another window (an alert, Settings) takes the keyboard while a header menu is open.
+    private var keyTakenWhileTracking = false
     private var monitors: [Any] = []
     private var observers: [(NotificationCenter, NSObjectProtocol)] = []
 
@@ -51,6 +55,7 @@ final class StatusItemController: NSObject, NSWindowDelegate {
         observe(NotificationCenter.default, NSApplication.didResignActiveNotification) { $0.close() }
         observe(NotificationCenter.default, NSApplication.didChangeScreenParametersNotification) { $0.close() }
         observe(NSWorkspace.shared.notificationCenter, NSWorkspace.activeSpaceDidChangeNotification) { $0.close() }
+        observeWindowsBecomingKey()
         updateButton()
     }
 
@@ -60,7 +65,9 @@ final class StatusItemController: NSObject, NSWindowDelegate {
         if isOpen { close() } else { open() }
     }
 
+    /// Safe to call while a header menu is open (an alert about to present closes the panel): the menu goes too.
     func close() {
+        trackingMenu?.cancelTrackingWithoutAnimation()
         guard isOpen else { return }
         removeMonitors()
         panel.orderOut(nil)
@@ -91,6 +98,7 @@ final class StatusItemController: NSObject, NSWindowDelegate {
         button.target = self
         button.action = #selector(buttonClicked(_:))
         button.font = StatusItemImages.textFont
+        button.toolTip = model.isFixture ? "Join! (fixture)" : "Join!"
     }
 
     private func updateButton() {
@@ -111,7 +119,7 @@ final class StatusItemController: NSObject, NSWindowDelegate {
             button.title = status.text ?? ""
         }
         button.imagePosition = button.title.isEmpty ? .imageOnly : .imageLeading
-        button.setAccessibilityLabel(status.accessibilityLabel)
+        button.setAccessibilityLabel(model.isFixture ? "\(status.accessibilityLabel) (fixture)" : status.accessibilityLabel)
         if isOpen { button.highlight(true) }
     }
 
@@ -261,9 +269,29 @@ final class StatusItemController: NSObject, NSWindowDelegate {
         let x = anchor.bounds.maxX - menu.size.width
         let y = anchor.isFlipped ? anchor.bounds.maxY + 4 : anchor.bounds.minY - 4
         isTrackingMenu = true
+        trackingMenu = menu
+        keyTakenWhileTracking = false
         menu.popUp(positioning: nil, at: NSPoint(x: x, y: y), in: anchor)
         isTrackingMenu = false
-        if isOpen, !panel.isKeyWindow { panel.makeKey() }
+        trackingMenu = nil
+        guard isOpen else { return }
+        // Taking the keyboard back from a window that appeared meanwhile would leave it deaf to Esc and Return.
+        if keyTakenWhileTracking, let keyWindow = NSApp.keyWindow, keyWindow !== panel {
+            close()
+        } else if !panel.isKeyWindow {
+            panel.makeKey()
+        }
+    }
+
+    private func observeWindowsBecomingKey() {
+        let token = NotificationCenter.default.addObserver(forName: NSWindow.didBecomeKeyNotification, object: nil, queue: .main) { [weak self] notification in
+            let window = notification.object as? NSWindow
+            MainActor.assumeIsolated {
+                guard let self, self.isTrackingMenu, let window, window !== self.panel, window.level != .popUpMenu else { return }
+                self.keyTakenWhileTracking = true
+            }
+        }
+        observers.append((NotificationCenter.default, token))
     }
 
     // MARK: Helpers

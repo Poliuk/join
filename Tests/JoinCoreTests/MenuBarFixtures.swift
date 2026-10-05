@@ -34,6 +34,10 @@ enum MenuBarFixtures {
     static let week = [outOfOffice, lunch, workshop, planning, review, oneOnOne, roadmap, thursday]
     static var alertable: [Meeting] { week.filter { !$0.isOutOfOffice } }
 
+    /// A week after the artboards' Monday, on the same weekday: the furthest the store looks ahead.
+    static let nextMonday = Meeting(id: "weekly", title: "Weekly", start: date(12, 9), end: date(12, 9, 30), joinURL: meet)
+    static let sunday = Meeting(id: "sun", title: "Brunch", start: date(11, 9), end: date(11, 10))
+
     static func squash(_ text: String?) -> String? {
         text?.replacingOccurrences(of: "\\s+", with: " ", options: .regularExpression)
     }

@@ -7,7 +7,8 @@ public struct MenuBarStatus: Equatable, Sendable {
         case idle
         /// Reminders paused: the crossed-out bell, never any text.
         case paused
-        /// The next meeting is more than an hour away: "1:00 PM", "Tomorrow 1:00 PM", "Wednesday 1:00 PM".
+        /// The next meeting is more than an hour away: "1:00 PM", "Tomorrow 1:00 PM", "Wednesday 1:00 PM",
+        /// "Mon 12 Oct 9:00 AM" a week ahead.
         case later
         /// The next meeting starts within the hour: "in 42 min".
         case withinHour
@@ -83,7 +84,8 @@ public enum MenuBarPresenter {
             return compose(.later, time, meeting: next, spoken: "at \(time)")
         }
         let day = relativeDay(next.start, now: now, calendar: calendar, locale: locale)
-        return compose(.later, "\(capitalizingFirst(day)) \(time)", meeting: next, spoken: "\(day) at \(time)")
+        let spokenDay = relativeDay(next.start, now: now, calendar: calendar, locale: locale, spoken: true)
+        return compose(.later, "\(capitalizingFirst(day)) \(time)", meeting: next, spoken: "\(spokenDay) at \(time)")
     }
 
     /// The earliest meeting that hasn't started yet.
@@ -163,12 +165,13 @@ public enum MenuBarPresenter {
         formatter(template: "EEEEdMMMM", calendar: calendar, locale: locale).string(from: now)
     }
 
-    /// "tomorrow" or the weekday ("Wednesday"), for dates within the coming week.
-    static func relativeDay(_ date: Date, now: Date, calendar: Calendar, locale: Locale) -> String {
-        if let tomorrow = calendar.date(byAdding: .day, value: 1, to: now), calendar.isDate(date, inSameDayAs: tomorrow) {
-            return "tomorrow"
-        }
-        return formatter(template: "EEEE", calendar: calendar, locale: locale).string(from: date)
+    /// "tomorrow", the weekday ("Wednesday") within the coming week, or the date ("Mon 12 Oct", localized) a week
+    /// or more ahead, where a bare weekday would read as today. `spoken` spells the date out for VoiceOver.
+    static func relativeDay(_ date: Date, now: Date, calendar: Calendar, locale: Locale, spoken: Bool = false) -> String {
+        let days = calendar.dateComponents([.day], from: calendar.startOfDay(for: now), to: calendar.startOfDay(for: date)).day ?? 0
+        if days == 1 { return "tomorrow" }
+        let template = days < 7 ? "EEEE" : (spoken ? "EEEEdMMMM" : "EEEdMMM")
+        return formatter(template: template, calendar: calendar, locale: locale).string(from: date)
     }
 
     static func shortTime(_ date: Date, calendar: Calendar, locale: Locale) -> String {
