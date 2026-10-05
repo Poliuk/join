@@ -6,6 +6,13 @@ extension Color {
     init(_ rgba: RGBA) {
         self.init(.sRGB, red: rgba.red, green: rgba.green, blue: rgba.blue, opacity: rgba.alpha)
     }
+
+    /// Follows the light or dark appearance of whatever view draws it.
+    init(light: RGBA, dark: RGBA) {
+        self.init(nsColor: NSColor(name: nil) { appearance in
+            appearance.bestMatch(from: [.aqua, .darkAqua]) == .darkAqua ? NSColor(dark) : NSColor(light)
+        })
+    }
 }
 
 extension NSColor {

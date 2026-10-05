@@ -196,14 +196,15 @@ final class AlertCoordinator {
     }
 
     func showDemoAlert() {
-        let now = Date()
+        // On a whole second, like a real event, so the countdown starts at 3:00 and steps evenly.
+        let start = Date(timeIntervalSinceReferenceDate: (Date.timeIntervalSinceReferenceDate + 3 * 60).rounded(.down))
         let demo = Meeting(
             id: "demo",
-            title: "Hello, I'm a demo event",
-            start: now.addingTimeInterval(3 * 60),
-            end: now.addingTimeInterval(63 * 60),
-            calendarTitle: "Demo",
-            calendarColor: RGBA(hex: "#4A90D9") ?? .white,
+            title: "Hello, I’m a demo event",
+            start: start,
+            end: start.addingTimeInterval(60 * 60),
+            calendarTitle: "Work",
+            calendarColor: RGBA(rgb: 0x1A9FC0),
             location: "Conference Room A",
             joinURL: URL(string: "https://meet.google.com/abc-defg-hij")
         )
