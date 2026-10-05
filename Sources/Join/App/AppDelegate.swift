@@ -6,6 +6,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     let model = AppModel()
     private var statusItem: StatusItemController?
     private var hookObservers: [NSObjectProtocol] = []
+    private var fixtureExpiry: Timer?
+
+    /// A forgotten fixture instance would leave the user without real alerts, so it quits on its own.
+    static let fixtureLifetime: TimeInterval = 2 * 60 * 60
+    static let hookPrefix = "com.poliuk.join.fixture."
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         NSApp.setActivationPolicy(.accessory)
@@ -13,7 +18,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let statusItem = StatusItemController(model: model)
         model.closePanel = { [weak statusItem] in statusItem?.close() }
         self.statusItem = statusItem
-        observeScriptHooks()
+        if model.isFixture {
+            observeScriptHooks()
+            fixtureExpiry = Timer.scheduledTimer(withTimeInterval: Self.fixtureLifetime, repeats: false) { _ in
+                Task { @MainActor in NSApp.terminate(nil) }
+            }
+        }
     }
 
     func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
@@ -21,17 +31,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         return false
     }
 
-    /// Distributed notifications that let scripts drive the app during development and testing.
-    /// The notification's object, when present, is the argument (e.g. a Settings pane or a folder).
+    /// Distributed notifications that let scripts drive a fixture run (see FixtureCalendarService).
+    /// They are never registered in a normal run, so no other process can pause, dismiss or capture
+    /// the real app. The notification's object, when present, is the argument.
     private func observeScriptHooks() {
         let hooks: [(String, @MainActor (AppDelegate, String?) -> Void)] = [
             ("openSettings", { delegate, argument in delegate.model.openSettings(pane: argument.flatMap(SettingsPane.init(rawValue:))) }),
-            ("snapshot", { _, argument in WindowSnapshots.write(to: argument ?? NSTemporaryDirectory()) }),
+            ("snapshot", { _, argument in WindowSnapshots.write(named: argument) }),
             ("showDemoAlert", { delegate, _ in delegate.model.alertCoordinator.showDemoAlert() }),
             ("togglePanel", { delegate, _ in delegate.statusItem?.toggle() }),
             ("dismissAlert", { delegate, _ in delegate.model.alertCoordinator.dismiss() }),
             ("pause", { delegate, argument in
-                delegate.model.alertCoordinator.pause(argument.flatMap(PauseOption.init(rawValue:)) ?? .untilResumed)
+                guard let option = argument.flatMap(PauseOption.init(rawValue:)) else { return }
+                delegate.model.alertCoordinator.pause(option)
             }),
             ("resume", { delegate, _ in delegate.model.alertCoordinator.resume() }),
             ("appearance", { _, argument in
@@ -44,7 +56,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         ]
         for (name, action) in hooks {
             let observer = DistributedNotificationCenter.default().addObserver(
-                forName: Notification.Name("com.poliuk.join." + name), object: nil, queue: .main
+                forName: Notification.Name(Self.hookPrefix + name), object: nil, queue: .main
             ) { [weak self] notification in
                 let argument = notification.object as? String
                 Task { @MainActor [weak self] in

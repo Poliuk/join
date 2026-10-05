@@ -11,8 +11,17 @@ final class FixtureCalendarService: CalendarService {
     static let environmentKey = "JOIN_FIXTURE"
     static let defaultsSuite = "com.poliuk.join.fixture"
 
+    static let scenarios: Set<String> = ["nothing", "later", "busy", "meeting", "denied"]
+
+    /// Only a known scenario name turns fixture mode on, so a stray or mistyped value can't
+    /// silently replace the real calendar.
     static var scenario: String? {
-        ProcessInfo.processInfo.environment[environmentKey].flatMap { $0.isEmpty ? nil : $0 }
+        guard let value = ProcessInfo.processInfo.environment[environmentKey], !value.isEmpty else { return nil }
+        guard scenarios.contains(value) else {
+            NSLog("Join: ignoring unknown %@=%@; known scenarios: %@", environmentKey, value, scenarios.sorted().joined(separator: ", "))
+            return nil
+        }
+        return value
     }
 
     private let name: String

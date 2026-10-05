@@ -1,11 +1,19 @@
 import AppKit
 
 /// Writes a PNG of every visible window of the app, for checking UI without screen-recording access.
-/// Driven by the `com.poliuk.join.snapshot` script hook; the argument is the output folder.
+/// Driven by the fixture-only `snapshot` script hook. Files always go under
+/// `$TMPDIR/JoinSnapshots/<name>`; the name is reduced to a single safe path component.
 @MainActor
 enum WindowSnapshots {
-    static func write(to directory: String) {
-        let folder = URL(fileURLWithPath: directory, isDirectory: true)
+    static var root: URL {
+        URL(fileURLWithPath: NSTemporaryDirectory(), isDirectory: true).appendingPathComponent("JoinSnapshots", isDirectory: true)
+    }
+
+    static func write(named name: String?) {
+        let allowed = CharacterSet.alphanumerics.union(CharacterSet(charactersIn: "-_."))
+        let cleaned = String((name ?? "").unicodeScalars.filter { allowed.contains($0) }.map(Character.init))
+        let folderName = cleaned.trimmingCharacters(in: CharacterSet(charactersIn: ".")).isEmpty ? "latest" : cleaned
+        let folder = root.appendingPathComponent(folderName, isDirectory: true)
         try? FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
         for (index, window) in NSApp.windows.enumerated() where window.isVisible {
             guard let view = window.contentView?.superview ?? window.contentView,
@@ -15,8 +23,8 @@ enum WindowSnapshots {
             guard let data = rep.representation(using: .png, properties: [:]) else { continue }
             let kind = String(describing: type(of: window))
             let title = window.title.isEmpty ? "" : "-" + window.title.replacingOccurrences(of: "/", with: "-")
-            let name = String(format: "%02d-%@%@.png", index, kind, title)
-            try? data.write(to: folder.appendingPathComponent(name))
+            let fileName = String(format: "%02d-%@%@.png", index, kind, title)
+            try? data.write(to: folder.appendingPathComponent(fileName))
         }
     }
 }
