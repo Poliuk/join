@@ -47,6 +47,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 delegate.model.alertCoordinator.pause(option)
             }),
             ("resume", { delegate, _ in delegate.model.alertCoordinator.resume() }),
+            ("preset", { delegate, argument in
+                guard let preset = AlertAppearancePreset.allCases.first(where: { "\($0)" == argument }) else { return }
+                delegate.model.preferences.appearance = preset.appearance
+            }),
             ("appearance", { _, argument in
                 switch argument {
                 case "light": NSApp.appearance = NSAppearance(named: .aqua)

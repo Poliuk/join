@@ -326,8 +326,10 @@ private struct AlertSnoozeRow: View {
                 .accessibilityHidden(true)
             ForEach(options) { option in
                 AlertSecondaryButton(palette: palette, height: 44, isInteractive: isInteractive, action: option.action) {
+                    // Each label keeps its full width ("At event start"); the rest share what's left.
                     Text(option.label)
                         .lineLimit(1)
+                        .fixedSize()
                         .frame(maxWidth: .infinity)
                 }
                 .accessibilityLabel(option.accessibilityLabel)

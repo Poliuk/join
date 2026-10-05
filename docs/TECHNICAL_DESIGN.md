@@ -341,7 +341,7 @@ Dependent settings (Repeat until the alert is closed, Custom time, Tint strength
 
 `SettingsWindowController` owns a plain AppKit window whose content view controller is an `NSTabViewController` with `tabStyle = .toolbar`: one toolbar item per pane, **General** (`gearshape`), **Calendars** (`calendar`) and **Appearance** (`circle.righthalf.filled`). SwiftUI's `Settings` scene can't be opened dependably from a menu-bar-only app. The window uses `toolbarStyle = .preference`, takes the selected pane's title, can be closed but not resized, and crossfades between panes. It opens from the gear menu, ⌘, in the panel, reopening the app (`applicationShouldHandleReopen`), or the `openSettings` script hook (§12), which can also pick the pane.
 
-**Sizing.** Each pane is a SwiftUI view in an `NSHostingView` with `sizingOptions = []`, wrapped in `SettingsPaneScroll`, which reports the content's natural height through a preference. The window keeps a 720 pt content width and takes the selected pane's height. It animates when the height changes, keeps its top edge in place and stays on screen. It only scrolls when the screen is too short for the pane.
+**Sizing.** Each pane is a SwiftUI view in an `NSHostingView` with `sizingOptions = []`, wrapped in `SettingsPaneScroll`, which reports the content's natural height through a preference. The window keeps a 720 pt content width and takes the selected pane's height. It animates when switching panes; a height change from within a pane (a preset adding the Tint strength row, say) resizes it immediately, because an animated resize driven by SwiftUI's own layout could leave the pane drawn at its old offset. After every resize the pane is laid out again against the final frame. It keeps its top edge in place and stays on screen. It only scrolls when the screen is too short for the pane.
 
 **Focus.** Opening the window, switching panes and closing the window all clear the first responder. That stops AppKit from focusing the first text field on open, and commits a half-typed value the same way as when the field loses focus.
 
@@ -475,6 +475,8 @@ Bundle id `com.poliuk.join`, `LSUIElement = YES`.
   | `meeting` | in two overlapping calls |
   | `denied` | calendar access denied, so the permission prompts show |
 
+  `JOIN_SETTINGS_MAX_HEIGHT=<points>` (fixture runs only) caps the Settings window's content height, to check the scrolling layout of a short screen on a tall one.
+
   Every scenario has the same following days: an out-of-office block, an in-person appointment, two overlapping calls, and more meetings on the two days after. Five calendars in two accounts fill the Calendars pane. Times are relative to launch, rounded to the minute. Only these five names turn fixture mode on; any other value is logged and ignored, so a typo launches the real app. A fixture run uses its own defaults domain (`com.poliuk.join.fixture`), so it can't change real settings, never starts the alert scheduler, so it can't put an alert on screen by itself, and leaves the login item alone. It shows a "Fixture" marker in the panel header and the Settings title, and it quits after two hours so a forgotten one can't silence real alerts for long. Show Demo Alert still works. Quit a running Join! first: `open` hands the request to the running copy instead of starting a new one, and the variable is lost.
 - **Script hooks.** To drive a fixture run from scripts without clicking, `AppDelegate` listens for distributed notifications named `com.poliuk.join.fixture.<hook>`. Only fixture runs register them: any process can post a distributed notification, so a normal run must not let one pause, dismiss or capture the real app. The notification's object, when present, is the argument.
 
@@ -488,6 +490,7 @@ Bundle id `com.poliuk.join`, `LSUIElement = YES`.
   | `pause` | `oneHour`, `untilTomorrow` or `untilResumed` | pauses reminders; ignored without a valid option |
   | `resume` | – | resumes reminders |
   | `appearance` | `light`, `dark`, anything else follows the system | forces the app's light or dark appearance |
+  | `preset` | `dark`, `light`, `highContrast` or `midnight` | applies an alert style preset, as clicking its card in Appearance does |
 
   The app is usually inactive, so post with immediate delivery. From a shell:
 

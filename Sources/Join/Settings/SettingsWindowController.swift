@@ -85,7 +85,9 @@ private final class SettingsTabViewController: NSTabViewController {
             let controller = SettingsPaneController(pane: pane, model: model)
             controller.onContentHeightChange = { [weak self, weak controller] in
                 guard let self, let controller, controller === self.selectedPaneController else { return }
-                self.fitWindowToSelectedPane(animate: true)
+                // Not animated: an animated resize driven by SwiftUI's own layout can leave the
+                // pane drawn at its old offset (content under the toolbar, or a gap above it).
+                self.fitWindowToSelectedPane(animate: false)
             }
             let item = NSTabViewItem(viewController: controller)
             item.label = pane.title
@@ -141,7 +143,12 @@ private final class SettingsTabViewController: NSTabViewController {
 
         let chrome = window.frame.height - window.contentLayoutRect.height
         let visible = (window.screen ?? NSScreen.main)?.visibleFrame
-        let maxContentHeight = visible.map { $0.height - chrome - 40 } ?? contentHeight
+        var maxContentHeight = visible.map { $0.height - chrome - 40 } ?? contentHeight
+        // Fixture runs can pretend the screen is short, to check the scrolling case on a tall display.
+        if FixtureCalendarService.scenario != nil,
+           let cap = ProcessInfo.processInfo.environment["JOIN_SETTINGS_MAX_HEIGHT"].flatMap(Double.init) {
+            maxContentHeight = min(maxContentHeight, cap)
+        }
         let height = min(contentHeight, max(maxContentHeight, 240)).rounded(.up)
         let size = NSSize(width: SettingsMetrics.paneWidth, height: height)
 
@@ -153,6 +160,11 @@ private final class SettingsTabViewController: NSTabViewController {
         }
         guard frame != window.frame else { return }
         window.setFrame(frame, display: true, animate: animate && window.isVisible)
+        // Lay the pane out against the final frame so what's on screen matches it.
+        if let container = pane.view.superview { pane.view.frame = container.bounds }
+        pane.view.needsLayout = true
+        pane.view.layoutSubtreeIfNeeded()
+        pane.view.needsDisplay = true
     }
 }
 
@@ -189,6 +201,7 @@ private final class SettingsPaneController: NSViewController {
         // The window is sized from the measured content height instead of Auto Layout.
         hostingView.sizingOptions = []
         hostingView.frame = NSRect(x: 0, y: 0, width: SettingsMetrics.paneWidth, height: 400)
+        hostingView.autoresizingMask = [.width, .height]
         view = hostingView
     }
 
