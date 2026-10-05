@@ -24,6 +24,8 @@ This builds `build/Join.app` and opens it. The app lives in the menu bar only; t
 
 The app is ad-hoc signed, not notarized. Because you built it locally, Gatekeeper won't complain. If you download a build from somewhere else, right-click the app → Open the first time.
 
+The signature is pinned to the bundle identifier, so macOS remembers the calendar permission across rebuilds. If you built Join! before this change, macOS asks once more after updating.
+
 ## First launch
 
 1. macOS asks for calendar access. Approve it. If you miss the prompt, grant it in System Settings › Privacy & Security › Calendars.
@@ -36,7 +38,9 @@ Join! reads calendars through macOS, so your Google account needs to be added in
 
 ## What gets alerted
 
-Every event in the enabled calendars, except all-day events, cancelled events and events you declined. Tentative invitations do alert.
+Every event in the enabled calendars, except all-day events, cancelled events, events you declined, and out-of-office events. Tentative invitations do alert. Out-of-office events are recognised by title ("Out of office", "Fuera de la oficina", "OOO", …); turn on **Settings › General › Alert for out-of-office events** to be alerted for them too, or edit the keyword list there.
+
+On the alert, **Esc** dismisses and **Return** joins the call. Keys are ignored for the first moment after the alert appears, so a keystroke you were already typing elsewhere can't dismiss it by accident.
 
 If a meeting starts while an alert is due (the Mac was asleep, the app was launched late), the alert fires immediately, unless the meeting started more than 5 minutes ago.
 

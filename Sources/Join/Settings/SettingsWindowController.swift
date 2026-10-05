@@ -10,7 +10,7 @@ final class SettingsWindowController {
     func show(model: AppModel) {
         let window = self.window ?? makeWindow(model: model)
         self.window = window
-        NSApp.activate(ignoringOtherApps: true)
+        NSApp.activate()
         window.makeKeyAndOrderFront(nil)
     }
 

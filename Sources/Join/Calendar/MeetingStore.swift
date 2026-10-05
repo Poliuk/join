@@ -1,6 +1,9 @@
 import AppKit
 import Observation
+import OSLog
 import JoinCore
+
+private let logger = Logger(subsystem: "com.poliuk.join", category: "calendar")
 
 /// Single source of truth for the meetings the rest of the app sees.
 @MainActor
@@ -26,9 +29,11 @@ final class MeetingStore {
 
     func start() async {
         authorization = service.authorization
+        logger.notice("Calendar authorization at launch: \(String(describing: self.authorization), privacy: .public)")
         if authorization == .notDetermined {
             _ = await service.requestAccess()
             authorization = service.authorization
+            logger.notice("Calendar authorization after request: \(String(describing: self.authorization), privacy: .public)")
         }
 
         service.onChange = { [weak self] in self?.refresh() }
@@ -75,7 +80,7 @@ final class MeetingStore {
 
     /// The meetings that may produce alerts and drive the menu bar title.
     var alertableMeetings: [Meeting] {
-        preferences.skipOutOfOffice ? meetings.filter { !$0.isOutOfOffice } : meetings
+        preferences.alertForOutOfOffice ? meetings : meetings.filter { !$0.isOutOfOffice }
     }
 
     func ongoing(at now: Date) -> [Meeting] {

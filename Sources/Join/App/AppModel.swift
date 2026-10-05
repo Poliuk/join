@@ -12,8 +12,12 @@ final class AppModel {
 
     /// Advances every 30 seconds so the menu bar text and list rows stay fresh.
     private(set) var now = Date()
+    /// The menu bar panel's Today / All filter, remembered while the app runs.
+    var panelShowsTodayOnly = true
     @ObservationIgnored private var ticker: Timer?
     @ObservationIgnored private let settingsWindow = SettingsWindowController()
+    /// Closes the menu bar panel; set by the status item controller.
+    @ObservationIgnored var closePanel: (() -> Void)?
 
     init() {
         let preferences = Preferences()
@@ -52,16 +56,23 @@ final class AppModel {
         return MeetingTimeFormatter.menuBarTitle(for: meeting, now: now)
     }
 
+    func refreshNow() {
+        now = Date()
+    }
+
     func join(_ meeting: Meeting) {
         guard let url = meeting.joinURL else { return }
+        closePanel?()
         NSWorkspace.shared.open(url)
     }
 
     func openSettings() {
+        closePanel?()
         settingsWindow.show(model: self)
     }
 
     func openCalendarPrivacySettings() {
+        closePanel?()
         if let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Calendars") {
             NSWorkspace.shared.open(url)
         }

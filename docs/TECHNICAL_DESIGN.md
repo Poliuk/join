@@ -10,7 +10,7 @@
 |---|---|
 | Read calendars | EventKit is an Apple framework; only reachable from native code. |
 | Full-screen overlay above everything, on every display, over other apps' full-screen Spaces | Needs `NSWindow` level and collection-behavior control. Electron exposes some of this but not reliably across Spaces. |
-| Menu bar app with no Dock icon | `LSUIElement` + `MenuBarExtra` / `NSStatusItem`; first-class in AppKit. |
+| Menu bar app with no Dock icon | `LSUIElement` + `NSStatusItem`; first-class in AppKit. |
 | Tiny footprint, always running | A native agent app idles at ~20–30 MB. An Electron shell idles at 150 MB+ for a menu bar app. |
 
 Considered and rejected:
@@ -38,7 +38,7 @@ Targets: **macOS 14+**, **Swift 5.10**, Swift Concurrency (`async/await`, `@Main
            │              │
 ┌──────────▼───────┐ ┌────▼─────────────────┐ ┌──────────────────────┐
 │ CalendarService  │ │ AlertScheduler       │ │ AlertWindowController│
-│ (protocol)       │ │ (pure logic, tested) │ │ (AppKit, one NSWindow│
+│ (protocol)       │ │ (pure logic, tested) │ │ (AppKit, one NSPanel │
 │ └ EventKitCal…   │ │                      │ │  per NSScreen)       │
 │ └ (later) Google │ └──────────────────────┘ └──────────────────────┘
 └──────────────────┘
@@ -82,7 +82,7 @@ enum AlertState: Equatable {
 }
 
 struct Preferences {                       // persisted in UserDefaults
-    var leadTime: TimeInterval = 180
+    var leadTime: TimeInterval = 180       // always whole minutes
     var snoozeDurations: [TimeInterval] = [60, 300]
     var showOnAllScreens = true
     var autoCloseAfter: TimeInterval? = 15 * 60
@@ -91,6 +91,8 @@ struct Preferences {                       // persisted in UserDefaults
     var soundRepeats = false
     var enabledCalendarIDs: Set<String>    // empty = "not yet chosen" → all
     var menuBarShowsNextEvent = true
+    var alertForOutOfOffice = false        // see §9a
+    var outOfOfficeKeywords: [String]
     var appearance: AlertAppearance
 }
 
@@ -181,47 +183,55 @@ Rules:
 
 ## 6. Alert window (AppKit)
 
-One `NSWindow` per `NSScreen` when `showOnAllScreens`, otherwise `NSScreen.main`. Recreated on `NSApplication.didChangeScreenParametersNotification` (display hot-plug while showing).
+One `AlertWindow` (an `NSPanel`) per `NSScreen` when `showOnAllScreens`, otherwise `NSScreen.main`. Recreated on `NSApplication.didChangeScreenParametersNotification` (display hot-plug while showing).
 
 ```swift
-let window = NSWindow(contentRect: screen.frame,
-                      styleMask: [.borderless],
-                      backing: .buffered, defer: false)
-window.level = .screenSaver                       // above menu bar and full-screen apps
-window.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .stationary]
-window.isOpaque = false
-window.backgroundColor = .clear
-window.hasShadow = false
-window.contentView = NSHostingView(rootView: AlertView(...))
-window.makeKeyAndOrderFront(nil)
-NSApp.activate(ignoringOtherApps: true)
+let panel = NSPanel(contentRect: screen.frame,
+                    styleMask: [.borderless, .nonactivatingPanel],
+                    backing: .buffered, defer: false)
+panel.level = .screenSaver                        // above menu bar and full-screen apps
+panel.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .stationary, .ignoresCycle]
+panel.isFloatingPanel = true
+panel.hidesOnDeactivate = false
+panel.becomesKeyOnlyIfNeeded = false
+panel.isOpaque = false
+panel.backgroundColor = .clear
+panel.contentView = FirstMouseHostingView(rootView: AlertRootView(...))
+panel.makeKeyAndOrderFront(nil)                   // no NSApp.activate
 ```
+
+**Why a non-activating panel.** Since macOS 14, a background app can't make itself the active app (cooperative activation), so an ordinary window plus `NSApp.activate` showed the alert but left the keyboard with whatever app the user was in. A `.nonactivatingPanel` becomes the key window without activating Join!: the user's app stays frontmost, the alert gets the keystrokes, and when it closes focus is simply back where it was.
+
+**Keys.** An `NSEvent` local monitor, installed while an alert is presented and removed on dismiss, handles `Esc` (dismiss) and `Return` / keypad `Enter` (join, when a link exists) for events targeting one of the alert panels. Key auto-repeats, and keys pressed within 0.75 s of the alert appearing (`keyArmingDelay`, measured against each event's own timestamp), are swallowed so a keystroke the user was already typing or holding in another app can't dismiss the alert or join a call. After that, other keys pass through to the alert's views so Full Keyboard Access still works. SwiftUI `keyboardShortcut`s aren't used: they depend on the responder chain and silently did nothing in a borderless window. `FirstMouseHostingView` accepts the first click, so buttons on a secondary display's panel work without a focusing click.
 
 Background: an `NSVisualEffectView` (`material: .fullScreenUI`, `blendingMode: .behindWindow`) whose `appearance` is forced to `.darkAqua` / `.aqua` for the dark/light blur modes, or hidden for `.none`, plus a color layer for the tint at `backgroundOpacity`.
 
-`AlertView` (SwiftUI): calendar-colored accent bar, title, time range, a `TimelineView(.periodic(from:by: 1))` countdown, optional location, buttons. The window becomes key so `Esc` (`.keyboardShortcut(.cancelAction)`) dismisses and `Return` triggers Join when present. Only the first window handles keys; the others mirror the content.
+`AlertView` (SwiftUI): calendar-colored accent bar, title, time range, a `TimelineView(.periodic(from:by: 1))` countdown, optional location, buttons. Only the first panel is made key; the others mirror the content.
 
 Multiple meetings in one plan render as a vertical stack with one button row.
 
 ## 7. Menu bar
 
-`MenuBarExtra` with `.menuBarExtraStyle(.window)`:
+`StatusItemController` owns an `NSStatusItem` and an `NSPopover`. SwiftUI's `MenuBarExtra` was used first and dropped: its window grows with its content but never shrinks, and it can't be closed programmatically. SwiftUI still requires one scene, so `JoinApp` declares a `MenuBarExtra` with `isInserted: .constant(false)`, which keeps SwiftUI's standard Edit menu (copy and paste in text fields) without adding UI.
 
-- **Label:** SF Symbol `calendar` plus, when `menuBarShowsNextEvent` is on, a text label rendered from `MeetingStore.next` and refreshed every 30 s ("Board Meeting, in 12m" / "Board Meeting, now").
-- **Panel:** `MenuBarPanelView`. Sections **Ongoing** and **Upcoming** with a Today / All segmented control; rows show color bar, title, time, location, a video-camera button when `joinURL != nil`. Footer: pause alerts toggle (`AlertCoordinator.isPaused`), Settings (`SettingsLink`), Quit.
+- **Label:** the status button shows SF Symbol `calendar` plus, when `menuBarShowsNextEvent` is on, `AppModel.menuBarTitle` ("Board Meeting, in 12m" / "Board Meeting, now"), re-rendered through observation tracking whenever its inputs change and at least every 30 s.
+- **Panel:** an `NSHostingController` with `sizingOptions = .preferredContentSize` hosting `MenuBarPanelView`, so the popover resizes in both directions. The list's `ScrollView` has no intrinsic height, so its content height is measured with a `GeometryReader` preference and the scroll view is framed to `min(content, 520)`. Sections **Ongoing** and **Upcoming** with a Today / All segmented control (`AppModel.panelShowsTodayOnly`); rows show color bar, title, time, location, an out-of-office tag, and a video-camera button when `joinURL != nil`. Header: pause alerts toggle (`AlertCoordinator.isPaused`), Settings, Quit.
+- The popover is `.transient` and also closes when the app resigns active, and before Join, Settings, or System Settings open anything.
 - If calendar permission is missing, the panel shows an explanation and an "Open System Settings" button (`x-apple.systempreferences:com.apple.preference.security?Privacy_Calendars`).
-
-If `MenuBarExtra` proves limiting (programmatic dismissal, sizing), fall back to `NSStatusItem` + `NSPopover` hosting the same SwiftUI view; the view doesn't change.
 
 ## 8. Settings window
 
-SwiftUI `Settings` scene → `TabView` with three tabs. All controls bind to `Preferences`.
+`SettingsWindowController` hosts `SettingsView` (a `TabView` with three tabs) in a plain AppKit window. SwiftUI's `Settings` scene can't be opened dependably from a menu-bar-only app. All controls bind to `Preferences`.
 
-- **General:** lead time (min / sec steppers), two snooze durations (sliders 1–60 min), show alert on (all screens / main screen), auto-close toggle + minutes, alert sound picker (`/System/Library/Sounds` names, "none") + play repeatedly, launch at login (`SMAppService.mainApp.register()` / `.unregister()`).
+- **General:** lead time in whole minutes (text field + stepper, 0–120; the field saves on Return or when it loses focus, never mid-typing, so "3" → "35" → "5" can't briefly mean 35 minutes and fire alerts early), show alert on (all screens / main screen), show next event in the menu bar, **Out of office** (an "Alert for out-of-office events" toggle, off by default, plus the editable keyword list), alert sound picker (`/System/Library/Sounds` names, "None") + play repeatedly, two snooze durations (sliders 1–60 min), auto-close toggle + minutes, launch at login (`SMAppService.mainApp.register()` / `.unregister()`).
 - **Calendars:** `List` grouped by source with `Toggle`s. Unticking everything is allowed; the footer warns "No calendars selected, you won't get alerts."
-- **Appearance:** form on the left (`ColorPicker`s, blur mode `Picker`, opacity `Slider`s), live `AlertView` preview on the right in a scaled-down frame with a fake meeting, **Show Demo Alert** (calls `AlertWindowController.present(demo:)`), **Reset to defaults**.
+- **Appearance:** form on the left (`ColorPicker`s, blur mode `Picker`, opacity `Slider`s), live `AlertView` preview on the right in a scaled-down frame with a fake meeting, **Show Demo Alert**, **Reset to defaults**.
 
-Persistence: `Preferences` is an `@Observable` class whose stored properties read/write `UserDefaults.standard` (theme encoded as JSON `Data`). No `@AppStorage` scattered across views; one owner.
+Persistence: `Preferences` is an `@Observable` class whose stored properties read/write `UserDefaults.standard` (theme encoded as JSON `Data`). No `@AppStorage` scattered across views; one owner. A value stored by an older build is migrated on load: lead times with seconds are rounded to whole minutes, and the old inverted `skipOutOfOffice` flag becomes `alertForOutOfOffice`.
+
+## 9a. Out-of-office events
+
+EventKit doesn't expose Google's "out of office" event type, but Google titles those events predictably in the account's language ("Out of office", "Fuera de la oficina", …). `OutOfOfficeDetector` matches the title against a keyword list (short tokens like "OOO" and "PTO" must stand alone). Unless "Alert for out-of-office events" is on, matching events never alert and don't drive the menu bar title; they still appear, dimmed and tagged, in the panel.
 
 ## 9. Meeting link detection
 
@@ -275,12 +285,12 @@ join/
 │       ├── App/             JoinApp (scenes), AppDelegate, AppModel (wiring)
 │       ├── Calendar/        CalendarService (protocol), EventKitCalendarService, MeetingStore
 │       ├── Alerts/          AlertCoordinator, AlertWindowController, AlertView
-│       ├── MenuBar/         MenuBarLabel, MenuBarPanelView
+│       ├── MenuBar/         StatusItemController, MenuBarPanelView
 │       ├── Settings/        SettingsView, GeneralTab, CalendarsTab, AppearanceTab
 │       └── Support/         Observation helper, Color↔RGBA, SystemSounds, LaunchAtLogin
 ├── Tests/JoinCoreTests/     XCTest suites for everything in JoinCore
 ├── Resources/Info.plist     LSUIElement, usage description, bundle metadata
-├── scripts/build-app.sh     Assembles build/Join.app and ad-hoc signs it
+├── scripts/build-app.sh     Assembles build/Join.app and signs it (see §13)
 ├── Makefile                 make app | run | test | clean
 ├── .github/workflows/ci.yml build + test + package on macos-14
 └── docs/                    This document and the product brief
@@ -297,7 +307,7 @@ Bundle id `com.poliuk.join`, `LSUIElement = YES`.
 
 ## 13. Build, CI, distribution
 
-- **Build:** `make app` runs `scripts/build-app.sh`: `swift build -c release`, copies the binary and `Info.plist` into `build/Join.app`, and ad-hoc signs it (`codesign --sign -`). The ad-hoc signature is what lets TCC associate the calendar permission with the bundle. `make run` builds and opens it.
+- **Build:** `make app` runs `scripts/build-app.sh`: `swift build -c release`, copies the binary and `Info.plist` into `build/Join.app`, and ad-hoc signs it with an explicit designated requirement, `identifier "com.poliuk.join"`. A plain ad-hoc signature's requirement is the hash of that exact binary, so TCC treated every rebuild as a new app and asked for calendar access again. Pinning the requirement to the bundle identifier keeps the grant across rebuilds. The trade-off: any locally built binary that claims that identifier inherits the grant, which is acceptable for a locally built app and goes away with a real signing identity. `make run` builds and opens it.
 - **CI:** GitHub Actions on `macos-14`: `swift build`, `swift test`, `scripts/build-app.sh`, and the `.app` is uploaded as a workflow artifact.
 - **Distribution:** unsigned/un-notarized by decision. Users build locally or download the CI artifact and right-click → Open once. Notarization (Developer ID + `notarytool`) can be added to `release.yml` later without touching the app.
 - **Sandbox:** off. Sandboxing requires a real signing identity to be meaningful; nothing in the app needs it.
@@ -308,7 +318,8 @@ Bundle id `com.poliuk.join`, `LSUIElement = YES`.
 | Risk | Impact | Mitigation |
 |---|---|---|
 | Google → macOS Calendar sync lag (up to the user's refresh interval) | A meeting created 10 min before start may not alert | Document the refresh-interval setting; safety-net refetch; direct Google API as P2 if it bites. |
-| `MenuBarExtra(.window)` quirks (can't dismiss programmatically before opening a URL, fixed sizing) | Slightly clunky panel | Fallback to `NSStatusItem` + `NSPopover` is planned and cheap. |
+| `MenuBarExtra(.window)` quirks (can't dismiss programmatically, grows but never shrinks) | Panel stuck at its largest size | **Happened.** Replaced by `NSStatusItem` + `NSPopover` (§7). |
+| macOS 14+ cooperative activation: a background app can no longer make itself active | Alert visible but Esc goes to the app the user was in | **Happened.** The alert is a non-activating panel that takes keyboard focus without activating the app (§6). |
 | One-shot timers unreliable across sleep / App Nap | Missed alert | Heartbeat + overdue-fires-now rule + disabling App Nap near fire time. This is the most important correctness property; it gets the most tests. |
 | No Apple Developer membership | Gatekeeper friction for users | Ship unsigned first; document right-click → Open; sign later. |
 | EventKit doesn't expose structured conference data | Join link missed for exotic providers | Regex table + generic `https://` fallback from location; easy community contributions. |

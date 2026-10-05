@@ -21,7 +21,7 @@ final class PreferencesTests: XCTestCase {
         XCTAssertNil(preferences.soundName)
         XCTAssertNil(preferences.enabledCalendarIDs)
         XCTAssertEqual(preferences.appearance, .default)
-        XCTAssertTrue(preferences.skipOutOfOffice)
+        XCTAssertFalse(preferences.alertForOutOfOffice)
         XCTAssertEqual(preferences.outOfOfficeKeywords, OutOfOfficeDetector.defaultKeywords)
     }
 
@@ -64,5 +64,35 @@ final class PreferencesTests: XCTestCase {
         preferences.appearance = appearance
         preferences.resetAppearance()
         XCTAssertEqual(preferences.appearance, .default)
+    }
+
+    func testLeadTimeIsWholeMinutes() {
+        let preferences = Preferences(defaults: defaults)
+        preferences.leadTime = 150
+        XCTAssertEqual(preferences.leadTime, 180)
+        preferences.leadTime = 89
+        XCTAssertEqual(preferences.leadTime, 60)
+        preferences.leadTime = -60
+        XCTAssertEqual(preferences.leadTime, 0)
+    }
+
+    func testStoredLeadTimeWithSecondsIsRoundedOnLoad() {
+        defaults.set(210.0, forKey: Preferences.Keys.leadTime)
+        XCTAssertEqual(Preferences(defaults: defaults).leadTime, 240)
+    }
+
+    func testOutOfOfficeAlertsPersist() {
+        let preferences = Preferences(defaults: defaults)
+        preferences.alertForOutOfOffice = true
+        XCTAssertTrue(Preferences(defaults: defaults).alertForOutOfOffice)
+    }
+
+    func testLegacySkipOutOfOfficeIsMigrated() {
+        defaults.set(false, forKey: Preferences.Keys.legacySkipOutOfOffice)
+        XCTAssertTrue(Preferences(defaults: defaults).alertForOutOfOffice)
+
+        defaults.removePersistentDomain(forName: suite)
+        defaults.set(true, forKey: Preferences.Keys.legacySkipOutOfOffice)
+        XCTAssertFalse(Preferences(defaults: defaults).alertForOutOfOffice)
     }
 }

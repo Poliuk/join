@@ -32,10 +32,23 @@ final class AlertSession {
 /// One borderless window per screen, above everything else, including other apps' full-screen Spaces.
 @MainActor
 final class AlertWindowController {
+    /// Keys are ignored this long after the alert appears, so a keystroke the user was already typing
+    /// in another app can't dismiss the alert or join a call by accident.
+    static let keyArmingDelay: TimeInterval = 0.75
+
+    private enum KeyCode {
+        static let escape: UInt16 = 53
+        static let returnKey: UInt16 = 36
+        static let keypadEnter: UInt16 = 76
+    }
+
     private var windows: [AlertWindow] = []
     private var session: AlertSession?
     private var showOnAllScreens = true
     private var screenObserver: NSObjectProtocol?
+    private var keyMonitor: Any?
+    /// System uptime when the alert became key; compared with each key event's own timestamp.
+    private var presentedUptime: TimeInterval = .infinity
 
     init() {
         startObservingScreens()
@@ -56,6 +69,8 @@ final class AlertWindowController {
         self.session = session
         self.showOnAllScreens = showOnAllScreens
         buildWindows()
+        presentedUptime = ProcessInfo.processInfo.systemUptime
+        installKeyMonitor()
     }
 
     func update(meetings: [Meeting]) {
@@ -63,12 +78,57 @@ final class AlertWindowController {
     }
 
     func dismiss() {
+        removeKeyMonitor()
+        presentedUptime = .infinity
         for window in windows {
             window.orderOut(nil)
             window.close()
         }
         windows = []
         session = nil
+    }
+
+    /// The alert is a non-activating panel: it takes keyboard focus without making Join! the active
+    /// app, which macOS 14+ no longer lets a background app do on its own. Keys are handled here
+    /// rather than through SwiftUI shortcuts so Esc and Return work regardless of the responder chain.
+    private func installKeyMonitor() {
+        removeKeyMonitor()
+        keyMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] event in
+            let keyCode = event.keyCode
+            let windowNumber = event.windowNumber
+            let timestamp = event.timestamp
+            let isRepeat = event.isARepeat
+            let consumed = MainActor.assumeIsolated {
+                self?.handleKey(keyCode: keyCode, windowNumber: windowNumber, timestamp: timestamp, isRepeat: isRepeat) ?? false
+            }
+            return consumed ? nil : event
+        }
+    }
+
+    private func removeKeyMonitor() {
+        if let keyMonitor { NSEvent.removeMonitor(keyMonitor) }
+        keyMonitor = nil
+    }
+
+    /// Returns true when the event must not reach the alert's views.
+    /// Auto-repeats and keys pressed before the arming delay elapsed are swallowed, so holding a key
+    /// that was already down in another app can neither dismiss the alert nor join a call. After
+    /// the delay, keys other than Esc and Return pass through so Full Keyboard Access still works.
+    private func handleKey(keyCode: UInt16, windowNumber: Int, timestamp: TimeInterval, isRepeat: Bool) -> Bool {
+        guard let session, windows.contains(where: { $0.windowNumber == windowNumber }) else { return false }
+        if isRepeat || timestamp - presentedUptime < Self.keyArmingDelay { return true }
+        switch keyCode {
+        case KeyCode.escape:
+            session.actions.dismiss()
+            return true
+        case KeyCode.returnKey, KeyCode.keypadEnter:
+            if let joinable = session.meetings.first(where: { $0.joinURL != nil }) {
+                session.actions.join(joinable)
+            }
+            return true
+        default:
+            return false
+        }
     }
 
     private func rebuildIfPresenting() {
@@ -85,11 +145,8 @@ final class AlertWindowController {
         guard let session else { return }
         let screens = showOnAllScreens ? NSScreen.screens : [NSScreen.main].compactMap { $0 }
         windows = screens.map { screen in
-            let window = AlertWindow(screen: screen, session: session)
-            window.onCancel = { session.actions.dismiss() }
-            return window
+            AlertWindow(screen: screen, session: session)
         }
-        NSApp.activate(ignoringOtherApps: true)
         for (index, window) in windows.enumerated() {
             if index == 0 {
                 window.makeKeyAndOrderFront(nil)
@@ -100,13 +157,15 @@ final class AlertWindowController {
     }
 }
 
-final class AlertWindow: NSWindow {
-    var onCancel: (() -> Void)?
-
+final class AlertWindow: NSPanel {
     @MainActor
     init(screen: NSScreen, session: AlertSession) {
-        super.init(contentRect: screen.frame, styleMask: [.borderless], backing: .buffered, defer: false)
+        super.init(contentRect: screen.frame, styleMask: [.borderless, .nonactivatingPanel], backing: .buffered, defer: false)
         isReleasedWhenClosed = false
+        isFloatingPanel = true
+        hidesOnDeactivate = false
+        becomesKeyOnlyIfNeeded = false
+        worksWhenModal = true
         level = .screenSaver
         collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .stationary, .ignoresCycle]
         isOpaque = false
@@ -114,13 +173,13 @@ final class AlertWindow: NSWindow {
         hasShadow = false
         animationBehavior = .none
         setFrame(screen.frame, display: false)
-        contentView = NSHostingView(rootView: AlertRootView(session: session).ignoresSafeArea())
+        contentView = FirstMouseHostingView(rootView: AnyView(AlertRootView(session: session).ignoresSafeArea()))
     }
 
     override var canBecomeKey: Bool { true }
-    override var canBecomeMain: Bool { true }
+}
 
-    override func cancelOperation(_ sender: Any?) {
-        onCancel?()
-    }
+/// Lets a click on a window that isn't key (the alert on a secondary display) hit its button directly.
+final class FirstMouseHostingView<Content: View>: NSHostingView<Content> {
+    override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
 }

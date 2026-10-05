@@ -17,7 +17,9 @@ public final class Preferences {
         public static let enabledCalendarIDs = "enabledCalendarIDs"
         public static let menuBarShowsNextEvent = "menuBarShowsNextEvent"
         public static let appearance = "appearance"
-        public static let skipOutOfOffice = "skipOutOfOffice"
+        public static let alertForOutOfOffice = "alertForOutOfOffice"
+        /// Earlier builds stored the inverse of `alertForOutOfOffice` under this key.
+        public static let legacySkipOutOfOffice = "skipOutOfOffice"
         public static let outOfOfficeKeywords = "outOfOfficeKeywords"
     }
 
@@ -37,12 +39,12 @@ public final class Preferences {
     @ObservationIgnored private var _enabledCalendarIDs: Set<String>?
     @ObservationIgnored private var _menuBarShowsNextEvent: Bool
     @ObservationIgnored private var _appearance: AlertAppearance
-    @ObservationIgnored private var _skipOutOfOffice: Bool
+    @ObservationIgnored private var _alertForOutOfOffice: Bool
     @ObservationIgnored private var _outOfOfficeKeywords: [String]
 
     public init(defaults: UserDefaults = .standard) {
         self.defaults = defaults
-        _leadTime = defaults.object(forKey: Keys.leadTime) as? TimeInterval ?? Self.defaultLeadTime
+        _leadTime = Self.wholeMinutes(defaults.object(forKey: Keys.leadTime) as? TimeInterval ?? Self.defaultLeadTime)
         let storedSnooze = defaults.array(forKey: Keys.snoozeDurations) as? [TimeInterval]
         _snoozeDurations = (storedSnooze?.count == 2 ? storedSnooze : nil) ?? Self.defaultSnoozeDurations
         _showOnAllScreens = defaults.object(forKey: Keys.showOnAllScreens) as? Bool ?? true
@@ -54,19 +56,29 @@ public final class Preferences {
         _menuBarShowsNextEvent = defaults.object(forKey: Keys.menuBarShowsNextEvent) as? Bool ?? true
         _appearance = defaults.data(forKey: Keys.appearance)
             .flatMap { try? JSONDecoder().decode(AlertAppearance.self, from: $0) } ?? .default
-        _skipOutOfOffice = defaults.object(forKey: Keys.skipOutOfOffice) as? Bool ?? true
+        if let stored = defaults.object(forKey: Keys.alertForOutOfOffice) as? Bool {
+            _alertForOutOfOffice = stored
+        } else if let legacySkip = defaults.object(forKey: Keys.legacySkipOutOfOffice) as? Bool {
+            _alertForOutOfOffice = !legacySkip
+        } else {
+            _alertForOutOfOffice = false
+        }
         _outOfOfficeKeywords = defaults.array(forKey: Keys.outOfOfficeKeywords) as? [String] ?? OutOfOfficeDetector.defaultKeywords
     }
 
-    /// Seconds before the meeting start at which the alert fires.
+    /// Seconds before the meeting start at which the alert fires, always a whole number of minutes.
     public var leadTime: TimeInterval {
         get { access(keyPath: \.leadTime); return _leadTime }
         set {
             withMutation(keyPath: \.leadTime) {
-                _leadTime = max(0, newValue)
+                _leadTime = Self.wholeMinutes(newValue)
                 defaults.set(_leadTime, forKey: Keys.leadTime)
             }
         }
+    }
+
+    private static func wholeMinutes(_ seconds: TimeInterval) -> TimeInterval {
+        max(0, (seconds / 60).rounded()) * 60
     }
 
     /// Exactly two entries, in seconds.
@@ -167,13 +179,15 @@ public final class Preferences {
         }
     }
 
-    /// When on, events that look like out-of-office blocks never alert and are left out of the menu bar title.
-    public var skipOutOfOffice: Bool {
-        get { access(keyPath: \.skipOutOfOffice); return _skipOutOfOffice }
+    /// When off (the default), events that look like out-of-office blocks never alert and are left
+    /// out of the menu bar title. They still appear, dimmed, in the menu bar panel.
+    public var alertForOutOfOffice: Bool {
+        get { access(keyPath: \.alertForOutOfOffice); return _alertForOutOfOffice }
         set {
-            withMutation(keyPath: \.skipOutOfOffice) {
-                _skipOutOfOffice = newValue
-                defaults.set(newValue, forKey: Keys.skipOutOfOffice)
+            withMutation(keyPath: \.alertForOutOfOffice) {
+                _alertForOutOfOffice = newValue
+                defaults.set(newValue, forKey: Keys.alertForOutOfOffice)
+                defaults.removeObject(forKey: Keys.legacySkipOutOfOffice)
             }
         }
     }

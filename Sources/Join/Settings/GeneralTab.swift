@@ -6,6 +6,11 @@ struct GeneralTab: View {
     @Environment(AppModel.self) private var model
     @State private var launchAtLogin = LaunchAtLogin.isEnabled
     @State private var launchAtLoginError: String?
+    /// What's typed in the lead-time field. Written to Preferences only on Return or when the field
+    /// loses focus: saving every keystroke would make "3" → "35" → "5" briefly mean 35 minutes and
+    /// fire alerts early.
+    @State private var leadMinutesDraft = Int(Preferences.defaultLeadTime) / 60
+    @FocusState private var leadFieldFocused: Bool
 
     var body: some View {
         @Bindable var preferences = model.preferences
@@ -14,13 +19,19 @@ struct GeneralTab: View {
             Section("Alerts") {
                 HStack(spacing: 8) {
                     Text("Alert me")
-                    Stepper(value: leadMinutes(preferences), in: 0...120) {
-                        Text("\(Int(preferences.leadTime) / 60) min").monospacedDigit().frame(width: 52, alignment: .trailing)
-                    }
-                    Stepper(value: leadSeconds(preferences), in: 0...59, step: 5) {
-                        Text("\(Int(preferences.leadTime) % 60) sec").monospacedDigit().frame(width: 52, alignment: .trailing)
-                    }
-                    Text("before the event")
+                    TextField("Minutes", value: $leadMinutesDraft, format: .number)
+                        .labelsHidden()
+                        .multilineTextAlignment(.trailing)
+                        .frame(width: 44)
+                        .focused($leadFieldFocused)
+                        .onSubmit { commitLeadMinutes(preferences) }
+                        .onChange(of: leadFieldFocused) { _, focused in
+                            if !focused { commitLeadMinutes(preferences) }
+                        }
+                        .onDisappear { commitLeadMinutes(preferences) }
+                    Stepper("Minutes", value: leadMinutes(preferences), in: 0...120)
+                        .labelsHidden()
+                    Text(Int(preferences.leadTime) / 60 == 1 ? "minute before the event" : "minutes before the event")
                 }
 
                 Picker("Show alert on", selection: $preferences.showOnAllScreens) {
@@ -32,11 +43,11 @@ struct GeneralTab: View {
             }
 
             Section("Out of office") {
-                Toggle("Don't alert for out-of-office events", isOn: $preferences.skipOutOfOffice)
+                Toggle("Alert for out-of-office events", isOn: $preferences.alertForOutOfOffice)
                 TextField("Keywords", text: keywordsText(preferences), prompt: Text("out of office, OOO, …"), axis: .vertical)
                     .lineLimit(2...4)
                 HStack {
-                    Text("An event whose title contains one of these words is treated as out of office. Separate keywords with commas.")
+                    Text("An event whose title contains one of these words counts as out of office. It still shows in the menu bar panel, dimmed. Separate keywords with commas.")
                         .font(.caption)
                         .foregroundStyle(.secondary)
                     Spacer()
@@ -99,19 +110,24 @@ struct GeneralTab: View {
             }
         }
         .formStyle(.grouped)
+        .onAppear { leadMinutesDraft = Int(preferences.leadTime) / 60 }
+        .onChange(of: preferences.leadTime) { _, newValue in
+            leadMinutesDraft = Int(newValue) / 60
+        }
+    }
+
+    private func commitLeadMinutes(_ preferences: Preferences) {
+        let minutes = min(max(leadMinutesDraft, 0), 120)
+        leadMinutesDraft = minutes
+        if Int(preferences.leadTime) / 60 != minutes {
+            preferences.leadTime = TimeInterval(minutes * 60)
+        }
     }
 
     private func leadMinutes(_ preferences: Preferences) -> Binding<Int> {
         Binding(
             get: { Int(preferences.leadTime) / 60 },
-            set: { preferences.leadTime = TimeInterval($0 * 60 + Int(preferences.leadTime) % 60) }
-        )
-    }
-
-    private func leadSeconds(_ preferences: Preferences) -> Binding<Int> {
-        Binding(
-            get: { Int(preferences.leadTime) % 60 },
-            set: { preferences.leadTime = TimeInterval((Int(preferences.leadTime) / 60) * 60 + $0) }
+            set: { preferences.leadTime = TimeInterval(min(max($0, 0), 120) * 60) }
         )
     }
 

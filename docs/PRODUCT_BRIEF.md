@@ -53,7 +53,7 @@ Some of these are cheap to add later; they're excluded to ship a small, solid v1
 | 1 | **Calendar source** | Events from Google Calendar (see Decision 1 for how). A Calendars settings tab lists every calendar grouped by account with a checkbox to include/exclude it. All-day events and events the user has declined are ignored. |
 | 2 | **Full-screen alert** | N minutes before a meeting starts, a borderless window covers every connected display (or only the main one, per setting), above every other app including full-screen apps. It shows: meeting title, time range, a live countdown ("starts in 2m 13s" / "started 1m ago"), calendar color accent, and buttons: **Join** (when a link is found), **Dismiss**, **Snooze A**, **Snooze B**, **Snooze until event**. `Esc` dismisses. Optional auto-close after X minutes. |
 | 3 | **Menu bar** | A status-bar icon, optionally followed by text for the next event ("Board Meeting, in 12m"). Clicking opens a panel with **Ongoing** and **Upcoming** (Today / All toggle) sections, each row with title, time, calendar color, and a join button when a link exists. Footer: pause/resume alerts, open Settings, quit. |
-| 4 | **Settings window** | Standard macOS Settings window with tabs: **General** (alert lead time in min+sec, two default snooze durations, show alert on all screens vs main, auto-close alerts after N min, launch at login), **Calendars** (see #1), **Appearance** (see #5). |
+| 4 | **Settings window** | Standard macOS Settings window with tabs: **General** (alert lead time in minutes, two default snooze durations, show alert on all screens vs main, auto-close alerts after N min, launch at login), **Calendars** (see #1), **Appearance** (see #5). |
 | 5 | **Alert appearance** | Configure: alert text color; background blur mode (dark / light / none); optional background tint color + opacity; action-button foreground/background + opacity; primary (Join) button foreground/background + opacity. A live preview updates as values change, plus a **Show Demo Alert** button that fires a real alert with a fake event. Reset to defaults. One theme (no library). |
 
 ### P1 — should ship in v1 if cheap (they are)
@@ -62,6 +62,7 @@ Some of these are cheap to add later; they're excluded to ship a small, solid v1
 |---|---------|-------------------|
 | 6 | **One-click join** | The app scans the event's location, URL and notes for a video-call link (Google Meet, Zoom, Microsoft Teams; easy to extend) and surfaces a **Join** button in the alert and the menu bar panel. Opens in the default browser. |
 | 7 | **Alert sound** | Optional system sound when the alert appears, with a "play repeatedly" toggle. Off by default. |
+| 8 | **Out-of-office events** | Events titled like out-of-office blocks ("Out of office", "Fuera de la oficina", "OOO", …) don't alert unless "Alert for out-of-office events" is turned on. They still show, dimmed, in the menu bar panel. The keyword list is editable. |
 
 ### P2 — later, if wanted
 
@@ -102,8 +103,8 @@ All four were settled on 2026-10-05.
 | Decision | Choice | Notes |
 |---|---|---|
 | Calendar source | **EventKit** via the Mac's own accounts | Google accounts are added in System Settings › Internet Accounts. The direct Google Calendar API remains a P2 option behind the same `CalendarService` protocol. |
-| Minimum macOS | **14 Sonoma** | Modern EventKit permission API, `@Observable`, mature `MenuBarExtra`. |
-| Distribution | **Unsigned** (ad-hoc signature) | Built locally with `make run`; no Apple Developer membership needed. Notarization can be added later. |
+| Minimum macOS | **14 Sonoma** | Modern EventKit permission API, `@Observable`, `SMAppService`. |
+| Distribution | **Unsigned** (ad-hoc signature pinned to the bundle id) | Built locally with `make run`; no Apple Developer membership needed. The calendar permission survives rebuilds. Notarization can be added later. |
 | Name | **Join!** | Bundle id `com.poliuk.join`, executable `Join`. |
 
 For the record, the alternative considered for the calendar source:

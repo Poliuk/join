@@ -69,12 +69,10 @@ struct AlertContentView: View {
                                 ) {
                                     session.actions.join(joinable)
                                 }
-                                .keyboardShortcut(.defaultAction)
                             }
                             AlertButton(title: "Dismiss", role: .secondary, appearance: session.appearance) {
                                 session.actions.dismiss()
                             }
-                            .keyboardShortcut(.cancelAction)
                         }
 
                         VStack(spacing: 10) {

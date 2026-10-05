@@ -4,7 +4,10 @@ import JoinCore
 @MainActor
 struct MenuBarPanelView: View {
     @Environment(AppModel.self) private var model
-    @State private var todayOnly = true
+    /// Height of the list content, measured each layout so the panel fits it exactly up to `maxListHeight`.
+    @State private var listContentHeight: CGFloat = 160
+
+    static let maxListHeight: CGFloat = 520
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -60,13 +63,10 @@ struct MenuBarPanelView: View {
     private var meetingList: some View {
         let now = model.now
         let ongoing = model.meetingStore.ongoing(at: now)
+        let todayOnly = model.panelShowsTodayOnly
         let upcoming = model.meetingStore.upcoming(at: now, todayOnly: todayOnly)
 
         let groups = groupedByDay(upcoming, now: now)
-
-        // A ScrollView inside a MenuBarExtra window collapses to zero height unless sized explicitly,
-        // so estimate the content height and let it scroll past the cap.
-        let estimatedHeight = Self.estimatedHeight(ongoing: ongoing, upcoming: upcoming, dayHeadings: todayOnly ? 0 : groups.count)
 
         return ScrollView {
             VStack(alignment: .leading, spacing: 14) {
@@ -82,7 +82,7 @@ struct MenuBarPanelView: View {
                 HStack {
                     SectionHeader(title: "Upcoming")
                     Spacer()
-                    Picker("", selection: $todayOnly) {
+                    Picker("", selection: todayOnlyBinding) {
                         Text("Today").tag(true)
                         Text("All").tag(false)
                     }
@@ -108,19 +108,20 @@ struct MenuBarPanelView: View {
                 }
             }
             .padding(14)
+            .background(
+                GeometryReader { proxy in
+                    Color.clear.preference(key: ListContentHeightKey.self, value: proxy.size.height)
+                }
+            )
         }
-        .frame(height: estimatedHeight)
+        // A ScrollView has no intrinsic height, so size it to the measured content, capped.
+        .frame(height: min(max(listContentHeight, 1), Self.maxListHeight))
+        .onPreferenceChange(ListContentHeightKey.self) { listContentHeight = $0 }
     }
 
-    private static func estimatedHeight(ongoing: [Meeting], upcoming: [Meeting], dayHeadings: Int) -> CGFloat {
-        let rows = ongoing + upcoming
-        var height: CGFloat = 28 + 2 * 20 + 14 * 3 // paddings and two section headers
-        height += CGFloat(rows.count) * 50
-        height += CGFloat(rows.filter { $0.location != nil || $0.isOutOfOffice }.count) * 18
-        height += CGFloat(dayHeadings) * 24
-        if ongoing.isEmpty { height += 28 }
-        if upcoming.isEmpty { height += 28 }
-        return min(max(height, 140), 520)
+
+    private var todayOnlyBinding: Binding<Bool> {
+        Binding(get: { model.panelShowsTodayOnly }, set: { model.panelShowsTodayOnly = $0 })
     }
 
     private func groupedByDay(_ meetings: [Meeting], now: Date) -> [(heading: String, meetings: [Meeting])] {
@@ -132,6 +133,14 @@ struct MenuBarPanelView: View {
             groups[heading, default: []].append(meeting)
         }
         return order.map { (heading: $0, meetings: groups[$0] ?? []) }
+    }
+}
+
+private struct ListContentHeightKey: PreferenceKey {
+    static let defaultValue: CGFloat = 0
+
+    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) {
+        value = max(value, nextValue())
     }
 }
 

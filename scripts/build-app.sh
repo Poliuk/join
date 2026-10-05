@@ -16,7 +16,9 @@ cp "$BIN_DIR/Join" "$APP/Contents/MacOS/Join"
 cp Resources/Info.plist "$APP/Contents/Info.plist"
 printf 'APPL????' > "$APP/Contents/PkgInfo"
 
-# Ad-hoc signature: enough for TCC (calendar permission) to recognise the bundle.
-codesign --force --sign - "$APP"
+# Ad-hoc signature with an explicit designated requirement. A plain ad-hoc signature identifies
+# the app by the hash of this exact build, so macOS forgets the calendar permission after every
+# rebuild. Pinning the requirement to the bundle identifier keeps the grant across rebuilds.
+codesign --force --sign - --requirements '=designated => identifier "com.poliuk.join"' "$APP"
 
 echo "Built $APP"
