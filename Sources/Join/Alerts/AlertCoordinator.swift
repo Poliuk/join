@@ -43,7 +43,7 @@ final class AlertCoordinator {
     }
 
     func start() {
-        observeChanges(of: { [store] in _ = store.meetings }) { [weak self] in
+        observeChanges(of: { [store] in _ = store.alertableMeetings }) { [weak self] in
             self?.meetingsDidChange()
         }
         heartbeat = Timer.scheduledTimer(withTimeInterval: Self.heartbeatInterval, repeats: true) { [weak self] _ in
@@ -71,7 +71,7 @@ final class AlertCoordinator {
         }
 
         let plan = AlertScheduler.nextPlan(
-            meetings: store.meetings,
+            meetings: store.alertableMeetings,
             states: states.mapValues(\.state),
             leadTime: preferences.leadTime,
             isPaused: isPaused,
@@ -102,7 +102,7 @@ final class AlertCoordinator {
 
     private func meetingsDidChange() {
         if !activeMeetings.isEmpty {
-            let known = Set(store.meetings.map(\.id))
+            let known = Set(store.alertableMeetings.map(\.id))
             let remaining = activeMeetings.filter { known.contains($0.id) }
             if remaining.isEmpty {
                 closeAlert()

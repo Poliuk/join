@@ -21,6 +21,8 @@ final class PreferencesTests: XCTestCase {
         XCTAssertNil(preferences.soundName)
         XCTAssertNil(preferences.enabledCalendarIDs)
         XCTAssertEqual(preferences.appearance, .default)
+        XCTAssertTrue(preferences.skipOutOfOffice)
+        XCTAssertEqual(preferences.outOfOfficeKeywords, OutOfOfficeDetector.defaultKeywords)
     }
 
     func testValuesPersistAcrossInstances() {

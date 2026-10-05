@@ -31,6 +31,19 @@ struct GeneralTab: View {
                 Toggle("Show next event in the menu bar", isOn: $preferences.menuBarShowsNextEvent)
             }
 
+            Section("Out of office") {
+                Toggle("Don't alert for out-of-office events", isOn: $preferences.skipOutOfOffice)
+                TextField("Keywords", text: keywordsText(preferences), prompt: Text("out of office, OOO, …"), axis: .vertical)
+                    .lineLimit(2...4)
+                HStack {
+                    Text("An event whose title contains one of these words is treated as out of office. Separate keywords with commas.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                    Spacer()
+                    Button("Reset") { preferences.resetOutOfOfficeKeywords() }
+                }
+            }
+
             Section("Sound") {
                 Picker("Sound", selection: soundSelection(preferences)) {
                     Text("None").tag("")
@@ -99,6 +112,13 @@ struct GeneralTab: View {
         Binding(
             get: { Int(preferences.leadTime) % 60 },
             set: { preferences.leadTime = TimeInterval((Int(preferences.leadTime) / 60) * 60 + $0) }
+        )
+    }
+
+    private func keywordsText(_ preferences: Preferences) -> Binding<String> {
+        Binding(
+            get: { preferences.outOfOfficeKeywords.joined(separator: ", ") },
+            set: { preferences.outOfOfficeKeywords = OutOfOfficeDetector.parseKeywords($0) }
         )
     }
 

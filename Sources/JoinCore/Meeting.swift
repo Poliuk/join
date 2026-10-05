@@ -22,6 +22,8 @@ public struct Meeting: Identifiable, Hashable, Sendable, Codable {
     public var url: URL?
     public var myStatus: ParticipationStatus
     public var joinURL: URL?
+    /// Set by the detector; such events can be excluded from alerts in Settings.
+    public var isOutOfOffice: Bool
 
     public init(
         id: String,
@@ -36,7 +38,8 @@ public struct Meeting: Identifiable, Hashable, Sendable, Codable {
         notes: String? = nil,
         url: URL? = nil,
         myStatus: ParticipationStatus = .accepted,
-        joinURL: URL? = nil
+        joinURL: URL? = nil,
+        isOutOfOffice: Bool = false
     ) {
         self.id = id
         self.title = title
@@ -51,6 +54,7 @@ public struct Meeting: Identifiable, Hashable, Sendable, Codable {
         self.url = url
         self.myStatus = myStatus
         self.joinURL = joinURL
+        self.isOutOfOffice = isOutOfOffice
     }
 
     /// Recurring events share one event identifier, so the occurrence start is part of the id.

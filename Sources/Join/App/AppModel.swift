@@ -31,7 +31,10 @@ final class AppModel {
         }
         ticker?.tolerance = 5
 
-        observeChanges(of: { [preferences] in _ = preferences.enabledCalendarIDs }) { [weak self] in
+        observeChanges(of: { [preferences] in
+            _ = preferences.enabledCalendarIDs
+            _ = preferences.outOfOfficeKeywords
+        }) { [weak self] in
             self?.meetingStore.refresh()
         }
         observeChanges(of: { [preferences] in _ = preferences.leadTime }) { [weak self] in
@@ -53,11 +56,13 @@ final class AppModel {
         NSWorkspace.shared.open(url)
     }
 
+    /// The SDK this builds against has no `openSettings` environment action, and `SettingsLink`
+    /// does nothing from inside a MenuBarExtra window, so send the responder-chain action directly.
     func openSettings() {
         NSApp.activate(ignoringOtherApps: true)
-        if #available(macOS 14, *) {
-            NSApp.sendAction(Selector(("showSettingsWindow:")), to: nil, from: nil)
-        }
+        NSApp.sendAction(Selector(("showSettingsWindow:")), to: nil, from: nil)
+        NSApp.windows.first { $0.title.contains("Settings") || $0.identifier?.rawValue.contains("Settings") == true }?
+            .makeKeyAndOrderFront(nil)
     }
 
     func openCalendarPrivacySettings() {

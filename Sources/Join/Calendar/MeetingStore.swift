@@ -68,8 +68,14 @@ final class MeetingStore {
         meetings = fetched.map { meeting in
             var resolved = meeting
             resolved.joinURL = MeetingLinkDetector.joinURL(in: meeting)
+            resolved.isOutOfOffice = OutOfOfficeDetector.isOutOfOffice(title: meeting.title, keywords: preferences.outOfOfficeKeywords)
             return resolved
         }
+    }
+
+    /// The meetings that may produce alerts and drive the menu bar title.
+    var alertableMeetings: [Meeting] {
+        preferences.skipOutOfOffice ? meetings.filter { !$0.isOutOfOffice } : meetings
     }
 
     func ongoing(at now: Date) -> [Meeting] {
@@ -84,11 +90,11 @@ final class MeetingStore {
     }
 
     func current(at now: Date) -> Meeting? {
-        ongoing(at: now).first
+        alertableMeetings.first { $0.isOngoing(at: now) }
     }
 
     func next(at now: Date) -> Meeting? {
-        meetings.first { $0.isUpcoming(at: now) }
+        alertableMeetings.first { $0.isUpcoming(at: now) }
     }
 
     var calendarsBySource: [(source: String, calendars: [CalendarInfo])] {

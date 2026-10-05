@@ -17,6 +17,8 @@ public final class Preferences {
         public static let enabledCalendarIDs = "enabledCalendarIDs"
         public static let menuBarShowsNextEvent = "menuBarShowsNextEvent"
         public static let appearance = "appearance"
+        public static let skipOutOfOffice = "skipOutOfOffice"
+        public static let outOfOfficeKeywords = "outOfOfficeKeywords"
     }
 
     public static let defaultLeadTime: TimeInterval = 3 * 60
@@ -35,6 +37,8 @@ public final class Preferences {
     @ObservationIgnored private var _enabledCalendarIDs: Set<String>?
     @ObservationIgnored private var _menuBarShowsNextEvent: Bool
     @ObservationIgnored private var _appearance: AlertAppearance
+    @ObservationIgnored private var _skipOutOfOffice: Bool
+    @ObservationIgnored private var _outOfOfficeKeywords: [String]
 
     public init(defaults: UserDefaults = .standard) {
         self.defaults = defaults
@@ -50,6 +54,8 @@ public final class Preferences {
         _menuBarShowsNextEvent = defaults.object(forKey: Keys.menuBarShowsNextEvent) as? Bool ?? true
         _appearance = defaults.data(forKey: Keys.appearance)
             .flatMap { try? JSONDecoder().decode(AlertAppearance.self, from: $0) } ?? .default
+        _skipOutOfOffice = defaults.object(forKey: Keys.skipOutOfOffice) as? Bool ?? true
+        _outOfOfficeKeywords = defaults.array(forKey: Keys.outOfOfficeKeywords) as? [String] ?? OutOfOfficeDetector.defaultKeywords
     }
 
     /// Seconds before the meeting start at which the alert fires.
@@ -159,6 +165,31 @@ public final class Preferences {
                 defaults.set(try? JSONEncoder().encode(newValue), forKey: Keys.appearance)
             }
         }
+    }
+
+    /// When on, events that look like out-of-office blocks never alert and are left out of the menu bar title.
+    public var skipOutOfOffice: Bool {
+        get { access(keyPath: \.skipOutOfOffice); return _skipOutOfOffice }
+        set {
+            withMutation(keyPath: \.skipOutOfOffice) {
+                _skipOutOfOffice = newValue
+                defaults.set(newValue, forKey: Keys.skipOutOfOffice)
+            }
+        }
+    }
+
+    public var outOfOfficeKeywords: [String] {
+        get { access(keyPath: \.outOfOfficeKeywords); return _outOfOfficeKeywords }
+        set {
+            withMutation(keyPath: \.outOfOfficeKeywords) {
+                _outOfOfficeKeywords = newValue
+                defaults.set(newValue, forKey: Keys.outOfOfficeKeywords)
+            }
+        }
+    }
+
+    public func resetOutOfOfficeKeywords() {
+        outOfOfficeKeywords = OutOfOfficeDetector.defaultKeywords
     }
 
     public func isCalendarEnabled(_ id: String) -> Bool {

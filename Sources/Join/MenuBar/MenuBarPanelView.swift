@@ -38,10 +38,11 @@ struct MenuBarPanelView: View {
             }
             .help(model.alertCoordinator.isPaused ? "Resume alerts" : "Pause alerts")
 
-            SettingsLink {
+            Button {
+                model.openSettings()
+            } label: {
                 Image(systemName: "gearshape.fill")
             }
-            .simultaneousGesture(TapGesture().onEnded { NSApp.activate(ignoringOtherApps: true) })
             .help("Settings")
 
             Button {
@@ -60,6 +61,12 @@ struct MenuBarPanelView: View {
         let now = model.now
         let ongoing = model.meetingStore.ongoing(at: now)
         let upcoming = model.meetingStore.upcoming(at: now, todayOnly: todayOnly)
+
+        let groups = groupedByDay(upcoming, now: now)
+
+        // A ScrollView inside a MenuBarExtra window collapses to zero height unless sized explicitly,
+        // so estimate the content height and let it scroll past the cap.
+        let estimatedHeight = Self.estimatedHeight(ongoing: ongoing, upcoming: upcoming, dayHeadings: todayOnly ? 0 : groups.count)
 
         return ScrollView {
             VStack(alignment: .leading, spacing: 14) {
@@ -87,7 +94,7 @@ struct MenuBarPanelView: View {
                 if upcoming.isEmpty {
                     EmptyRow(text: todayOnly ? "No more meetings today" : "Nothing in the next 7 days")
                 } else {
-                    ForEach(groupedByDay(upcoming, now: now), id: \.heading) { group in
+                    ForEach(groups, id: \.heading) { group in
                         if !todayOnly {
                             Text(group.heading)
                                 .font(.caption.weight(.semibold))
@@ -102,7 +109,18 @@ struct MenuBarPanelView: View {
             }
             .padding(14)
         }
-        .frame(maxHeight: 520)
+        .frame(height: estimatedHeight)
+    }
+
+    private static func estimatedHeight(ongoing: [Meeting], upcoming: [Meeting], dayHeadings: Int) -> CGFloat {
+        let rows = ongoing + upcoming
+        var height: CGFloat = 28 + 2 * 20 + 14 * 3 // paddings and two section headers
+        height += CGFloat(rows.count) * 50
+        height += CGFloat(rows.filter { $0.location != nil || $0.isOutOfOffice }.count) * 18
+        height += CGFloat(dayHeadings) * 24
+        if ongoing.isEmpty { height += 28 }
+        if upcoming.isEmpty { height += 28 }
+        return min(max(height, 140), 520)
     }
 
     private func groupedByDay(_ meetings: [Meeting], now: Date) -> [(heading: String, meetings: [Meeting])] {
@@ -171,6 +189,14 @@ private struct MeetingRow: View {
                         .foregroundStyle(.secondary)
                         .lineLimit(1)
                 }
+                if meeting.isOutOfOffice {
+                    Text("Out of office")
+                        .font(.caption2.weight(.semibold))
+                        .foregroundStyle(.secondary)
+                        .padding(.horizontal, 5)
+                        .padding(.vertical, 1)
+                        .background(.quaternary, in: Capsule())
+                }
             }
             Spacer(minLength: 0)
             if let url = meeting.joinURL {
@@ -184,6 +210,7 @@ private struct MeetingRow: View {
             }
         }
         .fixedSize(horizontal: false, vertical: true)
+        .opacity(meeting.isOutOfOffice ? 0.6 : 1)
     }
 }
 
