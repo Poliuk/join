@@ -67,7 +67,7 @@ To check the UI against a known calendar instead of your own, quit Join! and lau
 open --env JOIN_FIXTURE=busy build/Join.app
 ```
 
-Fixture runs keep their settings in a separate defaults domain and never schedule alerts. The app also listens for a few distributed notifications (`com.poliuk.join.openSettings`, `snapshot`, `togglePanel`, `pause`, `appearance`, …) so scripts can open windows, take snapshots and switch light/dark. See [Testing strategy](docs/TECHNICAL_DESIGN.md#12-testing-strategy) in the technical design.
+Fixture runs keep their settings in a separate defaults domain, never schedule alerts, show a "Fixture" marker, and quit after two hours. Only fixture runs listen for a few distributed notifications (`com.poliuk.join.fixture.openSettings`, `snapshot`, `togglePanel`, `pause`, `appearance`, …) so scripts can open windows, take snapshots and switch light/dark; a normal run ignores them. See [Testing strategy](docs/TECHNICAL_DESIGN.md#12-testing-strategy) in the technical design.
 
 Design documents live in [`docs/`](docs/).
 

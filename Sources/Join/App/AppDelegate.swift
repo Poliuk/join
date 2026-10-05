@@ -17,6 +17,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         model.start()
         let statusItem = StatusItemController(model: model)
         model.closePanel = { [weak statusItem] in statusItem?.close() }
+        model.alertCoordinator.willPresentAlert = { [weak statusItem] in statusItem?.close() }
         self.statusItem = statusItem
         if model.isFixture {
             observeScriptHooks()

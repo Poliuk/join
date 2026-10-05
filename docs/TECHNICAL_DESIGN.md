@@ -204,7 +204,8 @@ The meetings passed in are `MeetingStore.alertableMeetings`: all meetings, minus
 - **Pause.** `pause(_ option: PauseOption)` turns "1 hour", "until tomorrow" (local midnight) or "until I resume" into a `PauseState`; `resume()` sets `.active`. The state is saved as JSON under `pauseState`, so "Pause until tomorrow" survives a relaunch. A timed pause that has run out collapses to `.active` on load and on the next re-plan.
 - One alert at a time: while an alert is on screen, nothing else fires; the next plan is computed when it closes.
 - If a meeting is edited (start moves) its `id` changes → new occurrence, state resets to `.pending`. Cancelled meetings disappear from the store; if their alert is showing, the window closes.
-- `showDemoAlert()` presents a fake meeting starting 3 minutes out (on a whole second, so the countdown starts at 3:00). Its buttons only close it, and if it interrupted a real alert, that alert comes back.
+- `showDemoAlert()` presents a fake meeting starting 3 minutes out (on a whole second, so the countdown starts at 3:00). Its buttons only close it. It is refused, and the Settings button is disabled, while a real alert is on screen (`isAlerting`); a real alert that fires during a demo replaces it.
+- `willPresentAlert` runs right before any alert (real or demo) is presented. The app uses it to close the menu bar panel, including a header menu that is open, so the panel can't take keyboard focus back from the alert.
 
 ## 6. Alert window (AppKit)
 
@@ -238,10 +239,10 @@ panel.makeKeyAndOrderFront(nil)                   // no NSApp.activate
 3. The title, 52 pt bold, up to two lines.
 4. The time range (clock icon) and the location (pin), side by side, or stacked when they don't fit. The location is left out when it is only the join link again.
 5. **Join**, when a link exists: a wide button with a video icon, "Join" before the start and "Join now" after, and a `↩` key hint.
-6. The snooze row: a "Snooze" label, one button per snooze duration ("1 min", "5 min"), and **At 2:00 PM**, which snoozes until the meeting starts. "At …" is left out once the start has passed.
+6. The snooze row: a "Snooze" label, one button per snooze duration ("1 min", "5 min", "1 hr", worded like Settings), and **At 2:00 PM**, which snoozes until the meeting starts. "At …" is left out once the start has passed.
 7. **Dismiss**, with an `esc` key hint.
 
-When several meetings share one plan, each gets its own calendar, countdown, title and details block (titles at 40 pt), above a single button group; the Join button names the meeting it joins ("Join Design Sync"). A demo alert adds the line "This is a demo alert. Press Esc to close it."
+When several meetings share one plan, each gets its own calendar, countdown, title and details block (titles at 40 pt), above a single button group; the Join button names the meeting it joins ("Join Design Sync"). If the blocks don't fit the screen they scroll, with a fade at the edges, while the button group keeps its place, so Join, snooze and Dismiss always stay reachable. The hosting view has no sizing constraints, so the alert never grows past a small screen. A demo alert adds the line "This is a demo alert. Press Esc to close it."
 
 **Countdown.** `AlertCountdown` (JoinCore) turns `(start, end, now)` into a phase and its text. Colors come from `AlertPalette.countdownColor(for:)`: brighter on dark backdrops, deeper on light ones.
 
@@ -287,7 +288,7 @@ Presets (`AlertAppearancePreset`):
 | Kind | When | Drawn as |
 |---|---|---|
 | idle | nothing upcoming in the 7-day window | `calendar` symbol alone |
-| later | next meeting more than an hour away | `calendar` + "1:00 PM", "Tomorrow 1:00 PM" or "Wednesday 1:00 PM" |
+| later | next meeting more than an hour away | `calendar` + "1:00 PM", "Tomorrow 1:00 PM", "Wednesday 1:00 PM", or a short date from 7 days out ("Mon 12 Oct 1:00 PM") so it can't read as today |
 | withinHour | next meeting within the hour | `calendar` + "in 42 min" |
 | startingSoon | next meeting in 5 minutes or less | a pill filled with the system accent color: white `video.fill` icon + "in 4 min" |
 | inMeeting | in a meeting (the one that started most recently) | a 16 pt ring that drains from full to empty over the meeting + "40 min left" |
@@ -309,7 +310,7 @@ Presets (`AlertAppearancePreset`):
 
 **Panel content.** `PanelPresenter.content(meetings:alertable:now:)` (JoinCore) returns one hero card and a list of sections. The views draw them with `PanelColors`, light/dark pairs with translucent fills that sit on the material in either mode.
 
-- **Header:** today's date ("Tuesday, 6 October", localized), the bell menu and the ⋯ menu.
+- **Header:** today's date ("Tuesday, 6 October", localized), a "Fixture" badge in fixture runs (§12), the bell button and the ⋯ menu. The panel window's accessible name is "Join! meetings".
 - **Paused bar**, while paused: "Reminders paused until 11:50 AM", "… until tomorrow" or "Reminders paused", with **Resume**.
 - **Hero**, exactly one, chosen from the alertable meetings:
   - **Starting soon**, when the next start is 5 minutes or less away: accent-tinted card, "Starts in 4 min", accent button. Wins over Now.
@@ -324,12 +325,12 @@ Presets (`AlertAppearancePreset`):
 - **Rows:** start over end time, a calendar-color bar, the title, at most one detail line, and an icon button. The detail is, in this order: a progress bar with "3 h 10 min left" for a running meeting, an amber "Overlaps Workshop", or a pin with the short location.
 - **Out-of-office rows** are striped and muted, with no detail and no button.
 - **Overlaps.** A meeting that starts while an earlier one is still running is flagged with the latest-ending of those. Only the later meeting of a pair is flagged, and out-of-office blocks never count. On a card the warning also says until when: "Overlaps Workshop, which runs until 7:30 PM".
-- **Actions.** Join (video icon) when a join link was found. Otherwise **Directions** when the meeting is in person: its location names a physical place rather than a URL or a video service ("Zoom", "Google Meet", "Online", …). Directions opens Apple Maps (`https://maps.apple.com/?daddr=…`).
-- **Locations.** `LocationFormatter` shortens free-text locations for rows and cards: "C. de Ruiz de Alarcón, 23, Retiro, 28014 Madrid, España" → "C. de Ruiz de Alarcón, 23 · Retiro", and a place picked from Maps ("Place name" over "Street, City, …") → "Place name · City".
+- **Actions.** Join (video icon) when a join link was found. Otherwise **Directions** when the meeting is in person: its location names a physical place. `LocationFormatter.physicalPlace(in:)` splits the location on ";" and new lines and drops the virtual parts: links with or without a scheme ("meet.google.com/…"), phone numbers and dial-ins, bare service names ("Teams", "Zoom", "Online", …). "Sala Retiro; Microsoft Teams Meeting" keeps "Sala Retiro"; "Teams Room 3" stays a place. Directions opens Apple Maps (`https://maps.apple.com/?daddr=…`).
+- **Locations.** `LocationFormatter` shortens the physical part for rows and cards. It finds the street first (a component followed by a house number, or one that starts with a number), then shows "name · locality" or "street · locality": "C. de Ruiz de Alarcón, 23, Retiro, 28014 Madrid, España" → "C. de Ruiz de Alarcón, 23 · Retiro"; "Museo del Prado, C. de Ruiz de Alarcón, 23, Retiro, 28014 Madrid, España" → "Museo del Prado · Retiro"; "1 Infinite Loop" over "Cupertino, CA 95014" → "1 Infinite Loop · Cupertino".
 
 **Header menus.** Both are AppKit `NSMenu`s that pop up below their 28 pt button, right edges aligned.
 
-- **Bell:** "Pause for 1 hour", "Pause until tomorrow", "Pause until I resume", with "Resume reminders" on top while paused. While paused the button shows `bell.slash` and is drawn pressed. The choice goes to `AlertCoordinator.pause(_:)`, which persists it (§5).
+- **Bell:** while active, a menu: "Pause for 1 hour", "Pause until tomorrow", "Pause until I resume" (VoiceOver: "Pause reminders", hint "Opens a menu"). The choice goes to `AlertCoordinator.pause(_:)`, which persists it (§5). While paused the button shows `bell.slash`, is drawn pressed (selected for VoiceOver), is labelled "Resume reminders", and resumes directly, as in the Paused artboard.
 - **⋯:** "Open Calendar" (Calendar.app), "Settings… ⌘,", "Quit Join! ⌘Q".
 
 **No permission.** Without calendar access the panel shows an explanation, **Open System Settings** (`x-apple.systempreferences:com.apple.preference.security?Privacy_Calendars`) and **Check Again**.
@@ -345,7 +346,7 @@ Presets (`AlertAppearancePreset`):
 **Components.** `SettingsComponents.swift` holds the shared building blocks, so the three panes look alike: `SettingsPalette` (window, box, separator, chip and field colors as light/dark pairs), `SettingsMetrics` (pane width, padding, indent), `SettingsSection` (a heading over a box), `SettingsBox` (the rounded group), `SettingsRow` (label left, control right, a hairline above, optional indent and secondary or disabled tone), `SettingsSwitchRow`, `SettingsChip`, `SettingsFlowLayout` (a wrapping layout for tokens, where a subview tagged `SettingsFlowFill` takes the rest of its line) and `SettingsPaneScroll`. The pop-up choices and their labels come from `SettingsOptions` in JoinCore. All controls bind to `Preferences`.
 
 - **General:**
-  - Top box: **Open at login** (`SMAppService.mainApp.register()` / `.unregister()`; if macOS wants approval, a hint points to System Settings › General › Login Items), **Show the next event in the menu bar**, and the indented **Include event titles**, which is disabled and reads off while the first switch is off.
+  - Top box: **Open at login** (`SMAppService.mainApp.register()` / `.unregister()`; if macOS wants approval, a hint points to System Settings › General › Login Items; switch and hint are re-read whenever the app becomes active or Settings becomes key, so the hint clears after approval; in a fixture run the row is disabled, "Not available in fixture mode.", and never touches `SMAppService`), **Show the next event in the menu bar**, and the indented **Include event titles**, which is disabled and reads off while the first switch is off.
   - **Alert:** **Alert me**: When the event starts, 1, 2, 3, 5 or 10 minutes before, or Custom…. Custom shows an indented row with a minutes field and a stepper (0–120). The field saves on Return or when it loses focus, never mid-typing, so "3" → "35" → "5" can't briefly mean 35 minutes and fire alerts early. A stored lead time that isn't a preset opens as Custom. **Show alert on**: All screens, Main screen only, Screen with the pointer. **Sound**: a play button and a pop-up with None and the `/System/Library/Sounds` names. The indented **Repeat until the alert is closed** is disabled without a sound.
   - **Out of office** (§9a): **Alert for out-of-office events**, off by default, and **Title keywords** as removable tokens. Return or a comma adds a keyword, Delete in the empty field removes the last one, leaving the field adds what was typed, and duplicates are ignored regardless of case. **Restore Defaults** brings back the built-in list. The settings design put this section on Calendars; it lives on General by the user's choice.
   - **Snooze & auto-close:** **First snooze button** and **Second snooze button** (1, 2, 3, 5, 10, 15, 30 or 60 minutes; a stored value outside that list stays selectable) and **Close alerts automatically** (Never, or after 5, 10, 15, 30 or 60 minutes). Under the box, "The alert offers" with chips that mirror the alert's snooze row: "1 min", "5 min", "At event start".
@@ -466,23 +467,23 @@ Bundle id `com.poliuk.join`, `LSUIElement = YES`.
 
   | Scenario | Today |
   |---|---|
-  | `nothing` | no more meetings today (also any unknown value) |
+  | `nothing` | no more meetings today |
   | `later` | an in-person appointment in 2 h 15 min, then a video call |
   | `busy` | one call started 56 min ago; another starts in 4 min |
   | `meeting` | in two overlapping calls |
   | `denied` | calendar access denied, so the permission prompts show |
 
-  Every scenario has the same following days: an out-of-office block, an in-person appointment, two overlapping calls, and more meetings on the two days after. Five calendars in two accounts fill the Calendars pane. Times are relative to launch, rounded to the minute. A fixture run uses its own defaults domain (`com.poliuk.join.fixture`), so it can't change real settings, and it never starts the alert scheduler, so it can't put an alert on screen by itself. Show Demo Alert still works. Quit a running Join! first: `open` hands the request to the running copy instead of starting a new one, and the variable is lost.
-- **Script hooks.** To drive the app from scripts without clicking, `AppDelegate` listens for distributed notifications named `com.poliuk.join.<hook>`. The notification's object, when present, is the argument.
+  Every scenario has the same following days: an out-of-office block, an in-person appointment, two overlapping calls, and more meetings on the two days after. Five calendars in two accounts fill the Calendars pane. Times are relative to launch, rounded to the minute. Only these five names turn fixture mode on; any other value is logged and ignored, so a typo launches the real app. A fixture run uses its own defaults domain (`com.poliuk.join.fixture`), so it can't change real settings, never starts the alert scheduler, so it can't put an alert on screen by itself, and leaves the login item alone. It shows a "Fixture" marker in the panel header and the Settings title, and it quits after two hours so a forgotten one can't silence real alerts for long. Show Demo Alert still works. Quit a running Join! first: `open` hands the request to the running copy instead of starting a new one, and the variable is lost.
+- **Script hooks.** To drive a fixture run from scripts without clicking, `AppDelegate` listens for distributed notifications named `com.poliuk.join.fixture.<hook>`. Only fixture runs register them: any process can post a distributed notification, so a normal run must not let one pause, dismiss or capture the real app. The notification's object, when present, is the argument.
 
   | Hook | Argument | Does |
   |---|---|---|
   | `openSettings` | `general`, `calendars` or `appearance` (optional) | opens Settings, on that pane if given |
-  | `snapshot` | output folder (default: the temporary folder) | writes a PNG of every visible window of the app (`NN-<window class>-<title>.png`), without screen-recording permission |
+  | `snapshot` | a folder name (default `latest`) | writes a PNG of every visible window of the app (`NN-<window class>-<title>.png`) into `$TMPDIR/JoinSnapshots/<name>`, without screen-recording permission; the name is reduced to one safe path component |
   | `showDemoAlert` | – | shows the demo alert |
   | `dismissAlert` | – | dismisses the alert on screen, like clicking Dismiss |
   | `togglePanel` | – | opens or closes the menu bar panel |
-  | `pause` | `oneHour`, `untilTomorrow` or `untilResumed` (default) | pauses reminders |
+  | `pause` | `oneHour`, `untilTomorrow` or `untilResumed` | pauses reminders; ignored without a valid option |
   | `resume` | – | resumes reminders |
   | `appearance` | `light`, `dark`, anything else follows the system | forces the app's light or dark appearance |
 
@@ -493,12 +494,12 @@ Bundle id `com.poliuk.join`, `LSUIElement = YES`.
     osascript -l JavaScript -e 'function run(argv) {
       ObjC.import("Foundation")
       $.NSDistributedNotificationCenter.defaultCenter
-        .postNotificationNameObjectUserInfoDeliverImmediately("com.poliuk.join." + argv[0], argv[1] || null, null, true)
+        .postNotificationNameObjectUserInfoDeliverImmediately("com.poliuk.join.fixture." + argv[0], argv[1] || null, null, true)
     }' "$@"
   }
   hook togglePanel
   hook appearance dark
-  hook snapshot /tmp/join-shots
+  hook snapshot busy-dark   # → $(getconf DARWIN_USER_TEMP_DIR)JoinSnapshots/busy-dark
   ```
 
 - **Manual smoke checklist** for the UI: each fixture scenario in light and dark; a long panel (scrolling and fade); pause and resume, including across a relaunch; the demo alert with each preset, on all screens, the main screen and the pointer's screen; snooze and "At …"; full-screen app on another Space; sleep/wake with a meeting 2 minutes out.
