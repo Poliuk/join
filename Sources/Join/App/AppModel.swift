@@ -10,10 +10,8 @@ final class AppModel {
     let meetingStore: MeetingStore
     let alertCoordinator: AlertCoordinator
 
-    /// Advances every 30 seconds so the menu bar text and list rows stay fresh.
+    /// Advances on every half minute of the clock so countdowns in the menu bar and panel stay fresh.
     private(set) var now = Date()
-    /// The menu bar panel's Today / All filter, remembered while the app runs.
-    var panelShowsTodayOnly = true
     @ObservationIgnored private var ticker: Timer?
     @ObservationIgnored private let settingsWindow = SettingsWindowController()
     /// Closes the menu bar panel; set by the status item controller.
@@ -31,10 +29,15 @@ final class AppModel {
         Task { await meetingStore.start() }
         alertCoordinator.start()
 
-        ticker = Timer.scheduledTimer(withTimeInterval: 30, repeats: true) { [weak self] _ in
+        // Ticking on :00 and :30 keeps "in 4 min" in step with meetings, which start on whole minutes.
+        let interval: TimeInterval = 30
+        let firstTick = Date(timeIntervalSinceReferenceDate: (Date().timeIntervalSinceReferenceDate / interval).rounded(.up) * interval)
+        let ticker = Timer(fire: firstTick, interval: interval, repeats: true) { [weak self] _ in
             Task { @MainActor [weak self] in self?.now = Date() }
         }
-        ticker?.tolerance = 5
+        ticker.tolerance = 1
+        RunLoop.main.add(ticker, forMode: .common)
+        self.ticker = ticker
 
         observeChanges(of: { [preferences] in
             _ = preferences.enabledCalendarIDs
@@ -50,10 +53,26 @@ final class AppModel {
         }
     }
 
-    var menuBarTitle: String? {
-        guard preferences.menuBarShowsNextEvent else { return nil }
-        let meeting = meetingStore.current(at: now) ?? meetingStore.next(at: now)
-        return MeetingTimeFormatter.menuBarTitle(for: meeting, now: now)
+    var menuBarStatus: MenuBarStatus {
+        MenuBarPresenter.status(
+            meetings: meetingStore.alertableMeetings,
+            now: now,
+            pauseState: alertCoordinator.pauseState,
+            showsNextEvent: preferences.menuBarShowsNextEvent,
+            showsTitles: preferences.menuBarShowsEventTitles
+        )
+    }
+
+    var panelContent: PanelContent {
+        PanelPresenter.content(meetings: meetingStore.meetings, alertable: meetingStore.alertableMeetings, now: now)
+    }
+
+    var pausedMessage: String? {
+        MenuBarPresenter.pausedMessage(alertCoordinator.pauseState, now: now)
+    }
+
+    var isPaused: Bool {
+        alertCoordinator.pauseState.isPaused(at: now)
     }
 
     func refreshNow() {
@@ -66,9 +85,31 @@ final class AppModel {
         NSWorkspace.shared.open(url)
     }
 
+    func perform(_ action: PanelAction) {
+        closePanel?()
+        switch action {
+        case .join(let url), .directions(let url):
+            NSWorkspace.shared.open(url)
+        }
+    }
+
+    func pause(_ option: PauseOption) {
+        alertCoordinator.pause(option)
+    }
+
+    func resume() {
+        alertCoordinator.resume()
+    }
+
     func openSettings(pane: SettingsPane? = nil) {
         closePanel?()
         settingsWindow.show(model: self, pane: pane)
+    }
+
+    func openCalendar() {
+        closePanel?()
+        guard let url = NSWorkspace.shared.urlForApplication(withBundleIdentifier: "com.apple.iCal") else { return }
+        NSWorkspace.shared.openApplication(at: url, configuration: NSWorkspace.OpenConfiguration())
     }
 
     func openCalendarPrivacySettings() {

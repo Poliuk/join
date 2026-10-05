@@ -1,231 +1,261 @@
+import AppKit
 import SwiftUI
 import JoinCore
 
+/// The drop-down panel: a header with today's date and two menus, then a scrolling body with one hero
+/// card and the coming days. Its natural height is reported to the window, which fits it up to a cap.
 @MainActor
 struct MenuBarPanelView: View {
-    @Environment(AppModel.self) private var model
-    /// Height of the list content, measured each layout so the panel fits it exactly up to `maxListHeight`.
-    @State private var listContentHeight: CGFloat = 160
+    static let fadeHeight: CGFloat = 46
 
-    static let maxListHeight: CGFloat = 520
+    let context: MenuBarPanelContext
+    @Environment(AppModel.self) private var model
+    @State private var headerHeight: CGFloat = 0
+    @State private var bodyHeight: CGFloat = 0
+    @State private var viewportHeight: CGFloat = 0
+    @State private var scrollOffset: CGFloat = 0
 
     var body: some View {
+        VStack(spacing: 0) {
+            PanelHeader(context: context)
+                .background(measure(HeaderHeightKey.self))
+
+            ScrollView(.vertical) {
+                panelBody
+                    .background(measure(BodyHeightKey.self))
+                    .background(GeometryReader { proxy in
+                        Color.clear.preference(key: ScrollOffsetKey.self, value: proxy.frame(in: .named(Self.scrollSpace)).minY)
+                    })
+            }
+            .coordinateSpace(name: Self.scrollSpace)
+            .scrollBounceBehavior(.basedOnSize)
+            .background(measure(ViewportHeightKey.self))
+            .mask(fadeMask)
+        }
+        .frame(width: MenuBarPanelWindow.width)
+        .frame(maxHeight: .infinity, alignment: .top)
+        .background(PanelColors.background)
+        .clipShape(RoundedRectangle(cornerRadius: MenuBarPanelWindow.cornerRadius, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: MenuBarPanelWindow.cornerRadius, style: .continuous)
+                .strokeBorder(PanelColors.hairline, lineWidth: 1)
+        )
+        .onPreferenceChange(HeaderHeightKey.self) { height in
+            headerHeight = height
+            context.naturalHeightChanged(headerHeight + bodyHeight)
+        }
+        .onPreferenceChange(BodyHeightKey.self) { height in
+            bodyHeight = height
+            context.naturalHeightChanged(headerHeight + bodyHeight)
+        }
+        .onPreferenceChange(ViewportHeightKey.self) { viewportHeight = $0 }
+        .onPreferenceChange(ScrollOffsetKey.self) { scrollOffset = $0 }
+    }
+
+    private static let scrollSpace = "panelScroll"
+
+    @ViewBuilder
+    private var panelBody: some View {
         VStack(alignment: .leading, spacing: 0) {
-            header
-            Divider()
             if model.meetingStore.authorization == .authorized {
-                meetingList
+                let content = model.panelContent
+                let pausedMessage = model.pausedMessage
+                if let pausedMessage {
+                    PausedBar(message: pausedMessage) { model.resume() }
+                }
+                PanelHeroView(hero: content.hero, perform: model.perform)
+                    .padding(.horizontal, 10)
+                    .padding(.top, pausedMessage == nil ? 10 : 8)
+                    .padding(.bottom, 2)
+                ForEach(content.sections) { section in
+                    PanelSectionView(section: section, perform: model.perform)
+                }
             } else {
                 PermissionPrompt(authorization: model.meetingStore.authorization)
             }
         }
-        .frame(width: 340)
+        .padding(.bottom, 8)
+        .frame(maxWidth: .infinity, alignment: .leading)
     }
 
-    private var header: some View {
-        HStack(spacing: 10) {
-            Text("Join!")
-                .font(.headline)
-            if model.alertCoordinator.isPaused {
-                Text("Alerts paused")
-                    .font(.caption.weight(.medium))
-                    .padding(.horizontal, 7)
-                    .padding(.vertical, 3)
-                    .background(.orange.opacity(0.2), in: Capsule())
-            }
-            Spacer()
-            Button {
-                if model.alertCoordinator.isPaused {
-                    model.alertCoordinator.resume()
-                } else {
-                    model.alertCoordinator.pause(.untilResumed)
-                }
-            } label: {
-                Image(systemName: model.alertCoordinator.isPaused ? "play.fill" : "pause.fill")
-            }
-            .help(model.alertCoordinator.isPaused ? "Resume alerts" : "Pause alerts")
-
-            Button {
-                model.openSettings()
-            } label: {
-                Image(systemName: "gearshape.fill")
-            }
-            .help("Settings")
-
-            Button {
-                model.quit()
-            } label: {
-                Image(systemName: "power")
-            }
-            .help("Quit Join!")
-        }
-        .buttonStyle(.borderless)
-        .padding(.horizontal, 14)
-        .padding(.vertical, 10)
-    }
-
-    private var meetingList: some View {
-        let now = model.now
-        let ongoing = model.meetingStore.ongoing(at: now)
-        let todayOnly = model.panelShowsTodayOnly
-        let upcoming = model.meetingStore.upcoming(at: now, todayOnly: todayOnly)
-
-        let groups = groupedByDay(upcoming, now: now)
-
-        return ScrollView {
-            VStack(alignment: .leading, spacing: 14) {
-                SectionHeader(title: "Ongoing")
-                if ongoing.isEmpty {
-                    EmptyRow(text: "Nothing happening right now")
-                } else {
-                    ForEach(ongoing) { meeting in
-                        MeetingRow(meeting: meeting, now: now) { model.join(meeting) }
-                    }
-                }
-
-                HStack {
-                    SectionHeader(title: "Upcoming")
-                    Spacer()
-                    Picker("", selection: todayOnlyBinding) {
-                        Text("Today").tag(true)
-                        Text("All").tag(false)
-                    }
-                    .pickerStyle(.segmented)
-                    .labelsHidden()
-                    .frame(width: 120)
-                }
-
-                if upcoming.isEmpty {
-                    EmptyRow(text: todayOnly ? "No more meetings today" : "Nothing in the next 7 days")
-                } else {
-                    ForEach(groups, id: \.heading) { group in
-                        if !todayOnly {
-                            Text(group.heading)
-                                .font(.caption.weight(.semibold))
-                                .foregroundStyle(.secondary)
-                                .padding(.top, 2)
-                        }
-                        ForEach(group.meetings) { meeting in
-                            MeetingRow(meeting: meeting, now: now) { model.join(meeting) }
-                        }
-                    }
-                }
-            }
-            .padding(14)
-            .background(
-                GeometryReader { proxy in
-                    Color.clear.preference(key: ListContentHeightKey.self, value: proxy.size.height)
-                }
+    /// Fades the list out at the bottom while there is more to scroll to, like the design.
+    private var fadeMask: some View {
+        let hidden = bodyHeight + scrollOffset - viewportHeight
+        let strength = min(max(hidden / Self.fadeHeight, 0), 1)
+        return VStack(spacing: 0) {
+            Rectangle()
+            LinearGradient(
+                stops: [
+                    .init(color: .black, location: 0),
+                    .init(color: .black.opacity(1 - strength), location: 0.85),
+                ],
+                startPoint: .top,
+                endPoint: .bottom
             )
+            .frame(height: Self.fadeHeight)
         }
-        // A ScrollView has no intrinsic height, so size it to the measured content, capped.
-        .frame(height: min(max(listContentHeight, 1), Self.maxListHeight))
-        .onPreferenceChange(ListContentHeightKey.self) { listContentHeight = $0 }
     }
 
-
-    private var todayOnlyBinding: Binding<Bool> {
-        Binding(get: { model.panelShowsTodayOnly }, set: { model.panelShowsTodayOnly = $0 })
-    }
-
-    private func groupedByDay(_ meetings: [Meeting], now: Date) -> [(heading: String, meetings: [Meeting])] {
-        var order: [String] = []
-        var groups: [String: [Meeting]] = [:]
-        for meeting in meetings {
-            let heading = MeetingTimeFormatter.dayHeading(for: meeting.start, now: now)
-            if groups[heading] == nil { order.append(heading) }
-            groups[heading, default: []].append(meeting)
+    private func measure<Key: PreferenceKey>(_ key: Key.Type) -> some View where Key.Value == CGFloat {
+        GeometryReader { proxy in
+            Color.clear.preference(key: key, value: proxy.size.height)
         }
-        return order.map { (heading: $0, meetings: groups[$0] ?? []) }
     }
 }
 
-private struct ListContentHeightKey: PreferenceKey {
+private struct HeaderHeightKey: PreferenceKey {
     static let defaultValue: CGFloat = 0
-
-    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) {
-        value = max(value, nextValue())
-    }
+    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) { value = max(value, nextValue()) }
 }
 
-@MainActor
-private struct SectionHeader: View {
-    let title: String
-
-    var body: some View {
-        Text(title.uppercased())
-            .font(.caption.weight(.semibold))
-            .foregroundStyle(.secondary)
-            .kerning(0.6)
-    }
+private struct BodyHeightKey: PreferenceKey {
+    static let defaultValue: CGFloat = 0
+    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) { value = max(value, nextValue()) }
 }
 
-@MainActor
-private struct EmptyRow: View {
-    let text: String
-
-    var body: some View {
-        Text(text)
-            .font(.callout)
-            .foregroundStyle(.secondary)
-            .padding(.vertical, 4)
-    }
+private struct ViewportHeightKey: PreferenceKey {
+    static let defaultValue: CGFloat = 0
+    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) { value = max(value, nextValue()) }
 }
 
+private struct ScrollOffsetKey: PreferenceKey {
+    static let defaultValue: CGFloat = 0
+    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) { value = nextValue() }
+}
+
+// MARK: Header
+
 @MainActor
-private struct MeetingRow: View {
-    let meeting: Meeting
-    let now: Date
-    let join: () -> Void
+private struct PanelHeader: View {
+    let context: MenuBarPanelContext
+    @Environment(AppModel.self) private var model
 
     var body: some View {
-        HStack(alignment: .top, spacing: 10) {
-            RoundedRectangle(cornerRadius: 1.5)
-                .fill(Color(meeting.calendarColor))
-                .frame(width: 3)
-            VStack(alignment: .leading, spacing: 2) {
-                Text(meeting.title)
-                    .font(.callout.weight(.semibold))
+        VStack(spacing: 0) {
+            HStack(spacing: 2) {
+                Text(MenuBarPresenter.headerDate(model.now))
+                    .font(.system(size: 13, weight: .semibold))
+                    .foregroundStyle(PanelColors.title)
                     .lineLimit(1)
-                HStack(spacing: 4) {
-                    Text(MeetingTimeFormatter.timeRange(start: meeting.start, end: meeting.end))
-                    if let detail = MeetingTimeFormatter.rowDetail(start: meeting.start, end: meeting.end, now: now) {
-                        Text("·")
-                        Text(detail)
-                    }
-                }
-                .font(.caption)
-                .foregroundStyle(.secondary)
-                if let location = meeting.location, meeting.joinURL?.absoluteString != location {
-                    Text(location)
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                        .lineLimit(1)
-                }
-                if meeting.isOutOfOffice {
-                    Text("Out of office")
-                        .font(.caption2.weight(.semibold))
-                        .foregroundStyle(.secondary)
-                        .padding(.horizontal, 5)
-                        .padding(.vertical, 1)
-                        .background(.quaternary, in: Capsule())
-                }
+                    .accessibilityAddTraits(.isHeader)
+                Spacer(minLength: 8)
+                HeaderMenuButton(
+                    symbol: model.isPaused ? "bell.slash" : "bell",
+                    label: model.isPaused ? "Resume reminders" : "Pause reminders",
+                    isOn: model.isPaused,
+                    open: context.showPauseMenu
+                )
+                HeaderMenuButton(symbol: "ellipsis", label: "More options", isOn: false, open: context.showMoreMenu)
             }
-            Spacer(minLength: 0)
-            if let url = meeting.joinURL {
-                Button(action: join) {
-                    Image(systemName: "video.fill")
-                        .padding(6)
-                        .background(.quaternary, in: RoundedRectangle(cornerRadius: 6))
-                }
-                .buttonStyle(.plain)
-                .help("Join via \(MeetingLinkDetector.providerName(for: url) ?? "link")")
-            }
+            .padding(.leading, 16)
+            .padding(.trailing, 8)
+            .padding(.vertical, 10)
+
+            Rectangle()
+                .fill(PanelColors.divider)
+                .frame(height: 1)
         }
-        .fixedSize(horizontal: false, vertical: true)
-        .opacity(meeting.isOutOfOffice ? 0.6 : 1)
     }
 }
+
+/// A 28 pt icon button that opens an AppKit menu below itself.
+@MainActor
+private struct HeaderMenuButton: View {
+    let symbol: String
+    let label: String
+    /// Drawn pressed, like the bell while reminders are paused.
+    let isOn: Bool
+    let open: (NSView) -> Void
+
+    @State private var anchor = ViewAnchor()
+    @State private var isMenuOpen = false
+    @State private var isHovered = false
+
+    var body: some View {
+        let active = isOn || isMenuOpen
+        Button {
+            guard let view = anchor.view else { return }
+            isMenuOpen = true
+            // Let the pressed look render before the menu's tracking loop takes over.
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.01) {
+                open(view)
+                isMenuOpen = false
+            }
+        } label: {
+            Image(systemName: symbol)
+                .font(.system(size: 14))
+                .foregroundStyle(active ? PanelColors.strong : PanelColors.icon)
+                .frame(width: 28, height: 28)
+                .background(
+                    RoundedRectangle(cornerRadius: 7, style: .continuous)
+                        .fill(active ? PanelColors.buttonFill : (isHovered ? PanelColors.hoverFill : .clear))
+                )
+                .contentShape(RoundedRectangle(cornerRadius: 7, style: .continuous))
+        }
+        .buttonStyle(.plain)
+        .background(AnchorView(anchor: anchor))
+        .onHover { isHovered = $0 }
+        .help(label)
+        .accessibilityLabel(label)
+    }
+}
+
+/// Holds the AppKit view behind a SwiftUI button, so a menu can be positioned against it.
+@MainActor
+private final class ViewAnchor {
+    weak var view: NSView?
+}
+
+private struct AnchorView: NSViewRepresentable {
+    let anchor: ViewAnchor
+
+    func makeNSView(context: Context) -> NSView {
+        let view = NSView()
+        anchor.view = view
+        return view
+    }
+
+    func updateNSView(_ nsView: NSView, context: Context) {
+        anchor.view = nsView
+    }
+}
+
+// MARK: Paused bar
+
+@MainActor
+private struct PausedBar: View {
+    let message: String
+    let resume: () -> Void
+
+    var body: some View {
+        HStack(spacing: 8) {
+            Image(systemName: "bell.slash")
+                .font(.system(size: 12))
+                .foregroundStyle(PanelColors.heading)
+                .frame(width: 14, height: 14)
+            Text(message)
+                .font(.system(size: 12.5).monospacedDigit())
+                .foregroundStyle(PanelColors.strong)
+                .lineLimit(1)
+                .frame(maxWidth: .infinity, alignment: .leading)
+            Button(action: resume) {
+                Text("Resume")
+                    .font(.system(size: 12, weight: .semibold))
+                    .padding(.horizontal, 10)
+                    .frame(height: 24)
+            }
+            .buttonStyle(PanelFillButtonStyle(fill: PanelColors.buttonFill, foreground: PanelColors.title, cornerRadius: 6))
+        }
+        .padding(.leading, 12)
+        .padding(.trailing, 6)
+        .padding(.vertical, 6)
+        .background(RoundedRectangle(cornerRadius: 10, style: .continuous).fill(PanelColors.cardFill))
+        .padding(.horizontal, 10)
+        .padding(.top, 10)
+    }
+}
+
+// MARK: Calendar permission
 
 @MainActor
 private struct PermissionPrompt: View {
@@ -233,19 +263,31 @@ private struct PermissionPrompt: View {
     let authorization: CalendarAuthorization
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            Text("Calendar access needed")
-                .font(.headline)
-            Text(message)
-                .font(.callout)
-                .foregroundStyle(.secondary)
-                .fixedSize(horizontal: false, vertical: true)
-            HStack {
-                Button("Open System Settings") { model.openCalendarPrivacySettings() }
-                Button("Check again") { model.meetingStore.recheckAuthorization() }
+        VStack(alignment: .leading, spacing: 8) {
+            Label {
+                Text("Calendar access needed")
+                    .font(.system(size: 13, weight: .semibold))
+                    .foregroundStyle(PanelColors.title)
+            } icon: {
+                Image(systemName: "calendar.badge.exclamationmark")
+                    .foregroundStyle(PanelColors.secondary)
             }
+            Text(message)
+                .font(.system(size: 12))
+                .foregroundStyle(PanelColors.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+            HStack(spacing: 8) {
+                Button("Open System Settings") { model.openCalendarPrivacySettings() }
+                Button("Check Again") { model.meetingStore.recheckAuthorization() }
+            }
+            .controlSize(.regular)
+            .padding(.top, 4)
         }
         .padding(14)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(RoundedRectangle(cornerRadius: 12, style: .continuous).fill(PanelColors.cardFill))
+        .padding(.horizontal, 10)
+        .padding(.top, 10)
     }
 
     private var message: String {

@@ -21,14 +21,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     /// Distributed notifications that let scripts drive the app during development and testing.
-    /// The notification's object, when present, is the argument (e.g. "today" or "all").
+    /// The notification's object, when present, is the argument (e.g. a Settings pane or a folder).
     private func observeScriptHooks() {
         let hooks: [(String, @MainActor (AppDelegate, String?) -> Void)] = [
             ("openSettings", { delegate, argument in delegate.model.openSettings(pane: argument.flatMap(SettingsPane.init(rawValue:))) }),
             ("snapshot", { _, argument in WindowSnapshots.write(to: argument ?? NSTemporaryDirectory()) }),
             ("showDemoAlert", { delegate, _ in delegate.model.alertCoordinator.showDemoAlert() }),
             ("togglePanel", { delegate, _ in delegate.statusItem?.toggle() }),
-            ("panelFilter", { delegate, argument in delegate.model.panelShowsTodayOnly = argument != "all" }),
         ]
         for (name, action) in hooks {
             let observer = DistributedNotificationCenter.default().addObserver(
