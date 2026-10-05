@@ -51,13 +51,12 @@ public enum AlertCountdown {
         "Snooze \(SettingsOptions.durationTitle(minutes: wholeMinutes(duration)))"
     }
 
-    /// "At 2:00 PM": snooze until the meeting starts.
-    public static func snoozeUntilStartLabel(_ start: Date, locale: Locale = .current, timeZone: TimeZone = .current) -> String {
-        "At \(MeetingTimeFormatter.shortTime(start, locale: locale, timeZone: timeZone))"
-    }
+    /// The button that snoozes until the meeting starts; Settings' "The alert offers" chips use it too.
+    public static let snoozeUntilStartLabel = "At event start"
 
+    /// VoiceOver keeps the time the button itself leaves out.
     public static func snoozeUntilStartAccessibilityLabel(_ start: Date, locale: Locale = .current, timeZone: TimeZone = .current) -> String {
-        "Snooze until \(MeetingTimeFormatter.shortTime(start, locale: locale, timeZone: timeZone))"
+        "Snooze until the event starts at \(MeetingTimeFormatter.shortTime(start, locale: locale, timeZone: timeZone))"
     }
 
     private static func wholeMinutes(_ duration: TimeInterval) -> Int {

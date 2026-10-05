@@ -176,7 +176,7 @@ struct AlertContentView: View {
         if let nextStart {
             options.append(AlertSnoozeOption(
                 id: "start",
-                label: AlertCountdown.snoozeUntilStartLabel(nextStart),
+                label: AlertCountdown.snoozeUntilStartLabel,
                 accessibilityLabel: AlertCountdown.snoozeUntilStartAccessibilityLabel(nextStart),
                 action: session.actions.snoozeUntilEvent
             ))

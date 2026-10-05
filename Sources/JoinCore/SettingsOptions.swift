@@ -49,7 +49,7 @@ public enum SettingsOptions {
 
     /// What the alert's snooze row offers: both snooze durations, then snoozing until the event.
     public static func alertOffers(snoozeDurations: [TimeInterval]) -> [String] {
-        snoozeDurations.map { shortDurationTitle(minutes: wholeMinutes($0)) } + ["At event start"]
+        snoozeDurations.map { shortDurationTitle(minutes: wholeMinutes($0)) } + [AlertCountdown.snoozeUntilStartLabel]
     }
 
     // MARK: Auto-close

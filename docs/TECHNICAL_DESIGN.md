@@ -239,7 +239,7 @@ panel.makeKeyAndOrderFront(nil)                   // no NSApp.activate
 3. The title, 52 pt bold, up to two lines.
 4. The time range (clock icon) and the location (pin), side by side, or stacked when they don't fit. The location is left out when it is only the join link again.
 5. **Join**, when a link exists: a wide button with a video icon, "Join" before the start and "Join now" after, and a `↩` key hint.
-6. The snooze row: a "Snooze" label, one button per snooze duration ("1 min", "5 min", "1 hr", worded like Settings), and **At 2:00 PM**, which snoozes until the meeting starts. "At …" is left out once the start has passed.
+6. The snooze row: a "Snooze" label, one button per snooze duration ("1 min", "5 min", "1 hr", worded like Settings), and **At event start**, which snoozes until the meeting starts (VoiceOver: "Snooze until the event starts at 2:00 PM"). It is left out once the start has passed. The design's "At 2:00 PM" was renamed at the user's request.
 7. **Dismiss**, with an `esc` key hint.
 
 When several meetings share one plan, each gets its own calendar, countdown, title and details block (titles at 40 pt), above a single button group; the Join button names the meeting it joins ("Join Design Sync"). If the blocks don't fit the screen they scroll, with a fade at the edges, while the button group keeps its place, so Join, snooze and Dismiss always stay reachable. The hosting view has no sizing constraints, so the alert never grows past a small screen. A demo alert adds the line "This is a demo alert. Press Esc to close it."
@@ -504,7 +504,7 @@ Bundle id `com.poliuk.join`, `LSUIElement = YES`.
   hook snapshot busy-dark   # → $(getconf DARWIN_USER_TEMP_DIR)JoinSnapshots/busy-dark
   ```
 
-- **Manual smoke checklist** for the UI: each fixture scenario in light and dark; a long panel (scrolling and fade); pause and resume, including across a relaunch; the demo alert with each preset, on all screens, the main screen and the pointer's screen; snooze and "At …"; full-screen app on another Space; sleep/wake with a meeting 2 minutes out.
+- **Manual smoke checklist** for the UI: each fixture scenario in light and dark; a long panel (scrolling and fade); pause and resume, including across a relaunch; the demo alert with each preset, on all screens, the main screen and the pointer's screen; snooze and "At event start"; full-screen app on another Space; sleep/wake with a meeting 2 minutes out.
 - **No UI tests**; the AppKit window behaviour isn't meaningfully testable headless.
 
 ## 13. Build, CI, distribution

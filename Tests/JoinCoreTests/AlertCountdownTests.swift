@@ -49,10 +49,10 @@ final class AlertCountdownTests: XCTestCase {
         calendar.timeZone = TimeZone(identifier: "UTC")!
         let twoPM = calendar.date(from: DateComponents(year: 2026, month: 10, day: 5, hour: 14))!
         let locale = Locale(identifier: "en_US")
-        XCTAssertEqual(squashWhitespace(AlertCountdown.snoozeUntilStartLabel(twoPM, locale: locale, timeZone: calendar.timeZone)), "At 2:00 PM")
+        XCTAssertEqual(AlertCountdown.snoozeUntilStartLabel, "At event start")
         XCTAssertEqual(
             squashWhitespace(AlertCountdown.snoozeUntilStartAccessibilityLabel(twoPM, locale: locale, timeZone: calendar.timeZone)),
-            "Snooze until 2:00 PM"
+            "Snooze until the event starts at 2:00 PM"
         )
     }
 
@@ -67,6 +67,7 @@ final class AlertCountdownTests: XCTestCase {
         let durations: [TimeInterval] = SettingsOptions.snoozeMinutes.map { TimeInterval($0 * 60) }
         let offers = SettingsOptions.alertOffers(snoozeDurations: durations)
         XCTAssertEqual(Array(offers.prefix(durations.count)), durations.map(AlertCountdown.snoozeLabel), "Settings' chips preview the alert's buttons")
+        XCTAssertEqual(offers.last, AlertCountdown.snoozeUntilStartLabel)
     }
 
     private func squashWhitespace(_ text: String) -> String {
