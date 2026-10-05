@@ -172,7 +172,10 @@ final class AlertWindow: NSPanel {
         hasShadow = false
         animationBehavior = .none
         setFrame(screen.frame, display: false)
-        contentView = FirstMouseHostingView(rootView: AnyView(AlertRootView(session: session).ignoresSafeArea()))
+        let hosting = FirstMouseHostingView(rootView: AnyView(AlertRootView(session: session).ignoresSafeArea()))
+        // The window is always exactly its screen; the content must not resize it.
+        hosting.sizingOptions = []
+        contentView = hosting
     }
 
     override var canBecomeKey: Bool { true }

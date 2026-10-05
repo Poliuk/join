@@ -41,15 +41,14 @@ public enum AlertCountdown {
         phase == .before ? "Join" : "Join now"
     }
 
-    /// "1 min", "5 min".
+    /// "1 min", "5 min", "1 hr": worded as in Settings.
     public static func snoozeLabel(_ duration: TimeInterval) -> String {
-        "\(wholeMinutes(duration)) min"
+        SettingsOptions.shortDurationTitle(minutes: wholeMinutes(duration))
     }
 
-    /// "Snooze 1 minute", "Snooze 5 minutes".
+    /// "Snooze 1 minute", "Snooze 5 minutes", "Snooze 1 hour".
     public static func snoozeAccessibilityLabel(_ duration: TimeInterval) -> String {
-        let minutes = wholeMinutes(duration)
-        return minutes == 1 ? "Snooze 1 minute" : "Snooze \(minutes) minutes"
+        "Snooze \(SettingsOptions.durationTitle(minutes: wholeMinutes(duration)))"
     }
 
     /// "At 2:00 PM": snooze until the meeting starts.

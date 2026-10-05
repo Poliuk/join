@@ -38,7 +38,7 @@ struct AppearancePreview: View {
                     Color(material)
                 }
                 AlertTintAndScrim(appearance: appearance, scrimSize: CGSize(width: 560, height: 340))
-                AlertContentView(session: session, now: Self.sampleNow)
+                AlertContentView(session: session, now: Self.sampleNow, isInteractive: false)
                     .frame(width: size.width / Self.scale, height: size.height / Self.scale)
                     .scaleEffect(Self.scale)
                     .frame(width: size.width, height: size.height)

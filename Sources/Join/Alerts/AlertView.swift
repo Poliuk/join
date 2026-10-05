@@ -46,13 +46,16 @@ struct AlertTintAndScrim: View {
             if let tint = appearance.tint {
                 Color(tint).opacity(appearance.tintStrength)
             }
-            EllipticalGradient(
-                colors: [Color(scrim), Color(scrim.withAlpha(0))],
-                center: .center,
-                startRadiusFraction: 0,
-                endRadiusFraction: 0.5
-            )
-            .frame(width: scrimSize.width, height: scrimSize.height)
+            // An overlay, so a screen smaller than the scrim clips it instead of being sized by it.
+            Color.clear.overlay {
+                EllipticalGradient(
+                    colors: [Color(scrim), Color(scrim.withAlpha(0))],
+                    center: .center,
+                    startRadiusFraction: 0,
+                    endRadiusFraction: 0.5
+                )
+                .frame(width: scrimSize.width, height: scrimSize.height)
+            }
         }
         .allowsHitTesting(false)
         .accessibilityHidden(true)
@@ -64,6 +67,8 @@ struct AlertContentView: View {
     let session: AlertSession
     /// A fixed clock, for the Settings preview. nil ticks every second.
     var now: Date? = nil
+    /// false for the Settings preview: the buttons are drawn, but there is nothing to click or focus.
+    var isInteractive = true
 
     var body: some View {
         if let now {
@@ -74,6 +79,9 @@ struct AlertContentView: View {
             }
         }
     }
+
+    /// Meetings that scroll fade out at the edges, so a cut-off one reads as more to scroll to.
+    private static let scrollFade: CGFloat = 24
 
     /// Ticks land just after each whole second, where meeting starts fall, so the countdown steps evenly.
     private static func lastWholeSecond() -> Date {
@@ -87,24 +95,42 @@ struct AlertContentView: View {
         let nextStart = meetings.map(\.start).filter { $0 > now.addingTimeInterval(1) }.min()
 
         return VStack(spacing: 0) {
-            VStack(spacing: 36) {
-                ForEach(meetings) { meeting in
-                    AlertMeetingHeader(meeting: meeting, now: now, palette: palette, isOneOfMany: meetings.count > 1)
+            // The buttons always keep their room; meetings that don't fit above them scroll.
+            ViewThatFits(in: .vertical) {
+                headers(meetings, now: now, palette: palette)
+                ScrollView(.vertical) {
+                    headers(meetings, now: now, palette: palette)
+                        .padding(.vertical, Self.scrollFade)
+                        .frame(maxWidth: .infinity)
+                }
+                .mask {
+                    VStack(spacing: 0) {
+                        LinearGradient(colors: [.clear, .black], startPoint: .top, endPoint: .bottom)
+                            .frame(height: Self.scrollFade)
+                        Color.black
+                        LinearGradient(colors: [.black, .clear], startPoint: .top, endPoint: .bottom)
+                            .frame(height: Self.scrollFade)
+                    }
                 }
             }
 
             VStack(spacing: 0) {
                 if let joinable {
-                    AlertJoinButton(title: joinTitle(for: joinable, now: now, isOneOfMany: meetings.count > 1), palette: palette) {
+                    AlertJoinButton(
+                        title: joinTitle(for: joinable, now: now, isOneOfMany: meetings.count > 1),
+                        palette: palette,
+                        isInteractive: isInteractive
+                    ) {
                         session.actions.join(joinable)
                     }
                     .padding(.bottom, 18)
                 }
                 AlertSnoozeRow(
                     options: snoozeOptions(nextStart: nextStart),
-                    palette: palette
+                    palette: palette,
+                    isInteractive: isInteractive
                 )
-                AlertSecondaryButton(palette: palette, action: session.actions.dismiss) {
+                AlertSecondaryButton(palette: palette, isInteractive: isInteractive, action: session.actions.dismiss) {
                     Text("Dismiss")
                     AlertKeyHint(label: "esc", isLarge: false)
                 }
@@ -123,6 +149,14 @@ struct AlertContentView: View {
         .multilineTextAlignment(.center)
         .padding(40)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+
+    private func headers(_ meetings: [Meeting], now: Date, palette: AlertPalette) -> some View {
+        VStack(spacing: 36) {
+            ForEach(meetings) { meeting in
+                AlertMeetingHeader(meeting: meeting, now: now, palette: palette, isOneOfMany: meetings.count > 1)
+            }
+        }
     }
 
     private func joinTitle(for meeting: Meeting, now: Date, isOneOfMany: Bool) -> String {
@@ -242,11 +276,12 @@ private struct AlertDetail: View {
 private struct AlertJoinButton: View {
     let title: String
     let palette: AlertPalette
+    let isInteractive: Bool
     let action: () -> Void
 
     var body: some View {
         let shape = RoundedRectangle(cornerRadius: 14, style: .continuous)
-        Button(action: action) {
+        AlertButton(isInteractive: isInteractive, action: action) {
             HStack(spacing: 10) {
                 Image(systemName: "video.fill")
                     .font(.system(size: 17, weight: .semibold))
@@ -267,7 +302,6 @@ private struct AlertJoinButton: View {
             }
             .contentShape(shape)
         }
-        .buttonStyle(AlertPressableStyle())
     }
 }
 
@@ -281,6 +315,7 @@ struct AlertSnoozeOption: Identifiable {
 private struct AlertSnoozeRow: View {
     let options: [AlertSnoozeOption]
     let palette: AlertPalette
+    let isInteractive: Bool
 
     var body: some View {
         HStack(spacing: 8) {
@@ -290,7 +325,7 @@ private struct AlertSnoozeRow: View {
                 .frame(width: 70, alignment: .leading)
                 .accessibilityHidden(true)
             ForEach(options) { option in
-                AlertSecondaryButton(palette: palette, height: 44, action: option.action) {
+                AlertSecondaryButton(palette: palette, height: 44, isInteractive: isInteractive, action: option.action) {
                     Text(option.label)
                         .lineLimit(1)
                         .frame(maxWidth: .infinity)
@@ -308,12 +343,13 @@ private struct AlertSnoozeRow: View {
 private struct AlertSecondaryButton<Label: View>: View {
     let palette: AlertPalette
     var height: CGFloat = 36
+    let isInteractive: Bool
     let action: () -> Void
     @ViewBuilder let label: Label
 
     var body: some View {
         let shape = RoundedRectangle(cornerRadius: 10, style: .continuous)
-        Button(action: action) {
+        AlertButton(isInteractive: isInteractive, action: action) {
             HStack(spacing: 8) { label }
                 .font(.system(size: 15, weight: .medium))
                 .foregroundStyle(Color(palette.buttonText))
@@ -322,7 +358,22 @@ private struct AlertSecondaryButton<Label: View>: View {
                 .background(shape.fill(Color(palette.buttonFill)))
                 .contentShape(shape)
         }
-        .buttonStyle(AlertPressableStyle())
+    }
+}
+
+/// A button, or for the Settings preview only its label.
+private struct AlertButton<Label: View>: View {
+    let isInteractive: Bool
+    let action: () -> Void
+    @ViewBuilder let label: Label
+
+    var body: some View {
+        if isInteractive {
+            Button(action: action) { label }
+                .buttonStyle(AlertPressableStyle())
+        } else {
+            label
+        }
     }
 }
 
