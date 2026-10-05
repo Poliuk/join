@@ -26,6 +26,7 @@ enum PanelColors {
     static let cardFill = fill(light: 0.04, dark: 0.05)
     static let cardBorder = fill(light: 0.07, dark: 0.07)
     static let rowButtonFill = fill(light: 0.06, dark: 0.08)
+    static let rowButtonHoverFill = fill(light: 0.11, dark: 0.15)
     static let buttonFill = fill(light: 0.07, dark: 0.10)
     static let hoverFill = fill(light: 0.05, dark: 0.06)
     static let track = fill(light: 0.09, dark: 0.10)
@@ -77,18 +78,48 @@ enum PanelColors {
     }
 }
 
-/// A rounded, filled button that dims while pressed.
+/// A rounded, filled button that dims while pressed. With a `hoverFill`, the fill brightens under
+/// the pointer and the cursor becomes a pointing hand.
 struct PanelFillButtonStyle: ButtonStyle {
     var fill: Color
     var foreground: Color
     var cornerRadius: CGFloat
+    var hoverFill: Color? = nil
 
     func makeBody(configuration: Configuration) -> some View {
+        PanelFillButtonBody(configuration: configuration, style: self)
+    }
+}
+
+private struct PanelFillButtonBody: View {
+    let configuration: ButtonStyleConfiguration
+    let style: PanelFillButtonStyle
+    @State private var hovering = false
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    var body: some View {
+        let shape = RoundedRectangle(cornerRadius: style.cornerRadius, style: .continuous)
         configuration.label
-            .foregroundStyle(foreground)
-            .background(RoundedRectangle(cornerRadius: cornerRadius, style: .continuous).fill(fill))
-            .contentShape(RoundedRectangle(cornerRadius: cornerRadius, style: .continuous))
+            .foregroundStyle(style.foreground)
+            .background(shape.fill(hovering ? (style.hoverFill ?? style.fill) : style.fill))
+            .contentShape(shape)
             .opacity(configuration.isPressed ? 0.7 : 1)
+            .animation(reduceMotion ? nil : .easeOut(duration: 0.12), value: hovering)
+            .onContinuousHover { phase in
+                guard style.hoverFill != nil else { return }
+                switch phase {
+                case .active:
+                    hovering = true
+                    // Set on every move: AppKit resets the cursor when the pointer moves over the hosting view.
+                    NSCursor.pointingHand.set()
+                case .ended:
+                    hovering = false
+                    NSCursor.arrow.set()
+                }
+            }
+            .onDisappear {
+                if hovering { NSCursor.arrow.set() }
+            }
     }
 }
 

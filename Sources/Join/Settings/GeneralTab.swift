@@ -34,13 +34,15 @@ struct GeneralTab: View {
                         .fixedSize(horizontal: false, vertical: true)
                         .padding(.bottom, 8)
                 }
-                SettingsSwitchRow(title: "Show the next event in the menu bar", isOn: $preferences.menuBarShowsNextEvent)
-                SettingsSwitchRow(
-                    title: "Include event titles",
-                    isOn: eventTitlesShown(preferences),
-                    indented: true,
-                    enabled: preferences.menuBarShowsNextEvent
-                )
+                SettingsRow(title: "Menu bar") {
+                    Picker("Menu bar", selection: $preferences.menuBarDisplay) {
+                        ForEach(MenuBarDisplay.allCases, id: \.self) { display in
+                            Text(display.title).tag(display)
+                        }
+                    }
+                    .labelsHidden()
+                    .fixedSize()
+                }
             }
 
             SettingsSection(title: "Alert") {
@@ -245,13 +247,6 @@ struct GeneralTab: View {
     // MARK: Menu bar and sound
 
     /// Dependent switches read as off while the setting they depend on is off.
-    private func eventTitlesShown(_ preferences: Preferences) -> Binding<Bool> {
-        Binding(
-            get: { preferences.menuBarShowsNextEvent && preferences.menuBarShowsEventTitles },
-            set: { preferences.menuBarShowsEventTitles = $0 }
-        )
-    }
-
     private func soundRepeats(_ preferences: Preferences) -> Binding<Bool> {
         Binding(
             get: { preferences.soundName != nil && preferences.soundRepeats },

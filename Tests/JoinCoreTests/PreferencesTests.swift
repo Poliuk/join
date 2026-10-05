@@ -23,6 +23,7 @@ final class PreferencesTests: XCTestCase {
         XCTAssertNil(preferences.enabledCalendarIDs)
         XCTAssertEqual(preferences.appearance, .default)
         XCTAssertFalse(preferences.alertForOutOfOffice)
+        XCTAssertTrue(preferences.showOutOfOfficeInList)
         XCTAssertEqual(preferences.outOfOfficeKeywords, OutOfOfficeDetector.defaultKeywords)
     }
 
@@ -105,5 +106,11 @@ final class PreferencesTests: XCTestCase {
         preferences.alertScreens = .pointer
         XCTAssertEqual(Preferences(defaults: defaults).alertScreens, .pointer)
         XCTAssertNil(defaults.object(forKey: Preferences.Keys.legacyShowOnAllScreens))
+    }
+
+    func testShowOutOfOfficeInListPersists() {
+        let preferences = Preferences(defaults: defaults)
+        preferences.showOutOfOfficeInList = false
+        XCTAssertFalse(Preferences(defaults: defaults).showOutOfOfficeInList)
     }
 }

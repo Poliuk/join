@@ -13,6 +13,7 @@ enum SettingsPalette {
     static let field = Color(nsColor: dynamic(light: .white,
                                               dark: NSColor(srgbRed: 0x1E / 255, green: 0x1E / 255, blue: 0x20 / 255, alpha: 1)))
     static let fieldBorder = Color(nsColor: dynamic(light: NSColor(white: 0, alpha: 0.14), dark: NSColor(white: 1, alpha: 0.08)))
+    static let connector = Color(nsColor: dynamic(light: NSColor(white: 0, alpha: 0.22), dark: NSColor(white: 1, alpha: 0.24)))
 
     private static func dynamic(light: NSColor, dark: NSColor) -> NSColor {
         NSColor(name: nil) { appearance in
@@ -24,7 +25,8 @@ enum SettingsPalette {
 enum SettingsMetrics {
     static let paneWidth: CGFloat = 720
     static let panePadding = EdgeInsets(top: 20, leading: 20, bottom: 24, trailing: 20)
-    static let indent: CGFloat = 14
+    /// How far a dependent row sits in from its parent; its connector line lives in this gutter.
+    static let indent: CGFloat = 30
 }
 
 /// A heading above a grouped box.
@@ -83,7 +85,10 @@ struct SettingsRow<Control: View>: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            if separator { SettingsSeparator() }
+            if separator {
+                SettingsSeparator()
+                    .padding(.leading, indented ? SettingsMetrics.indent : 0)
+            }
             HStack(spacing: 16) {
                 Text(title)
                     .foregroundStyle(labelStyle)
@@ -95,6 +100,14 @@ struct SettingsRow<Control: View>: View {
             .padding(.vertical, 6)
             .frame(minHeight: 40)
         }
+        // A dependent row hangs off its parent: its hairline starts at the indent and an elbow
+        // runs down from under the parent's label to its own.
+        .background(alignment: .leading) {
+            if indented {
+                SettingsChildConnector()
+                    .frame(width: SettingsMetrics.indent)
+            }
+        }
     }
 
     private var labelStyle: HierarchicalShapeStyle {
@@ -103,6 +116,24 @@ struct SettingsRow<Control: View>: View {
         case .secondary: return .secondary
         case .disabled: return .tertiary
         }
+    }
+}
+
+private struct SettingsChildConnector: View {
+    var body: some View {
+        GeometryReader { proxy in
+            Path { path in
+                let x: CGFloat = 9
+                let mid = proxy.size.height / 2
+                let radius: CGFloat = 5
+                path.move(to: CGPoint(x: x, y: 0))
+                path.addLine(to: CGPoint(x: x, y: mid - radius))
+                path.addQuadCurve(to: CGPoint(x: x + radius, y: mid), control: CGPoint(x: x, y: mid))
+                path.addLine(to: CGPoint(x: proxy.size.width - 8, y: mid))
+            }
+            .stroke(SettingsPalette.connector, style: StrokeStyle(lineWidth: 1.5, lineCap: .round))
+        }
+        .accessibilityHidden(true)
     }
 }
 

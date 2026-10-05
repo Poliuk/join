@@ -150,7 +150,7 @@ private struct PanelHeader: View {
                     isOn: model.isPaused,
                     kind: model.isPaused ? .action(model.resume) : .menu(context.showPauseMenu)
                 )
-                HeaderButton(symbol: "ellipsis", label: "More options", kind: .menu(context.showMoreMenu))
+                HeaderButton(symbol: "gearshape", label: "Settings", kind: .menu(context.showAppMenu))
             }
             .padding(.leading, 16)
             .padding(.trailing, 8)

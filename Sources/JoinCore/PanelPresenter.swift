@@ -120,10 +120,12 @@ public enum PanelPresenter {
     /// - Parameters:
     ///   - meetings: everything in the store, out-of-office blocks included; they fill the lists.
     ///   - alertable: the meetings that may alert; only these drive the hero card.
+    ///   - showsOutOfOffice: false leaves out-of-office blocks out of the lists.
     public static func content(
         meetings: [Meeting],
         alertable: [Meeting],
         now: Date,
+        showsOutOfOffice: Bool = true,
         calendar: Calendar = .current,
         locale: Locale = .current
     ) -> PanelContent {
@@ -144,7 +146,9 @@ public enum PanelPresenter {
         }
 
         let heroID = hero.card?.meeting.id
-        let listed = builder.sorted.filter { $0.id != heroID && !$0.hasEnded(at: now) }
+        let listed = builder.sorted.filter { meeting in
+            meeting.id != heroID && !meeting.hasEnded(at: now) && (showsOutOfOffice || !meeting.isOutOfOffice)
+        }
         var sections: [PanelSection] = []
 
         let ongoing = listed.filter { $0.isOngoing(at: now) }

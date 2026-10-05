@@ -7,7 +7,7 @@ import JoinCore
 final class MenuBarPanelContext {
     var naturalHeightChanged: (CGFloat) -> Void = { _ in }
     var showPauseMenu: (NSView) -> Void = { _ in }
-    var showMoreMenu: (NSView) -> Void = { _ in }
+    var showAppMenu: (NSView) -> Void = { _ in }
 }
 
 /// The menu bar item and the panel that drops down from it.
@@ -38,6 +38,9 @@ final class StatusItemController: NSObject, NSWindowDelegate {
     /// Set when another window (an alert, Settings) takes the keyboard while a header menu is open.
     private var keyTakenWhileTracking = false
     private var monitors: [Any] = []
+    /// When the panel last closed on its own (outside click, focus change), to tell a click on the
+    /// item that already closed it on mouse-down from a click meant to open it.
+    private var autoClosedAt = Date.distantPast
     private var observers: [(NotificationCenter, NSObjectProtocol)] = []
 
     init(model: AppModel) {
@@ -46,13 +49,13 @@ final class StatusItemController: NSObject, NSWindowDelegate {
         configureButton()
         context.naturalHeightChanged = { [weak self] height in self?.naturalHeightDidChange(height) }
         context.showPauseMenu = { [weak self] anchor in self?.popUp(self?.makePauseMenu(), below: anchor) }
-        context.showMoreMenu = { [weak self] anchor in self?.popUp(self?.makeMoreMenu(), below: anchor) }
+        context.showAppMenu = { [weak self] anchor in self?.popUp(self?.makeAppMenu(), below: anchor) }
 
         observeChanges(of: { [model] in _ = model.menuBarStatus }) { [weak self] in
             self?.updateButton()
         }
         observe(NotificationCenter.default, NSColor.systemColorsDidChangeNotification) { $0.updateButton() }
-        observe(NotificationCenter.default, NSApplication.didResignActiveNotification) { $0.close() }
+        observe(NotificationCenter.default, NSApplication.didResignActiveNotification) { $0.closeAutomatically() }
         observe(NotificationCenter.default, NSApplication.didChangeScreenParametersNotification) { $0.close() }
         observe(NSWorkspace.shared.notificationCenter, NSWorkspace.activeSpaceDidChangeNotification) { $0.close() }
         observeWindowsBecomingKey()
@@ -87,8 +90,27 @@ final class StatusItemController: NSObject, NSWindowDelegate {
         }
     }
 
+    /// Clicking the item opens the panel when it's closed and closes it when it's open.
     @objc private func buttonClicked(_ sender: Any?) {
-        toggle()
+        if isOpen {
+            close()
+        } else if Date().timeIntervalSince(autoClosedAt) > 0.4 {
+            open()
+        }
+    }
+
+    /// Closes for a reason other than the item itself: an outside click, a focus or Space change.
+    /// A mouse press on the status item is left to `buttonClicked`, which toggles.
+    private func closeAutomatically() {
+        guard isOpen, !pointerIsOnStatusItem else { return }
+        close()
+        autoClosedAt = Date()
+    }
+
+    private var pointerIsOnStatusItem: Bool {
+        guard NSEvent.pressedMouseButtons != 0, let button = statusItem.button, let window = button.window else { return false }
+        let frame = window.convertToScreen(button.convert(button.bounds, to: nil))
+        return frame.contains(NSEvent.mouseLocation)
     }
 
     // MARK: Status item
@@ -162,7 +184,7 @@ final class StatusItemController: NSObject, NSWindowDelegate {
 
     func windowDidResignKey(_ notification: Notification) {
         // Another window took the keyboard (another app, Settings, an alert); a menu of ours doesn't count.
-        if !isTrackingMenu { close() }
+        if !isTrackingMenu { closeAutomatically() }
     }
 
     // MARK: Closing on outside clicks and keys
@@ -171,7 +193,7 @@ final class StatusItemController: NSObject, NSWindowDelegate {
         removeMonitors()
         let clicks: NSEvent.EventTypeMask = [.leftMouseDown, .rightMouseDown, .otherMouseDown]
         if let global = NSEvent.addGlobalMonitorForEvents(matching: clicks, handler: { [weak self] _ in
-            MainActor.assumeIsolated { self?.close() }
+            MainActor.assumeIsolated { self?.closeAutomatically() }
         }) {
             monitors.append(global)
         }
@@ -207,7 +229,7 @@ final class StatusItemController: NSObject, NSWindowDelegate {
     private func clickedInApp(windowNumber: Int) {
         guard isOpen, windowNumber != panel.windowNumber else { return }
         if let buttonWindow = statusItem.button?.window, buttonWindow.windowNumber == windowNumber { return }
-        close()
+        closeAutomatically()
     }
 
     private func handleKey(keyCode: UInt16, windowNumber: Int, modifiers: NSEvent.ModifierFlags, characters: String?) -> Bool {
@@ -253,11 +275,9 @@ final class StatusItemController: NSObject, NSWindowDelegate {
         return menu
     }
 
-    private func makeMoreMenu() -> NSMenu {
+    private func makeAppMenu() -> NSMenu {
         let menu = NSMenu()
-        menu.addItem(ClosureMenuItem(title: "Open Calendar") { [weak self] in self?.model.openCalendar() })
-        menu.addItem(.separator())
-        menu.addItem(ClosureMenuItem(title: "Settings…", keyEquivalent: ",") { [weak self] in self?.model.openSettings() })
+        menu.addItem(ClosureMenuItem(title: "Settings", keyEquivalent: ",") { [weak self] in self?.model.openSettings() })
         menu.addItem(ClosureMenuItem(title: "Quit Join!", keyEquivalent: "q") { [weak self] in self?.model.quit() })
         return menu
     }

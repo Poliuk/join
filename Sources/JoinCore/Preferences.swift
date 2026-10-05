@@ -24,6 +24,7 @@ public final class Preferences {
         /// Earlier builds stored the inverse of `alertForOutOfOffice` under this key.
         public static let legacySkipOutOfOffice = "skipOutOfOffice"
         public static let outOfOfficeKeywords = "outOfOfficeKeywords"
+        public static let showOutOfOfficeInList = "showOutOfOfficeInList"
     }
 
     public static let defaultLeadTime: TimeInterval = 3 * 60
@@ -45,6 +46,7 @@ public final class Preferences {
     @ObservationIgnored private var _appearance: AlertAppearance
     @ObservationIgnored private var _alertForOutOfOffice: Bool
     @ObservationIgnored private var _outOfOfficeKeywords: [String]
+    @ObservationIgnored private var _showOutOfOfficeInList: Bool
 
     public init(defaults: UserDefaults = .standard) {
         self.defaults = defaults
@@ -75,6 +77,7 @@ public final class Preferences {
             _alertForOutOfOffice = false
         }
         _outOfOfficeKeywords = defaults.array(forKey: Keys.outOfOfficeKeywords) as? [String] ?? OutOfOfficeDetector.defaultKeywords
+        _showOutOfOfficeInList = defaults.object(forKey: Keys.showOutOfOfficeInList) as? Bool ?? true
     }
 
     /// Seconds before the meeting start at which the alert fires, always a whole number of minutes.
@@ -115,7 +118,8 @@ public final class Preferences {
         }
     }
 
-    /// Whether the menu bar item includes the event's title next to its time. Off by default.
+    /// Whether the menu bar item starts with the event's title (in place of "Next"). Off by default.
+    /// Set through `menuBarDisplay` from Settings.
     public var menuBarShowsEventTitles: Bool {
         get { access(keyPath: \.menuBarShowsEventTitles); return _menuBarShowsEventTitles }
         set {
@@ -203,7 +207,8 @@ public final class Preferences {
     }
 
     /// When off (the default), events that look like out-of-office blocks never alert and are left
-    /// out of the menu bar title. They still appear, dimmed, in the menu bar panel.
+    /// out of the menu bar item. They still appear, dimmed, in the panel's lists unless
+    /// `showOutOfOfficeInList` is off.
     public var alertForOutOfOffice: Bool {
         get { access(keyPath: \.alertForOutOfOffice); return _alertForOutOfOffice }
         set {
@@ -221,6 +226,17 @@ public final class Preferences {
             withMutation(keyPath: \.outOfOfficeKeywords) {
                 _outOfOfficeKeywords = newValue
                 defaults.set(newValue, forKey: Keys.outOfOfficeKeywords)
+            }
+        }
+    }
+
+    /// Whether out-of-office events appear (striped and muted) in the menu bar panel's lists. On by default.
+    public var showOutOfOfficeInList: Bool {
+        get { access(keyPath: \.showOutOfOfficeInList); return _showOutOfOfficeInList }
+        set {
+            withMutation(keyPath: \.showOutOfOfficeInList) {
+                _showOutOfOfficeInList = newValue
+                defaults.set(newValue, forKey: Keys.showOutOfOfficeInList)
             }
         }
     }

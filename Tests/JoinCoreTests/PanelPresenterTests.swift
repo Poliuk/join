@@ -196,4 +196,17 @@ final class PanelPresenterTests: XCTestCase {
         let backToBack = Meeting(id: "f", title: "Next", start: F.date(6, 10), end: F.date(6, 11))
         XCTAssertNil(PanelPresenter.overlap(for: backToBack, in: [first, backToBack]))
     }
+
+    func testOutOfOfficeRowsCanBeLeftOutOfTheList() {
+        let now = F.date(5, 21, 30)
+        let shown = PanelPresenter.content(meetings: F.week, alertable: F.week.filter { !$0.isOutOfOffice }, now: now, calendar: F.calendar, locale: F.us)
+        XCTAssertTrue(shown.sections.flatMap(\.rows).contains { $0.meeting.id == F.outOfOffice.id })
+
+        let hidden = PanelPresenter.content(
+            meetings: F.week, alertable: F.week.filter { !$0.isOutOfOffice }, now: now,
+            showsOutOfOffice: false, calendar: F.calendar, locale: F.us
+        )
+        XCTAssertFalse(hidden.sections.flatMap(\.rows).contains { $0.meeting.isOutOfOffice })
+        XCTAssertEqual(hidden.sections.flatMap(\.rows).count, shown.sections.flatMap(\.rows).count - 1)
+    }
 }

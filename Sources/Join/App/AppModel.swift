@@ -71,7 +71,12 @@ final class AppModel {
     }
 
     var panelContent: PanelContent {
-        PanelPresenter.content(meetings: meetingStore.meetings, alertable: meetingStore.alertableMeetings, now: now)
+        PanelPresenter.content(
+            meetings: meetingStore.meetings,
+            alertable: meetingStore.alertableMeetings,
+            now: now,
+            showsOutOfOffice: preferences.showOutOfOfficeInList
+        )
     }
 
     var pausedMessage: String? {
@@ -111,12 +116,6 @@ final class AppModel {
     func openSettings(pane: SettingsPane? = nil) {
         closePanel?()
         settingsWindow.show(model: self, pane: pane)
-    }
-
-    func openCalendar() {
-        closePanel?()
-        guard let url = NSWorkspace.shared.urlForApplication(withBundleIdentifier: "com.apple.iCal") else { return }
-        NSWorkspace.shared.openApplication(at: url, configuration: NSWorkspace.OpenConfiguration())
     }
 
     func openCalendarPrivacySettings() {

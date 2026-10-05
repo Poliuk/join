@@ -52,8 +52,8 @@ Some of these are cheap to add later; they're excluded to ship a small, solid v1
 |---|---------|-------------------|
 | 1 | **Calendar source** | Events from Google Calendar (see Decision 1 for how). A Calendars settings pane lists every calendar grouped by account, each with a checkbox in the calendar's color, a Select All / Deselect All link per account, a count of selected calendars, a warning when none are selected, when calendars were last updated, and Open Internet Accounts and Refresh Calendars buttons. All-day events, cancelled events and events the user has declined are ignored. |
 | 2 | **Full-screen alert** | N minutes before a meeting starts, a borderless window covers every connected display, the main one only, or the one with the pointer (per setting), above every other app including full-screen apps. Centered, top to bottom: the calendar's name and color, a live countdown that changes color as the start passes ("Starts in 2:59", "Starting now", "Started 3 min ago"), the title, the time and location, a **Join** button (when a link is found, `↩`), a snooze row (two durations and **At \<start time\>**), and **Dismiss** (`esc`). Optional auto-close after X minutes. |
-| 3 | **Menu bar** | A status item that changes with your day: the time of the next meeting ("1:00 PM", "Tomorrow 1:00 PM"), "in 42 min" within the hour, an accent-colored pill in the last 5 minutes, a draining ring and "40 min left" during a meeting, and a crossed-out bell when paused. Event titles can be added; the text can be turned off. Clicking opens a panel with today's date, one hero card (starting soon, now, next later today, or "No more meetings today"), then Now, Later today and one section per following day. Each row has its time, calendar color, title, and a Join or Directions button. A bell menu pauses reminders; a ⋯ menu opens Calendar, Settings or quits. |
-| 4 | **Settings window** | A standard macOS settings window with a toolbar: **General** (open at login; menu bar text and event titles; alert lead time from presets or a custom number of minutes; which screens show the alert; sound and repeat; out-of-office events; two snooze durations; auto-close), **Calendars** (see #1), **Appearance** (see #5). The window fits each pane's height. |
+| 3 | **Menu bar** | A status item that changes with your day: a countdown to the next meeting later today ("Next in 11 h 40 min", "Next in 42 min" within the hour) or its day and time ("Tomorrow at 1:00 PM", "In 3 days at 9:10 AM"), an accent-colored pill in the last 5 minutes, a draining ring and "40 min left" during a meeting, and a crossed-out bell when paused. One setting picks icon only, the time until the next event, or its title and the time until it ("Lunch with Lucía · in 11 h 40 min"). Clicking opens a panel with today's date, one hero card (starting soon, now, next later today, or "No more meetings today"), then Now, Later today and one section per following day. Each row has its time, calendar color, title, and a Join or Directions button. A bell menu pauses reminders; a gear menu opens Settings or quits. |
+| 4 | **Settings window** | A standard macOS settings window with a toolbar: **General** (open at login; what the menu bar shows (icon only, time, or title and time); alert lead time from presets or a custom number of minutes; which screens show the alert; sound and repeat; out-of-office events; two snooze durations; auto-close), **Calendars** (see #1), **Appearance** (see #5). The window fits each pane's height. |
 | 5 | **Alert appearance** | Four presets (Dark, Light, High contrast, Midnight), then: backdrop (dark or light blur), optional tint color and strength, text color, and the Join and Dismiss & Snooze buttons' text color, fill and fill opacity. Every color can stay **Automatic**, which picks whatever reads best on the backdrop. A warning appears when text or a button label falls below 4.5:1 contrast. A live preview over a sample wallpaper, light app or dark app updates as values change, plus a **Show Demo Alert** button that fires a real alert with a fake event. Restore Defaults. Settings saved by earlier builds carry over. |
 
 ### P1 — should ship in v1 if cheap (they are)
@@ -62,7 +62,7 @@ Some of these are cheap to add later; they're excluded to ship a small, solid v1
 |---|---------|-------------------|
 | 6 | **One-click join** | The app scans the event's location, URL and notes for a video-call link (Google Meet, Zoom, Microsoft Teams, Webex; easy to extend) and surfaces a **Join** button in the alert and the menu bar panel. Opens in the default browser. Meetings with a physical address and no link get a **Directions** button in the panel instead, which opens Apple Maps. |
 | 7 | **Alert sound** | Optional system sound when the alert appears, with a "repeat until the alert is closed" toggle. Off by default. |
-| 8 | **Out-of-office events** | Events titled like out-of-office blocks ("Out of office", "Fuera de la oficina", "OOO", …) don't alert unless "Alert for out-of-office events" is turned on. They still show in the menu bar panel, striped and muted. The keywords are editable as tokens in Settings › General. |
+| 8 | **Out-of-office events** | Events titled like out-of-office blocks ("Out of office", "Fuera de la oficina", "OOO", …) don't alert unless "Alert for out-of-office events" is turned on. They show in the menu bar panel, striped and muted, unless "Show out-of-office events in the list" is turned off. The keywords are editable as tokens in Settings › General. |
 | 9 | **Pause reminders** | From the panel's bell menu: pause for 1 hour, until tomorrow, or until resumed. While paused the menu bar shows a crossed-out bell and the panel says until when, with a Resume button. A pause survives quitting and relaunching. |
 
 ### P2 — later, if wanted
@@ -75,13 +75,13 @@ Direct Google Calendar API integration (see Decision 1), saved custom themes, cu
 
 1. App appears in the menu bar only (no Dock icon).
 2. macOS asks for Calendar access. If denied, the menu bar panel explains how to grant it in System Settings.
-3. All calendars are on by default. The user opens the panel → ⋯ → Settings… → Calendars and unticks the noise (holidays, birthdays).
+3. All calendars are on by default. The user opens the panel → gear → Settings → Calendars and unticks the noise (holidays, birthdays).
 4. Default lead time is 3 minutes. Done.
 
 **Meeting day**
 
 1. In the morning the menu bar reads "10:00 AM". The panel's hero card says "Next · in 1 h 15 min".
-2. Within the hour it counts down: "in 9 min". With event titles on: "Design Sync · in 9 min".
+2. Within the hour it counts down: "Next in 9 min". With **Menu bar › Title and time until next event** chosen: "Design Sync · in 9 min".
 3. At T-5:00 the item turns into an accent pill, and the panel's hero card reads "Starts in 5 min" with a Join button.
 4. At T-3:00 the full-screen alert appears with "Starts in 2:59" and a **Join** button.
 5. The user presses `↩` or clicks **Join** (opens Meet), or snoozes **1 min** (the alert returns at T-2:00) or **At 10:00 AM** (it returns at the start), or presses `esc` to dismiss.

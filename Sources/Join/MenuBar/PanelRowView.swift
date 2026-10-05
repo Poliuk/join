@@ -87,7 +87,12 @@ struct PanelRowView: View {
                         .font(.system(size: 13, weight: .medium))
                         .frame(width: 30, height: 30)
                 }
-                .buttonStyle(PanelFillButtonStyle(fill: PanelColors.rowButtonFill, foreground: PanelColors.rowIcon, cornerRadius: 8))
+                .buttonStyle(PanelFillButtonStyle(
+                    fill: PanelColors.rowButtonFill,
+                    foreground: PanelColors.rowIcon,
+                    cornerRadius: 8,
+                    hoverFill: PanelColors.rowButtonHoverFill
+                ))
                 .help(action.accessibilityLabel(for: meeting))
                 .accessibilityLabel(action.accessibilityLabel(for: meeting))
             }

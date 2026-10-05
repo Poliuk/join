@@ -14,6 +14,7 @@ struct OutOfOfficeSection: View {
 
         SettingsSection(title: "Out of office") {
             SettingsSwitchRow(title: "Alert for out-of-office events", isOn: $preferences.alertForOutOfOffice, separator: false)
+            SettingsSwitchRow(title: "Show out-of-office events in the list", isOn: $preferences.showOutOfOfficeInList)
             SettingsSeparator()
             VStack(alignment: .leading, spacing: 8) {
                 HStack(spacing: 12) {
@@ -28,7 +29,7 @@ struct OutOfOfficeSection: View {
                     .disabled(preferences.outOfOfficeKeywords == OutOfOfficeDetector.defaultKeywords)
                 }
                 KeywordTokenField(keywords: $preferences.outOfOfficeKeywords, draft: $keywordDraft)
-                Text("An event counts as out of office when its title contains any of these words. Out-of-office events show dimmed in the menu bar and only alert when the option above is on. Press Return to add a keyword.")
+                Text("An event counts as out of office when its title contains any of these words. It only alerts when the first option is on, and shows dimmed in the menu bar list when the second is on. Press Return to add a keyword.")
                     .font(.subheadline)
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)

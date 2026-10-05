@@ -7,10 +7,10 @@ public struct MenuBarStatus: Equatable, Sendable {
         case idle
         /// Reminders paused: the crossed-out bell, never any text.
         case paused
-        /// The next meeting is more than an hour away: "1:00 PM", "Tomorrow 1:00 PM", "Wednesday 1:00 PM",
-        /// "Mon 12 Oct 9:00 AM" a week ahead.
+        /// The next meeting is more than an hour away: "Next in 11 h 40 min" later today,
+        /// "Tomorrow at 1:00 PM", "In 3 days at 9:10 AM" (a title, when shown, replaces "Next").
         case later
-        /// The next meeting starts within the hour: "in 42 min".
+        /// The next meeting starts within the hour: "Next in 42 min".
         case withinHour
         /// A meeting starts in five minutes or less: drawn as an accent-filled pill.
         case startingSoon
@@ -51,23 +51,29 @@ public enum MenuBarPresenter {
             return MenuBarStatus(kind: .paused, text: nil, accessibilityLabel: "Join!: reminders paused")
         }
 
-        func compose(_ kind: MenuBarStatus.Kind, _ text: String, meeting: Meeting, spoken: String) -> MenuBarStatus {
-            let shown: String? = showsNextEvent
-                ? (showsTitles ? "\(MeetingTimeFormatter.truncate(meeting.title, to: maxTitleLength)) · \(text)" : text)
-                : nil
+        /// A countdown without a title reads "Next in 42 min"; with a title, the title says what's next.
+        func compose(_ kind: MenuBarStatus.Kind, _ text: String, meeting: Meeting, spoken: String, isCountdown: Bool = false) -> MenuBarStatus {
+            let shown: String?
+            if !showsNextEvent {
+                shown = nil
+            } else if showsTitles {
+                shown = "\(MeetingTimeFormatter.truncate(meeting.title, to: maxTitleLength)) · \(text)"
+            } else {
+                shown = isCountdown ? "Next \(text)" : text
+            }
             return MenuBarStatus(kind: kind, text: shown, accessibilityLabel: "Join!: \(meeting.title) \(spoken)")
         }
 
         let next = nextMeeting(in: meetings, now: now)
         if let next, next.start.timeIntervalSince(now) <= startingSoonWindow {
             let until = next.start.timeIntervalSince(now)
-            return compose(.startingSoon, "in \(minutes(until))", meeting: next, spoken: "starts in \(spokenDuration(until))")
+            return compose(.startingSoon, "in \(minutes(until))", meeting: next, spoken: "starts in \(spokenDuration(until))", isCountdown: true)
         }
         if let current = currentMeeting(in: meetings, now: now) {
             let left = current.end.timeIntervalSince(now)
             return compose(
                 .inMeeting(remaining: remainingFraction(of: current, now: now)),
-                "\(duration(left)) left",
+                "\(steadyDuration(left)) left",
                 meeting: current,
                 spoken: "ends in \(spokenDuration(left))"
             )
@@ -77,15 +83,19 @@ public enum MenuBarPresenter {
         }
         let until = next.start.timeIntervalSince(now)
         if until <= withinHourWindow {
-            return compose(.withinHour, "in \(minutes(until))", meeting: next, spoken: "in \(spokenDuration(until))")
+            return compose(.withinHour, "in \(minutes(until))", meeting: next, spoken: "in \(spokenDuration(until))", isCountdown: true)
         }
+        // Later today counts down; another day reads "Tomorrow at 1:00 PM" or "In 3 days at 9:10 AM".
         let time = shortTime(next.start, calendar: calendar, locale: locale)
-        if calendar.isDate(next.start, inSameDayAs: now) {
-            return compose(.later, time, meeting: next, spoken: "at \(time)")
+        let dayCount = calendar.dateComponents([.day], from: calendar.startOfDay(for: now), to: calendar.startOfDay(for: next.start)).day ?? 0
+        if dayCount <= 0 {
+            return compose(.later, "in \(steadyDuration(until))", meeting: next, spoken: "in \(spokenDuration(until)), at \(time)", isCountdown: true)
         }
-        let day = relativeDay(next.start, now: now, calendar: calendar, locale: locale)
+        if dayCount == 1 {
+            return compose(.later, "Tomorrow at \(time)", meeting: next, spoken: "tomorrow at \(time)")
+        }
         let spokenDay = relativeDay(next.start, now: now, calendar: calendar, locale: locale, spoken: true)
-        return compose(.later, "\(capitalizingFirst(day)) \(time)", meeting: next, spoken: "\(spokenDay) at \(time)")
+        return compose(.later, "In \(dayCount) days at \(time)", meeting: next, spoken: "in \(dayCount) days, \(spokenDay) at \(time)")
     }
 
     /// The earliest meeting that hasn't started yet.
@@ -125,6 +135,16 @@ public enum MenuBarPresenter {
         let hours = minutes / 60
         let remainder = minutes % 60
         return remainder == 0 ? "\(hours) h" : "\(hours) h \(remainder) min"
+    }
+
+
+    /// For the menu bar: like `duration`, but past an hour the minutes always show with two digits
+    /// ("11 h 05 min", "11 h 00 min"), so the item keeps its width as the countdown runs instead of
+    /// shifting every other menu bar item each hour.
+    public static func steadyDuration(_ seconds: TimeInterval) -> String {
+        let minutes = wholeMinutes(seconds)
+        guard minutes >= 60 else { return "\(minutes) min" }
+        return "\(minutes / 60) h " + String(format: "%02d", minutes % 60) + " min"
     }
 
     /// Minutes only, for countdowns within the hour: "42 min", "60 min".
