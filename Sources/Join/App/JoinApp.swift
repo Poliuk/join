@@ -13,10 +13,5 @@ struct JoinApp: App {
             MenuBarLabel(model: appDelegate.model)
         }
         .menuBarExtraStyle(.window)
-
-        Settings {
-            SettingsView()
-                .environment(appDelegate.model)
-        }
     }
 }
