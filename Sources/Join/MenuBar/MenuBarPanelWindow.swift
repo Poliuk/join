@@ -25,6 +25,8 @@ final class MenuBarPanelWindow: NSPanel {
         backgroundColor = .clear
         hasShadow = true
         animationBehavior = .none
+        // Not drawn on a borderless window; VoiceOver and the window chooser announce it.
+        title = "Join! meetings"
 
         let background = NSVisualEffectView()
         background.material = .popover

@@ -138,14 +138,19 @@ private struct PanelHeader: View {
                     .foregroundStyle(PanelColors.title)
                     .lineLimit(1)
                     .accessibilityAddTraits(.isHeader)
+                if model.isFixture {
+                    FixtureBadge()
+                        .padding(.leading, 6)
+                }
                 Spacer(minLength: 8)
-                HeaderMenuButton(
+                // Paused, the bell is a pressed toggle that resumes; otherwise it opens the pause menu.
+                HeaderButton(
                     symbol: model.isPaused ? "bell.slash" : "bell",
                     label: model.isPaused ? "Resume reminders" : "Pause reminders",
                     isOn: model.isPaused,
-                    open: context.showPauseMenu
+                    kind: model.isPaused ? .action(model.resume) : .menu(context.showPauseMenu)
                 )
-                HeaderMenuButton(symbol: "ellipsis", label: "More options", isOn: false, open: context.showMoreMenu)
+                HeaderButton(symbol: "ellipsis", label: "More options", kind: .menu(context.showMoreMenu))
             }
             .padding(.leading, 16)
             .padding(.trailing, 8)
@@ -158,14 +163,35 @@ private struct PanelHeader: View {
     }
 }
 
-/// A 28 pt icon button that opens an AppKit menu below itself.
+/// "Fixture" next to the date when the app runs on fixture calendars, so it can't be taken for the real thing.
 @MainActor
-private struct HeaderMenuButton: View {
+private struct FixtureBadge: View {
+    var body: some View {
+        Text("Fixture")
+            .font(.system(size: 10.5, weight: .semibold))
+            .foregroundStyle(PanelColors.badgeText)
+            .padding(.horizontal, 6)
+            .frame(height: 16)
+            .background(Capsule().fill(PanelColors.badgeFill))
+            .fixedSize()
+            .help("Join! is running on fixture calendars, not your own")
+            .accessibilityLabel("Fixture calendars")
+    }
+}
+
+/// A 28 pt icon button that opens an AppKit menu below itself, or acts directly.
+@MainActor
+private struct HeaderButton: View {
+    enum Kind {
+        case menu((NSView) -> Void)
+        case action(() -> Void)
+    }
+
     let symbol: String
     let label: String
-    /// Drawn pressed, like the bell while reminders are paused.
-    let isOn: Bool
-    let open: (NSView) -> Void
+    /// Drawn pressed and reported as selected, like the bell while reminders are paused.
+    var isOn = false
+    let kind: Kind
 
     @State private var anchor = ViewAnchor()
     @State private var isMenuOpen = false
@@ -174,12 +200,17 @@ private struct HeaderMenuButton: View {
     var body: some View {
         let active = isOn || isMenuOpen
         Button {
-            guard let view = anchor.view else { return }
-            isMenuOpen = true
-            // Let the pressed look render before the menu's tracking loop takes over.
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.01) {
-                open(view)
-                isMenuOpen = false
+            switch kind {
+            case .action(let perform):
+                perform()
+            case .menu(let open):
+                guard let view = anchor.view else { return }
+                isMenuOpen = true
+                // Let the pressed look render before the menu's tracking loop takes over.
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.01) {
+                    open(view)
+                    isMenuOpen = false
+                }
             }
         } label: {
             Image(systemName: symbol)
@@ -197,6 +228,13 @@ private struct HeaderMenuButton: View {
         .onHover { isHovered = $0 }
         .help(label)
         .accessibilityLabel(label)
+        .accessibilityAddTraits(isOn ? .isSelected : [])
+        .accessibilityHint(isMenu ? "Opens a menu" : "")
+    }
+
+    private var isMenu: Bool {
+        if case .menu = kind { return true }
+        return false
     }
 }
 

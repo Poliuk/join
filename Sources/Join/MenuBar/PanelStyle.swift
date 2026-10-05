@@ -16,6 +16,9 @@ enum PanelColors {
     static let icon = pair(light: gray(0x636368), dark: gray(0xB4B4BA))
     static let rowIcon = pair(light: gray(0x3A3A3F), dark: gray(0xD9D9DE))
     static let warning = pair(light: rgb(0xB25E00), dark: rgb(0xF0B35A))
+    /// The "Fixture" badge: amber like the alert's Join button with dark text, the same in both modes.
+    static let badgeFill = Color(nsColor: rgb(0xF5A524))
+    static let badgeText = Color(nsColor: gray(0x1D1D1F))
 
     /// Laid over the window's blur material so the panel lands near the design's #242427 while staying translucent.
     static let background = pair(light: rgb(0xF6F6F8).withAlphaComponent(0.6), dark: rgb(0x242427).withAlphaComponent(0.6))
@@ -150,7 +153,8 @@ extension PanelAction {
     func accessibilityLabel(for meeting: Meeting) -> String {
         switch self {
         case .join: return "Join video call: \(meeting.title)"
-        case .directions: return "Directions to \(meeting.location.map(LocationFormatter.shortLocation) ?? meeting.title)"
+        case .directions:
+            return "Directions to \(LocationFormatter.physicalPlace(in: meeting.location).map(LocationFormatter.shortLocation) ?? meeting.title)"
         }
     }
 }

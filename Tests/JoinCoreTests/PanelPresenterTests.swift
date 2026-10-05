@@ -132,6 +132,34 @@ final class PanelPresenterTests: XCTestCase {
         XCTAssertTrue(empty.sections.isEmpty)
     }
 
+    func testNextUpAWeekAheadShowsTheDate() {
+        func detail(_ meetings: [Meeting], locale: Locale = F.us) -> String? {
+            guard case .nothingToday(let detail) = content(at: F.date(5, 10), meetings: meetings, locale: locale).hero else { return nil }
+            return F.squash(detail)
+        }
+        XCTAssertEqual(detail([F.nextMonday]), "Next up Mon, Oct 12 at 9:00 AM")
+        XCTAssertEqual(detail([F.nextMonday], locale: F.gb), "Next up Mon 12 Oct at 09:00")
+        XCTAssertEqual(detail([F.sunday]), "Next up Sunday at 9:00 AM")
+        XCTAssertEqual(titles(content(at: F.date(5, 10), meetings: [F.nextMonday])), ["Monday / Oct 12"])
+    }
+
+    func testLocationsThatAreNotPlaces() {
+        let hybrid = Meeting(id: "h", title: "Hybrid", start: F.date(6, 9), end: F.date(6, 10), location: "Sala Retiro; Microsoft Teams Meeting")
+        let bareLink = Meeting(id: "l", title: "Link", start: F.date(6, 11), end: F.date(6, 12), location: "meet.google.com/abc-defg-hij")
+        let dialIn = Meeting(id: "p", title: "Call", start: F.date(6, 13), end: F.date(6, 14), location: "Tel: +34 600 123 456")
+        let rows = content(at: F.date(5, 21), meetings: [hybrid, bareLink, dialIn]).sections[0].rows
+
+        XCTAssertEqual(rows[0].detail, .location("Sala Retiro"))
+        XCTAssertEqual(rows[0].action, .directions(LocationFormatter.directionsURL(to: "Sala Retiro")!))
+        for row in rows.dropFirst() {
+            XCTAssertNil(row.detail, row.meeting.title)
+            XCTAssertNil(row.action, row.meeting.title)
+        }
+
+        guard case .next(let card) = content(at: F.date(6, 8), meetings: [hybrid, bareLink, dialIn]).hero else { return XCTFail("expected next") }
+        XCTAssertEqual(card.location, "Sala Retiro")
+    }
+
     func testHeroUsesAlertableMeetingsOnly() {
         let result = content(at: F.date(6, 12, 28))
         guard case .next(let card) = result.hero else { return XCTFail("expected next, got \(result.hero)") }

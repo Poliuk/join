@@ -9,12 +9,13 @@ final class MenuBarPresenterTests: XCTestCase {
         at now: Date,
         pause: PauseState = .active,
         showsNextEvent: Bool = true,
-        showsTitles: Bool = false
+        showsTitles: Bool = false,
+        locale: Locale = F.us
     ) -> MenuBarStatus {
         var status = MenuBarPresenter.status(
             meetings: meetings, now: now, pauseState: pause,
             showsNextEvent: showsNextEvent, showsTitles: showsTitles,
-            calendar: F.calendar, locale: F.us
+            calendar: F.calendar, locale: locale
         )
         status.text = F.squash(status.text)
         status.accessibilityLabel = F.squash(status.accessibilityLabel) ?? ""
@@ -33,6 +34,19 @@ final class MenuBarPresenterTests: XCTestCase {
 
         let laterInTheWeek = status([F.review], at: F.date(5, 21, 30))
         XCTAssertEqual(laterInTheWeek.text, "Wednesday 9:10 AM")
+    }
+
+    // Monday 10:00 AM, and the next meeting is next Monday at 9:00: "Monday 9:00 AM" would read as a missed one today.
+    func testAWeekAheadShowsTheDate() {
+        let nextWeek = status([F.nextMonday], at: F.date(5, 10))
+        XCTAssertEqual(nextWeek.kind, .later)
+        XCTAssertEqual(nextWeek.text, "Mon, Oct 12 9:00 AM")
+        XCTAssertEqual(nextWeek.accessibilityLabel, "Join!: Weekly Monday, October 12 at 9:00 AM")
+        XCTAssertEqual(status([F.nextMonday], at: F.date(5, 10), locale: F.gb).text, "Mon 12 Oct 09:00")
+
+        let sixDaysAhead = status([F.sunday], at: F.date(5, 10))
+        XCTAssertEqual(sixDaysAhead.text, "Sunday 9:00 AM")
+        XCTAssertEqual(sixDaysAhead.accessibilityLabel, "Join!: Brunch Sunday at 9:00 AM")
     }
 
     func testWithinTheHourCountsDownInMinutes() {

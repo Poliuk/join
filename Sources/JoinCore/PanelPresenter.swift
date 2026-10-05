@@ -263,16 +263,15 @@ public enum PanelPresenter {
 
         func action(for meeting: Meeting) -> PanelAction? {
             if let url = meeting.joinURL { return .join(url) }
-            if LocationFormatter.isInPerson(meeting), let location = meeting.location,
-               let url = LocationFormatter.directionsURL(to: location) {
+            if let place = LocationFormatter.physicalPlace(in: meeting.location),
+               let url = LocationFormatter.directionsURL(to: place) {
                 return .directions(url)
             }
             return nil
         }
 
         func shortLocation(of meeting: Meeting) -> String? {
-            guard LocationFormatter.isPhysicalPlace(meeting.location), let location = meeting.location else { return nil }
-            return LocationFormatter.shortLocation(location)
+            LocationFormatter.physicalPlace(in: meeting.location).map(LocationFormatter.shortLocation)
         }
 
         /// "Next up tomorrow at 1:00 PM, in 15 h 30 min"; the countdown is left out a day or more ahead.
