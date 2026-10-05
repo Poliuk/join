@@ -5,194 +5,350 @@ import JoinCore
 @MainActor
 struct AlertRootView: View {
     let session: AlertSession
-    /// The Settings preview can't blur what's behind its window, so it blurs within the window instead.
-    var blurWithinWindow = false
 
     var body: some View {
         ZStack {
-            AlertBackground(appearance: session.appearance, blurWithinWindow: blurWithinWindow)
+            AlertBackdrop(appearance: session.appearance)
             AlertContentView(session: session)
         }
     }
 }
 
+/// The desktop blurred through the system material, then the tint and the scrim.
 @MainActor
-struct AlertBackground: View {
+struct AlertBackdrop: View {
     let appearance: AlertAppearance
-    var blurWithinWindow = false
 
     var body: some View {
         ZStack {
             if appearance.blurMode != .none {
                 VisualEffectView(
                     material: .fullScreenUI,
-                    blendingMode: blurWithinWindow ? .withinWindow : .behindWindow,
+                    blendingMode: .behindWindow,
                     appearance: appearance.blurMode == .dark ? .darkAqua : .aqua
                 )
             }
-            if let tint = appearance.backgroundTint {
-                Color(tint).opacity(appearance.backgroundOpacity)
-            }
+            AlertTintAndScrim(appearance: appearance, scrimSize: CGSize(width: 1200, height: 760))
         }
         .ignoresSafeArea()
+    }
+}
+
+/// Drawn above the blur by both the alert and its Settings preview. The radial scrim keeps the
+/// text legible over busy wallpapers.
+struct AlertTintAndScrim: View {
+    let appearance: AlertAppearance
+    let scrimSize: CGSize
+
+    var body: some View {
+        let scrim = appearance.palette.scrim
+        ZStack {
+            if let tint = appearance.tint {
+                Color(tint).opacity(appearance.tintStrength)
+            }
+            EllipticalGradient(
+                colors: [Color(scrim), Color(scrim.withAlpha(0))],
+                center: .center,
+                startRadiusFraction: 0,
+                endRadiusFraction: 0.5
+            )
+            .frame(width: scrimSize.width, height: scrimSize.height)
+        }
+        .allowsHitTesting(false)
+        .accessibilityHidden(true)
     }
 }
 
 @MainActor
 struct AlertContentView: View {
     let session: AlertSession
+    /// A fixed clock, for the Settings preview. nil ticks every second.
+    var now: Date? = nil
 
     var body: some View {
-        TimelineView(.periodic(from: .now, by: 1)) { context in
-            let textColor = Color(session.appearance.textColor)
-            ZStack(alignment: .topTrailing) {
-                Text(context.date, style: .time)
-                    .font(.system(size: 14, weight: .medium, design: .rounded))
-                    .foregroundStyle(textColor.opacity(0.7))
-                    .padding(24)
-
-                VStack(spacing: 40) {
-                    VStack(spacing: 32) {
-                        ForEach(session.meetings) { meeting in
-                            MeetingBlock(meeting: meeting, now: context.date, textColor: textColor)
-                        }
-                    }
-
-                    VStack(spacing: 28) {
-                        HStack(spacing: 12) {
-                            if let joinable = session.meetings.first(where: { $0.joinURL != nil }) {
-                                AlertButton(
-                                    title: "Join",
-                                    systemImage: "video.fill",
-                                    role: .primary,
-                                    appearance: session.appearance
-                                ) {
-                                    session.actions.join(joinable)
-                                }
-                            }
-                            AlertButton(title: "Dismiss", role: .secondary, appearance: session.appearance) {
-                                session.actions.dismiss()
-                            }
-                        }
-
-                        VStack(spacing: 10) {
-                            Text("Snooze")
-                                .font(.system(size: 13, weight: .semibold))
-                                .foregroundStyle(textColor.opacity(0.75))
-                            HStack(spacing: 10) {
-                                ForEach(Array(session.snoozeDurations.enumerated()), id: \.offset) { _, duration in
-                                    AlertButton(title: snoozeLabel(duration), role: .small, appearance: session.appearance) {
-                                        session.actions.snooze(duration)
-                                    }
-                                }
-                                if session.meetings.contains(where: { $0.start > context.date.addingTimeInterval(1) }) {
-                                    AlertButton(title: "Until event", role: .small, appearance: session.appearance) {
-                                        session.actions.snoozeUntilEvent()
-                                    }
-                                }
-                            }
-                        }
-                    }
-
-                    if session.isDemo {
-                        Text("This is a demo alert. Press Esc to close it.")
-                            .font(.system(size: 12))
-                            .foregroundStyle(textColor.opacity(0.6))
-                    }
-                }
-                .frame(maxWidth: 720)
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
+        if let now {
+            content(at: now)
+        } else {
+            TimelineView(.periodic(from: Self.lastWholeSecond(), by: 1)) { context in
+                content(at: context.date)
             }
         }
     }
 
-    private func snoozeLabel(_ duration: TimeInterval) -> String {
-        let minutes = Int((duration / 60).rounded())
-        return minutes == 1 ? "1 minute" : "\(minutes) minutes"
+    /// Ticks land just after each whole second, where meeting starts fall, so the countdown steps evenly.
+    private static func lastWholeSecond() -> Date {
+        Date(timeIntervalSinceReferenceDate: Date.timeIntervalSinceReferenceDate.rounded(.down))
+    }
+
+    private func content(at now: Date) -> some View {
+        let palette = session.appearance.palette
+        let meetings = session.meetings
+        let joinable = meetings.first { $0.joinURL != nil }
+        let nextStart = meetings.map(\.start).filter { $0 > now.addingTimeInterval(1) }.min()
+
+        return VStack(spacing: 0) {
+            VStack(spacing: 36) {
+                ForEach(meetings) { meeting in
+                    AlertMeetingHeader(meeting: meeting, now: now, palette: palette, isOneOfMany: meetings.count > 1)
+                }
+            }
+
+            VStack(spacing: 0) {
+                if let joinable {
+                    AlertJoinButton(title: joinTitle(for: joinable, now: now, isOneOfMany: meetings.count > 1), palette: palette) {
+                        session.actions.join(joinable)
+                    }
+                    .padding(.bottom, 18)
+                }
+                AlertSnoozeRow(
+                    options: snoozeOptions(nextStart: nextStart),
+                    palette: palette
+                )
+                AlertSecondaryButton(palette: palette, action: session.actions.dismiss) {
+                    Text("Dismiss")
+                    AlertKeyHint(label: "esc", isLarge: false)
+                }
+                .padding(.top, 30)
+            }
+            .padding(.top, 40)
+
+            if session.isDemo {
+                Text("This is a demo alert. Press Esc to close it.")
+                    .font(.system(size: 13))
+                    .opacity(0.6)
+                    .padding(.top, 24)
+            }
+        }
+        .foregroundStyle(Color(palette.text))
+        .multilineTextAlignment(.center)
+        .padding(40)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+
+    private func joinTitle(for meeting: Meeting, now: Date, isOneOfMany: Bool) -> String {
+        if isOneOfMany { return "Join \(meeting.title)" }
+        return AlertCountdown.joinTitle(for: AlertCountdown.phase(start: meeting.start, end: meeting.end, now: now))
+    }
+
+    private func snoozeOptions(nextStart: Date?) -> [AlertSnoozeOption] {
+        var options = session.snoozeDurations.enumerated().map { index, duration in
+            AlertSnoozeOption(
+                id: "duration-\(index)",
+                label: AlertCountdown.snoozeLabel(duration),
+                accessibilityLabel: AlertCountdown.snoozeAccessibilityLabel(duration),
+                action: { session.actions.snooze(duration) }
+            )
+        }
+        if let nextStart {
+            options.append(AlertSnoozeOption(
+                id: "start",
+                label: AlertCountdown.snoozeUntilStartLabel(nextStart),
+                accessibilityLabel: AlertCountdown.snoozeUntilStartAccessibilityLabel(nextStart),
+                action: session.actions.snoozeUntilEvent
+            ))
+        }
+        return options
     }
 }
 
 @MainActor
-private struct MeetingBlock: View {
+private struct AlertMeetingHeader: View {
     let meeting: Meeting
     let now: Date
-    let textColor: Color
+    let palette: AlertPalette
+    /// Several meetings share the alert, so each title is a little smaller.
+    let isOneOfMany: Bool
 
     var body: some View {
-        VStack(spacing: 10) {
-            HStack(alignment: .center, spacing: 14) {
-                RoundedRectangle(cornerRadius: 3)
-                    .fill(Color(meeting.calendarColor))
-                    .frame(width: 6, height: 44)
-                Text(meeting.title)
-                    .font(.system(size: 40, weight: .bold))
-                    .multilineTextAlignment(.center)
-                    .lineLimit(2)
-            }
-            Text(MeetingTimeFormatter.timeRange(start: meeting.start, end: meeting.end))
-                .font(.system(size: 20, weight: .medium))
-                .opacity(0.9)
-            Text(MeetingTimeFormatter.countdown(start: meeting.start, end: meeting.end, now: now))
-                .font(.system(size: 15, weight: .regular, design: .rounded))
-                .monospacedDigit()
+        let phase = AlertCountdown.phase(start: meeting.start, end: meeting.end, now: now)
+        let titleSize: CGFloat = isOneOfMany ? 40 : 52
+        VStack(spacing: 0) {
+            if !meeting.calendarTitle.isEmpty {
+                HStack(spacing: 8) {
+                    Circle()
+                        .fill(Color(meeting.calendarColor.withAlpha(1)))
+                        .frame(width: 10, height: 10)
+                    Text(meeting.calendarTitle)
+                        .lineLimit(1)
+                }
+                .font(.system(size: 15, weight: .medium))
                 .opacity(0.8)
-            if let location = meeting.location, meeting.joinURL?.absoluteString != location {
-                Text(location)
-                    .font(.system(size: 15))
-                    .opacity(0.7)
-                    .lineLimit(1)
+                .padding(.bottom, 14)
+            }
+
+            Text(AlertCountdown.text(start: meeting.start, end: meeting.end, now: now))
+                .font(.system(size: 22, weight: .semibold))
+                .monospacedDigit()
+                .foregroundStyle(Color(palette.countdownColor(for: phase)))
+
+            Text(meeting.title)
+                .font(.system(size: titleSize, weight: .bold))
+                .tracking(-0.02 * titleSize)
+                .lineLimit(2)
+                .frame(maxWidth: 960)
+                .padding(.top, 6)
+
+            details
+                .padding(.top, 14)
+        }
+    }
+
+    private var details: some View {
+        let time = AlertDetail(systemImage: "clock", text: MeetingTimeFormatter.timeRange(start: meeting.start, end: meeting.end))
+        let place = location.map { AlertDetail(systemImage: "mappin.and.ellipse", text: $0) }
+        return ViewThatFits(in: .horizontal) {
+            HStack(spacing: 22) {
+                time
+                place
+            }
+            VStack(spacing: 8) {
+                time
+                place
             }
         }
-        .foregroundStyle(textColor)
-        .padding(.horizontal, 32)
+        .font(.system(size: 18))
+        .opacity(0.75)
+        .frame(maxWidth: 960)
+    }
+
+    /// The location, unless it's just the join link again.
+    private var location: String? {
+        guard let raw = meeting.location else { return nil }
+        let text = raw
+            .components(separatedBy: .newlines)
+            .map { $0.trimmingCharacters(in: .whitespaces) }
+            .filter { !$0.isEmpty }
+            .joined(separator: ", ")
+        guard !text.isEmpty, text != meeting.joinURL?.absoluteString else { return nil }
+        return text
     }
 }
 
-@MainActor
-private struct AlertButton: View {
-    enum Role { case primary, secondary, small }
+private struct AlertDetail: View {
+    let systemImage: String
+    let text: String
 
+    var body: some View {
+        HStack(spacing: 8) {
+            Image(systemName: systemImage)
+                .font(.system(size: 16, weight: .medium))
+                .accessibilityHidden(true)
+            Text(text)
+                .lineLimit(1)
+        }
+    }
+}
+
+private struct AlertJoinButton: View {
     let title: String
-    var systemImage: String? = nil
-    let role: Role
-    let appearance: AlertAppearance
+    let palette: AlertPalette
     let action: () -> Void
 
     var body: some View {
+        let shape = RoundedRectangle(cornerRadius: 14, style: .continuous)
         Button(action: action) {
-            HStack(spacing: 6) {
-                if let systemImage { Image(systemName: systemImage) }
+            HStack(spacing: 10) {
+                Image(systemName: "video.fill")
+                    .font(.system(size: 17, weight: .semibold))
+                    .accessibilityHidden(true)
                 Text(title)
+                    .lineLimit(1)
+                AlertKeyHint(label: "↩", isLarge: true)
+                    .padding(.leading, 6)
             }
-            .font(.system(size: role == .small ? 12 : 14, weight: .semibold))
-            .frame(minWidth: role == .small ? 96 : 150)
-            .padding(.vertical, role == .small ? 7 : 9)
-            .padding(.horizontal, 14)
-            .foregroundStyle(foreground)
-            .background(background, in: RoundedRectangle(cornerRadius: 7))
-            .contentShape(RoundedRectangle(cornerRadius: 7))
-        }
-        .buttonStyle(.plain)
-    }
-
-    private var foreground: Color {
-        switch role {
-        case .primary: return Color(appearance.primaryForeground)
-        case .secondary, .small: return Color(appearance.buttonForeground)
-        }
-    }
-
-    private var background: Color {
-        switch role {
-        case .primary:
-            return Color(appearance.primaryBackground ?? RGBA(hex: "#EF990E") ?? .white).opacity(appearance.primaryOpacity)
-        case .secondary, .small:
-            if let custom = appearance.buttonBackground {
-                return Color(custom).opacity(appearance.buttonOpacity)
+            .font(.system(size: 18, weight: .semibold))
+            .foregroundStyle(Color(palette.joinText))
+            .padding(.horizontal, 24)
+            .frame(width: 440, height: 56)
+            .background {
+                shape
+                    .fill(Color(palette.joinFill))
+                    .shadow(color: .black.opacity(0.25), radius: 12, y: 8)
             }
-            let fallback: Color = appearance.blurMode == .light ? .black.opacity(0.08) : .white.opacity(0.16)
-            return fallback.opacity(appearance.buttonOpacity)
+            .contentShape(shape)
         }
+        .buttonStyle(AlertPressableStyle())
+    }
+}
+
+struct AlertSnoozeOption: Identifiable {
+    let id: String
+    let label: String
+    let accessibilityLabel: String
+    let action: () -> Void
+}
+
+private struct AlertSnoozeRow: View {
+    let options: [AlertSnoozeOption]
+    let palette: AlertPalette
+
+    var body: some View {
+        HStack(spacing: 8) {
+            Text("Snooze")
+                .font(.system(size: 15))
+                .opacity(0.72)
+                .frame(width: 70, alignment: .leading)
+                .accessibilityHidden(true)
+            ForEach(options) { option in
+                AlertSecondaryButton(palette: palette, height: 44, action: option.action) {
+                    Text(option.label)
+                        .lineLimit(1)
+                        .frame(maxWidth: .infinity)
+                }
+                .accessibilityLabel(option.accessibilityLabel)
+            }
+        }
+        .frame(width: 440)
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel("Snooze")
+    }
+}
+
+/// Dismiss and the snooze choices.
+private struct AlertSecondaryButton<Label: View>: View {
+    let palette: AlertPalette
+    var height: CGFloat = 36
+    let action: () -> Void
+    @ViewBuilder let label: Label
+
+    var body: some View {
+        let shape = RoundedRectangle(cornerRadius: 10, style: .continuous)
+        Button(action: action) {
+            HStack(spacing: 8) { label }
+                .font(.system(size: 15, weight: .medium))
+                .foregroundStyle(Color(palette.buttonText))
+                .padding(.horizontal, 16)
+                .frame(height: height)
+                .background(shape.fill(Color(palette.buttonFill)))
+                .contentShape(shape)
+        }
+        .buttonStyle(AlertPressableStyle())
+    }
+}
+
+/// The key that triggers a button, outlined in the button's text color.
+private struct AlertKeyHint: View {
+    let label: String
+    let isLarge: Bool
+
+    var body: some View {
+        Text(label)
+            .font(.system(size: isLarge ? 13 : 11, weight: isLarge ? .medium : .regular))
+            .padding(.horizontal, isLarge ? 7 : 5)
+            .frame(minHeight: isLarge ? 20 : 16)
+            .overlay {
+                RoundedRectangle(cornerRadius: isLarge ? 5 : 4, style: .continuous)
+                    .strokeBorder(lineWidth: isLarge ? 1.5 : 1)
+            }
+            .opacity(0.65)
+            .accessibilityHidden(true)
+    }
+}
+
+private struct AlertPressableStyle: ButtonStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .opacity(configuration.isPressed ? 0.75 : 1)
     }
 }
 
