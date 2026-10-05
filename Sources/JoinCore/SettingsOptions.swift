@@ -71,6 +71,29 @@ public enum SettingsOptions {
         return "After " + durationTitle(minutes: minutes)
     }
 
+    // MARK: Open at login
+
+    public static let openAtLoginApprovalHint = "Allow Join! in System Settings › General › Login Items to open it at login."
+    public static let openAtLoginFixtureNote = "Not available in fixture mode."
+
+    /// Registered but waiting for approval in System Settings still reads as on, so turning the
+    /// switch off can withdraw the request.
+    public static func opensAtLogin(_ status: LoginItemStatus) -> Bool {
+        status == .enabled || status == .requiresApproval
+    }
+
+    /// Shown under the switch until the user allows Join! in System Settings.
+    public static func openAtLoginHint(_ status: LoginItemStatus) -> String? {
+        status == .requiresApproval ? openAtLoginApprovalHint : nil
+    }
+
+    // MARK: Window
+
+    /// A fixture run is marked on every pane, so it can't pass for the real app.
+    public static func windowTitle(pane: String, isFixture: Bool) -> String {
+        isFixture ? pane + " (fixture)" : pane
+    }
+
     // MARK: Calendars
 
     /// "Updated just now", "Updated 5 minutes ago", …
@@ -92,6 +115,14 @@ public enum SettingsOptions {
     private static func merging(_ value: Int, into list: [Int]) -> [Int] {
         list.contains(value) ? list : (list + [value]).sorted()
     }
+}
+
+/// The login item's state as `SMAppService.Status` reports it.
+public enum LoginItemStatus: Sendable {
+    case notRegistered
+    case enabled
+    case requiresApproval
+    case notFound
 }
 
 /// Selecting and counting calendars, where a nil selection means every calendar is enabled.

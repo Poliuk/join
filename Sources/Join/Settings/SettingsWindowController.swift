@@ -1,5 +1,6 @@
 import AppKit
 import SwiftUI
+import JoinCore
 
 enum SettingsPane: String, CaseIterable {
     case general
@@ -21,6 +22,10 @@ enum SettingsPane: String, CaseIterable {
         case .appearance: return "circle.righthalf.filled"
         }
     }
+}
+
+extension NSUserInterfaceItemIdentifier {
+    static let settingsWindow = NSUserInterfaceItemIdentifier("settings")
 }
 
 /// Hosts Settings in a plain AppKit window with the standard settings toolbar. SwiftUI's `Settings`
@@ -50,7 +55,8 @@ final class SettingsWindowController: NSObject, NSWindowDelegate {
         window.backgroundColor = SettingsPalette.window
         window.isReleasedWhenClosed = false
         window.delegate = self
-        window.title = tabs.selectedPane.title
+        window.identifier = .settingsWindow
+        window.title = tabs.windowTitle
         tabs.fitWindowToSelectedPane(animate: false)
         window.center()
         self.tabs = tabs
@@ -68,8 +74,10 @@ final class SettingsWindowController: NSObject, NSWindowDelegate {
 @MainActor
 private final class SettingsTabViewController: NSTabViewController {
     private let panes: [SettingsPane] = SettingsPane.allCases
+    private let isFixture: Bool
 
     init(model: AppModel) {
+        isFixture = model.isFixture
         super.init(nibName: nil, bundle: nil)
         tabStyle = .toolbar
         transitionOptions = [.crossfade, .allowUserInteraction]
@@ -85,6 +93,8 @@ private final class SettingsTabViewController: NSTabViewController {
             item.identifier = pane.rawValue
             addTabViewItem(item)
         }
+        // The window's title is bound to this one. Left nil, it would be the selected pane's.
+        title = windowTitle
     }
 
     @available(*, unavailable)
@@ -101,6 +111,10 @@ private final class SettingsTabViewController: NSTabViewController {
         selectedPaneController?.pane ?? .general
     }
 
+    var windowTitle: String {
+        SettingsOptions.windowTitle(pane: selectedPane.title, isFixture: isFixture)
+    }
+
     private var selectedPaneController: SettingsPaneController? {
         guard tabViewItems.indices.contains(selectedTabViewItemIndex) else { return nil }
         return tabViewItems[selectedTabViewItemIndex].viewController as? SettingsPaneController
@@ -114,7 +128,8 @@ private final class SettingsTabViewController: NSTabViewController {
 
     override func tabView(_ tabView: NSTabView, didSelect tabViewItem: NSTabViewItem?) {
         super.tabView(tabView, didSelect: tabViewItem)
-        view.window?.title = selectedPane.title
+        title = windowTitle
+        view.window?.title = windowTitle
         fitWindowToSelectedPane(animate: true)
     }
 

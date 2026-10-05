@@ -6,6 +6,8 @@ import JoinCore
 @MainActor
 struct OutOfOfficeSection: View {
     @Environment(AppModel.self) private var model
+    /// Held here so Restore Defaults can drop a half-typed keyword before the field commits it.
+    @State private var keywordDraft = ""
 
     var body: some View {
         @Bindable var preferences = model.preferences
@@ -17,12 +19,15 @@ struct OutOfOfficeSection: View {
                 HStack(spacing: 12) {
                     Text("Title keywords")
                     Spacer(minLength: 0)
-                    Button("Restore Defaults") { preferences.resetOutOfOfficeKeywords() }
-                        .buttonStyle(.link)
-                        .font(.callout)
-                        .disabled(preferences.outOfOfficeKeywords == OutOfOfficeDetector.defaultKeywords)
+                    Button("Restore Defaults") {
+                        keywordDraft = ""
+                        preferences.resetOutOfOfficeKeywords()
+                    }
+                    .buttonStyle(.link)
+                    .font(.callout)
+                    .disabled(preferences.outOfOfficeKeywords == OutOfOfficeDetector.defaultKeywords)
                 }
-                KeywordTokenField(keywords: $preferences.outOfOfficeKeywords)
+                KeywordTokenField(keywords: $preferences.outOfOfficeKeywords, draft: $keywordDraft)
                 Text("An event counts as out of office when its title contains any of these words. Out-of-office events show dimmed in the menu bar and only alert when the option above is on. Press Return to add a keyword.")
                     .font(.subheadline)
                     .foregroundStyle(.secondary)
@@ -37,7 +42,7 @@ struct OutOfOfficeSection: View {
 /// The out-of-office keywords as removable tokens, with a field that adds one on Return or comma.
 private struct KeywordTokenField: View {
     @Binding var keywords: [String]
-    @State private var draft = ""
+    @Binding var draft: String
     @FocusState private var fieldFocused: Bool
 
     var body: some View {

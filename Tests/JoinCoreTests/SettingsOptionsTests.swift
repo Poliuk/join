@@ -50,6 +50,28 @@ final class SettingsOptionsTests: XCTestCase {
         XCTAssertEqual(SettingsOptions.autoCloseTitle(minutes: 60), "After 1 hour")
     }
 
+    func testOpenAtLoginReadsOnWhileWaitingForApproval() {
+        XCTAssertFalse(SettingsOptions.opensAtLogin(.notRegistered))
+        XCTAssertFalse(SettingsOptions.opensAtLogin(.notFound))
+        XCTAssertTrue(SettingsOptions.opensAtLogin(.requiresApproval))
+        XCTAssertTrue(SettingsOptions.opensAtLogin(.enabled))
+    }
+
+    func testOpenAtLoginHintClearsOnceApproved() {
+        XCTAssertEqual(SettingsOptions.openAtLoginHint(.requiresApproval),
+                       "Allow Join! in System Settings › General › Login Items to open it at login.")
+        XCTAssertNil(SettingsOptions.openAtLoginHint(.enabled))
+        XCTAssertNil(SettingsOptions.openAtLoginHint(.notRegistered))
+        XCTAssertNil(SettingsOptions.openAtLoginHint(.notFound))
+        XCTAssertEqual(SettingsOptions.openAtLoginFixtureNote, "Not available in fixture mode.")
+    }
+
+    func testWindowTitleMarksFixtureRuns() {
+        XCTAssertEqual(SettingsOptions.windowTitle(pane: "General", isFixture: false), "General")
+        XCTAssertEqual(SettingsOptions.windowTitle(pane: "General", isFixture: true), "General (fixture)")
+        XCTAssertEqual(SettingsOptions.windowTitle(pane: "Appearance", isFixture: true), "Appearance (fixture)")
+    }
+
     func testUpdatedLabel() {
         let refreshed = Date(timeIntervalSinceReferenceDate: 800_000_000)
         func label(after seconds: TimeInterval) -> String {
