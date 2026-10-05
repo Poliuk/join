@@ -1,124 +1,206 @@
+import ServiceManagement
 import SwiftUI
 import JoinCore
 
 @MainActor
 struct GeneralTab: View {
     @Environment(AppModel.self) private var model
-    @State private var launchAtLogin = LaunchAtLogin.isEnabled
+    @State private var launchAtLogin = GeneralTab.registeredForLogin
     @State private var launchAtLoginError: String?
-    /// What's typed in the lead-time field. Written to Preferences only on Return or when the field
-    /// loses focus: saving every keystroke would make "3" → "35" → "5" briefly mean 35 minutes and
-    /// fire alerts early.
+    /// Whether "Custom…" is chosen; it stays chosen while the custom value happens to match a preset.
+    @State private var customLeadTime = false
+    /// What's typed in the custom lead-time field. Written to Preferences only on Return or when the
+    /// field loses focus: saving every keystroke would make "3" → "35" → "5" briefly mean 35 minutes
+    /// and fire alerts early.
     @State private var leadMinutesDraft = Int(Preferences.defaultLeadTime) / 60
     @FocusState private var leadFieldFocused: Bool
+
+    private static let customLeadTag = -1
+    private static let neverTag = 0
 
     var body: some View {
         @Bindable var preferences = model.preferences
 
-        Form {
-            Section("Alerts") {
-                HStack(spacing: 8) {
-                    Text("Alert me")
-                    TextField("Minutes", value: $leadMinutesDraft, format: .number)
-                        .labelsHidden()
-                        .multilineTextAlignment(.trailing)
-                        .frame(width: 44)
-                        .focused($leadFieldFocused)
-                        .onSubmit { commitLeadMinutes(preferences) }
-                        .onChange(of: leadFieldFocused) { _, focused in
-                            if !focused { commitLeadMinutes(preferences) }
-                        }
-                        .onDisappear { commitLeadMinutes(preferences) }
-                    Stepper("Minutes", value: leadMinutes(preferences), in: 0...120)
-                        .labelsHidden()
-                    Text(Int(preferences.leadTime) / 60 == 1 ? "minute before the event" : "minutes before the event")
-                }
-
-                Picker("Show alert on", selection: $preferences.alertScreens) {
-                    ForEach(AlertScreens.allCases, id: \.self) { choice in
-                        Text(choice.displayName).tag(choice)
-                    }
-                }
-
-                Toggle("Show next event in the menu bar", isOn: $preferences.menuBarShowsNextEvent)
-            }
-
-            Section("Out of office") {
-                Toggle("Alert for out-of-office events", isOn: $preferences.alertForOutOfOffice)
-                TextField("Keywords", text: keywordsText(preferences), prompt: Text("out of office, OOO, …"), axis: .vertical)
-                    .lineLimit(2...4)
-                HStack {
-                    Text("An event whose title contains one of these words counts as out of office. It still shows in the menu bar panel, dimmed. Separate keywords with commas.")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                    Spacer()
-                    Button("Reset") { preferences.resetOutOfOfficeKeywords() }
-                }
-            }
-
-            Section("Sound") {
-                Picker("Sound", selection: soundSelection(preferences)) {
-                    Text("None").tag("")
-                    Divider()
-                    ForEach(SystemSounds.names, id: \.self) { name in
-                        Text(name).tag(name)
-                    }
-                }
-                HStack {
-                    Toggle("Play repeatedly until the alert is closed", isOn: $preferences.soundRepeats)
-                        .disabled(preferences.soundName == nil)
-                    Spacer()
-                    Button("Preview") {
-                        SystemSounds.sound(named: preferences.soundName)?.play()
-                    }
-                    .disabled(preferences.soundName == nil)
-                }
-            }
-
-            Section("Snooze durations") {
-                ForEach(0..<2, id: \.self) { index in
-                    HStack {
-                        Slider(value: snoozeMinutes(preferences, index: index), in: 1...60, step: 1)
-                        Text(snoozeLabel(preferences.snoozeDurations[index]))
-                            .monospacedDigit()
-                            .frame(width: 90, alignment: .trailing)
-                    }
-                }
-            }
-
-            Section("Behavior") {
-                Toggle("Automatically close alerts", isOn: $preferences.autoCloseEnabled)
-                Stepper(value: autoCloseMinutes(preferences), in: 1...120) {
-                    Text("Close alerts after \(Int(preferences.autoCloseAfter) / 60) minutes")
-                }
-                .disabled(!preferences.autoCloseEnabled)
-
-                Toggle("Launch at login", isOn: $launchAtLogin)
-                    .onChange(of: launchAtLogin) { _, enabled in
-                        do {
-                            try LaunchAtLogin.setEnabled(enabled)
-                            launchAtLoginError = nil
-                        } catch {
-                            launchAtLoginError = error.localizedDescription
-                            launchAtLogin = LaunchAtLogin.isEnabled
-                        }
-                    }
+        VStack(alignment: .leading, spacing: 22) {
+            SettingsBox {
+                SettingsSwitchRow(title: "Open at login", isOn: $launchAtLogin, separator: false)
                 if let launchAtLoginError {
                     Text(launchAtLoginError)
-                        .font(.caption)
+                        .font(.subheadline)
                         .foregroundStyle(.red)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .padding(.bottom, 8)
                 }
+                SettingsSwitchRow(title: "Show the next event in the menu bar", isOn: $preferences.menuBarShowsNextEvent)
+                SettingsSwitchRow(
+                    title: "Include event titles",
+                    isOn: eventTitlesShown(preferences),
+                    indented: true,
+                    enabled: preferences.menuBarShowsNextEvent
+                )
+            }
+
+            SettingsSection(title: "Alert") {
+                SettingsRow(title: "Alert me", separator: false) {
+                    Picker("Alert me", selection: leadTimeSelection(preferences)) {
+                        ForEach(SettingsOptions.leadTimeMinutes, id: \.self) { minutes in
+                            Text(SettingsOptions.leadTimeTitle(minutes: minutes)).tag(minutes)
+                        }
+                        Divider()
+                        Text("Custom…").tag(Self.customLeadTag)
+                    }
+                    .labelsHidden()
+                    .fixedSize()
+                }
+                if showsCustomLeadTime(preferences) {
+                    customLeadTimeRow(preferences)
+                }
+                SettingsRow(title: "Show alert on") {
+                    Picker("Show alert on", selection: $preferences.alertScreens) {
+                        ForEach(AlertScreens.allCases, id: \.self) { choice in
+                            Text(choice.displayName).tag(choice)
+                        }
+                    }
+                    .labelsHidden()
+                    .fixedSize()
+                }
+                SettingsRow(title: "Sound") {
+                    HStack(spacing: 8) {
+                        Button {
+                            playSound(preferences.soundName)
+                        } label: {
+                            Image(systemName: "play.fill")
+                                .font(.system(size: 9))
+                                .frame(width: 12)
+                        }
+                        .help("Play alert sound")
+                        .accessibilityLabel("Play alert sound")
+                        .disabled(preferences.soundName == nil)
+                        Picker("Sound", selection: soundSelection(preferences)) {
+                            Text("None").tag("")
+                            Divider()
+                            ForEach(soundNames(including: preferences.soundName), id: \.self) { name in
+                                Text(name).tag(name)
+                            }
+                        }
+                        .labelsHidden()
+                        .fixedSize()
+                    }
+                }
+                SettingsSwitchRow(
+                    title: "Repeat until the alert is closed",
+                    isOn: soundRepeats(preferences),
+                    indented: true,
+                    enabled: preferences.soundName != nil
+                )
+            }
+
+            VStack(alignment: .leading, spacing: 8) {
+                SettingsSection(title: "Snooze & auto-close") {
+                    SettingsRow(title: "First snooze button", separator: false) {
+                        snoozePicker("First snooze button", preferences: preferences, index: 0)
+                    }
+                    SettingsRow(title: "Second snooze button") {
+                        snoozePicker("Second snooze button", preferences: preferences, index: 1)
+                    }
+                    SettingsRow(title: "Close alerts automatically") {
+                        Picker("Close alerts automatically", selection: autoCloseSelection(preferences)) {
+                            ForEach(autoCloseChoices(preferences), id: \.self) { minutes in
+                                Text(SettingsOptions.autoCloseTitle(minutes: minutes == Self.neverTag ? nil : minutes))
+                                    .tag(minutes)
+                            }
+                        }
+                        .labelsHidden()
+                        .fixedSize()
+                    }
+                }
+                alertOffers(preferences)
             }
         }
-        .formStyle(.grouped)
-        .onAppear { leadMinutesDraft = Int(preferences.leadTime) / 60 }
+        .padding(SettingsMetrics.panePadding)
+        .onAppear {
+            launchAtLogin = Self.registeredForLogin
+            if SMAppService.mainApp.status == .requiresApproval { launchAtLoginError = Self.loginApprovalHint }
+            leadMinutesDraft = Int(preferences.leadTime) / 60
+            customLeadTime = !SettingsOptions.isPresetLeadTime(preferences.leadTime)
+        }
+        .onChange(of: launchAtLogin) { _, enabled in applyLaunchAtLogin(enabled) }
         .onChange(of: preferences.leadTime) { _, newValue in
             leadMinutesDraft = Int(newValue) / 60
+            if !SettingsOptions.isPresetLeadTime(newValue) { customLeadTime = true }
+        }
+    }
+
+    /// Registered but waiting for approval in System Settings still shows as on, so turning the
+    /// switch off can withdraw the request.
+    private nonisolated static var registeredForLogin: Bool {
+        let status = SMAppService.mainApp.status
+        return status == .enabled || status == .requiresApproval
+    }
+
+    private static let loginApprovalHint = "Allow Join! in System Settings › General › Login Items to open it at login."
+
+    private func applyLaunchAtLogin(_ enabled: Bool) {
+        // Also reached when the switch is synced from the system or reverted after an error.
+        guard enabled != Self.registeredForLogin else { return }
+        do {
+            try LaunchAtLogin.setEnabled(enabled)
+            launchAtLoginError = SMAppService.mainApp.status == .requiresApproval ? Self.loginApprovalHint : nil
+        } catch {
+            launchAtLoginError = error.localizedDescription
+            launchAtLogin = Self.registeredForLogin
+        }
+    }
+
+    // MARK: Lead time
+
+    private func showsCustomLeadTime(_ preferences: Preferences) -> Bool {
+        customLeadTime || !SettingsOptions.isPresetLeadTime(preferences.leadTime)
+    }
+
+    private func leadTimeSelection(_ preferences: Preferences) -> Binding<Int> {
+        Binding(
+            get: { showsCustomLeadTime(preferences) ? Self.customLeadTag : Int(preferences.leadTime) / 60 },
+            set: { selection in
+                if selection == Self.customLeadTag {
+                    leadMinutesDraft = Int(preferences.leadTime) / 60
+                    customLeadTime = true
+                    DispatchQueue.main.async { leadFieldFocused = true }
+                } else {
+                    // Set the draft first: the custom field's commit on disappear must not undo this.
+                    leadMinutesDraft = selection
+                    customLeadTime = false
+                    preferences.leadTime = TimeInterval(selection * 60)
+                }
+            }
+        )
+    }
+
+    private func customLeadTimeRow(_ preferences: Preferences) -> some View {
+        SettingsRow(title: "Custom time", tone: .secondary, indented: true) {
+            HStack(spacing: 6) {
+                TextField("Minutes before the event", value: $leadMinutesDraft, format: .number)
+                    .labelsHidden()
+                    .textFieldStyle(.roundedBorder)
+                    .multilineTextAlignment(.trailing)
+                    .frame(width: 52)
+                    .focused($leadFieldFocused)
+                    .onSubmit { commitLeadMinutes(preferences) }
+                    .onChange(of: leadFieldFocused) { _, focused in
+                        if !focused { commitLeadMinutes(preferences) }
+                    }
+                    .onDisappear { commitLeadMinutes(preferences) }
+                Stepper("Minutes before the event", value: leadMinutes(preferences), in: SettingsOptions.customLeadTimeRange)
+                    .labelsHidden()
+                Text(leadMinutesDraft == 1 ? "minute before" : "minutes before")
+                    .foregroundStyle(.secondary)
+            }
         }
     }
 
     private func commitLeadMinutes(_ preferences: Preferences) {
-        let minutes = min(max(leadMinutesDraft, 0), 120)
+        let range = SettingsOptions.customLeadTimeRange
+        let minutes = min(max(leadMinutesDraft, range.lowerBound), range.upperBound)
         leadMinutesDraft = minutes
         if Int(preferences.leadTime) / 60 != minutes {
             preferences.leadTime = TimeInterval(minutes * 60)
@@ -128,14 +210,27 @@ struct GeneralTab: View {
     private func leadMinutes(_ preferences: Preferences) -> Binding<Int> {
         Binding(
             get: { Int(preferences.leadTime) / 60 },
-            set: { preferences.leadTime = TimeInterval(min(max($0, 0), 120) * 60) }
+            set: { minutes in
+                let range = SettingsOptions.customLeadTimeRange
+                preferences.leadTime = TimeInterval(min(max(minutes, range.lowerBound), range.upperBound) * 60)
+            }
         )
     }
 
-    private func keywordsText(_ preferences: Preferences) -> Binding<String> {
+    // MARK: Menu bar and sound
+
+    /// Dependent switches read as off while the setting they depend on is off.
+    private func eventTitlesShown(_ preferences: Preferences) -> Binding<Bool> {
         Binding(
-            get: { preferences.outOfOfficeKeywords.joined(separator: ", ") },
-            set: { preferences.outOfOfficeKeywords = OutOfOfficeDetector.parseKeywords($0) }
+            get: { preferences.menuBarShowsNextEvent && preferences.menuBarShowsEventTitles },
+            set: { preferences.menuBarShowsEventTitles = $0 }
+        )
+    }
+
+    private func soundRepeats(_ preferences: Preferences) -> Binding<Bool> {
+        Binding(
+            get: { preferences.soundName != nil && preferences.soundRepeats },
+            set: { preferences.soundRepeats = $0 }
         )
     }
 
@@ -146,26 +241,74 @@ struct GeneralTab: View {
         )
     }
 
-    private func snoozeMinutes(_ preferences: Preferences, index: Int) -> Binding<Double> {
+    private func soundNames(including current: String?) -> [String] {
+        guard let current, !SystemSounds.names.contains(current) else { return SystemSounds.names }
+        return (SystemSounds.names + [current]).sorted()
+    }
+
+    private func playSound(_ name: String?) {
+        guard let sound = SystemSounds.sound(named: name) else { return }
+        sound.stop()
+        sound.play()
+    }
+
+    // MARK: Snooze and auto-close
+
+    private func snoozePicker(_ title: String, preferences: Preferences, index: Int) -> some View {
+        let current = SettingsOptions.wholeMinutes(preferences.snoozeDurations[index])
+        return Picker(title, selection: snoozeMinutes(preferences, index: index)) {
+            ForEach(SettingsOptions.snoozeChoices(including: current), id: \.self) { minutes in
+                Text(SettingsOptions.durationTitle(minutes: minutes)).tag(minutes)
+            }
+        }
+        .labelsHidden()
+        .fixedSize()
+    }
+
+    private func snoozeMinutes(_ preferences: Preferences, index: Int) -> Binding<Int> {
         Binding(
-            get: { preferences.snoozeDurations[index] / 60 },
+            get: { SettingsOptions.wholeMinutes(preferences.snoozeDurations[index]) },
             set: { minutes in
                 var durations = preferences.snoozeDurations
-                durations[index] = minutes.rounded() * 60
+                durations[index] = TimeInterval(minutes * 60)
                 preferences.snoozeDurations = durations
             }
         )
     }
 
-    private func autoCloseMinutes(_ preferences: Preferences) -> Binding<Int> {
+    private func autoCloseChoices(_ preferences: Preferences) -> [Int] {
+        let current = SettingsOptions.autoCloseSelection(enabled: preferences.autoCloseEnabled, after: preferences.autoCloseAfter)
+        return [Self.neverTag] + SettingsOptions.autoCloseChoices(including: current)
+    }
+
+    private func autoCloseSelection(_ preferences: Preferences) -> Binding<Int> {
         Binding(
-            get: { Int(preferences.autoCloseAfter) / 60 },
-            set: { preferences.autoCloseAfter = TimeInterval($0 * 60) }
+            get: {
+                SettingsOptions.autoCloseSelection(enabled: preferences.autoCloseEnabled, after: preferences.autoCloseAfter)
+                    ?? Self.neverTag
+            },
+            set: { minutes in
+                if minutes == Self.neverTag {
+                    preferences.autoCloseEnabled = false
+                } else {
+                    preferences.autoCloseAfter = TimeInterval(minutes * 60)
+                    preferences.autoCloseEnabled = true
+                }
+            }
         )
     }
 
-    private func snoozeLabel(_ duration: TimeInterval) -> String {
-        let minutes = Int((duration / 60).rounded())
-        return minutes == 1 ? "1 minute" : "\(minutes) minutes"
+    private func alertOffers(_ preferences: Preferences) -> some View {
+        HStack(spacing: 6) {
+            Text("The alert offers")
+                .font(.subheadline)
+                .foregroundStyle(.secondary)
+                .padding(.trailing, 2)
+            ForEach(Array(SettingsOptions.alertOffers(snoozeDurations: preferences.snoozeDurations).enumerated()), id: \.offset) { _, label in
+                SettingsChip(text: label)
+            }
+        }
+        .padding(.horizontal, 2)
+        .accessibilityElement(children: .combine)
     }
 }
