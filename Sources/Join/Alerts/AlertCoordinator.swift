@@ -22,6 +22,9 @@ final class AlertCoordinator {
     private(set) var activeMeetings: [Meeting] = []
     private(set) var nextFireAt: Date?
 
+    /// Called right before any alert, real or demo, goes on screen.
+    @ObservationIgnored var willPresentAlert: (() -> Void)?
+
     @ObservationIgnored private let store: MeetingStore
     @ObservationIgnored private let preferences: Preferences
     @ObservationIgnored private let windows: AlertWindowController
@@ -143,6 +146,8 @@ final class AlertCoordinator {
     }
 
     private func fire(_ plan: AlertPlan) {
+        autoCloseTimer?.invalidate()
+        autoCloseTimer = nil
         for meeting in plan.meetings {
             states[meeting.id] = AlertStateRecord(state: .showing, expiresAt: meeting.end)
         }
@@ -161,6 +166,7 @@ final class AlertCoordinator {
                 join: { [weak self] meeting in self?.join(meeting) }
             )
         )
+        willPresentAlert?()
         windows.present(session: session, screens: preferences.alertScreens)
         playSound()
 
@@ -199,7 +205,11 @@ final class AlertCoordinator {
         dismiss()
     }
 
+    /// A real alert is on screen. The demo never replaces it.
+    var isAlerting: Bool { !activeMeetings.isEmpty }
+
     func showDemoAlert() {
+        guard !isAlerting else { return }
         // On a whole second, like a real event, so the countdown starts at 3:00 and steps evenly.
         let start = Date(timeIntervalSinceReferenceDate: (Date.timeIntervalSinceReferenceDate + 3 * 60).rounded(.down))
         let demo = Meeting(
@@ -224,18 +234,14 @@ final class AlertCoordinator {
             ),
             isDemo: true
         )
+        willPresentAlert?()
         windows.present(session: session, screens: preferences.alertScreens)
     }
 
     private func closeDemo() {
+        // A real alert that fires during the demo replaces it, and must stay up.
+        guard !isAlerting else { return }
         windows.dismiss()
-        if !activeMeetings.isEmpty {
-            // A real alert was interrupted by the demo; bring it back.
-            let meetings = activeMeetings
-            activeMeetings = []
-            for meeting in meetings { states[meeting.id] = AlertStateRecord(state: .pending, expiresAt: meeting.end) }
-            replan()
-        }
     }
 
     // MARK: Helpers

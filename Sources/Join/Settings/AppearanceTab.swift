@@ -5,6 +5,8 @@ import JoinCore
 struct AppearanceTab: View {
     @Environment(AppModel.self) private var model
     @State private var previewBackdrop: AppearancePreviewBackdrop = .wallpaper
+    /// The contrast warnings VoiceOver has been told about, or that were already shown.
+    @State private var announcedWarnings: Set<AlertContrastWarning.Subject> = []
 
     private enum Column {
         static let name: CGFloat = 132
@@ -46,6 +48,8 @@ struct AppearanceTab: View {
             }
         }
         .padding(SettingsMetrics.panePadding)
+        .onAppear { announcedWarnings = Set(appearance.contrastWarnings.map(\.subject)) }
+        .task(id: appearance) { await announceNewWarnings() }
     }
 
     private var appearance: AlertAppearance { model.preferences.appearance }
@@ -82,6 +86,7 @@ struct AppearanceTab: View {
                 }
                 Spacer()
                 Button("Show Demo Alert") { model.alertCoordinator.showDemoAlert() }
+                    .disabled(model.alertCoordinator.isAlerting)
             }
         }
         .font(.system(size: 13))
@@ -135,6 +140,7 @@ struct AppearanceTab: View {
         SettingsRow(title: "Tint") {
             AppearanceColorChoice(
                 title: "Tint",
+                wellLabel: "Tint color",
                 offTitle: "None",
                 wellFirst: true,
                 isCustom: Binding(
@@ -159,6 +165,7 @@ struct AppearanceTab: View {
         SettingsRow(title: "Text color") {
             AppearanceColorChoice(
                 title: "Text color",
+                wellLabel: "Text color",
                 offTitle: "Automatic",
                 wellFirst: true,
                 isCustom: Binding(
@@ -201,6 +208,7 @@ struct AppearanceTab: View {
                 .frame(width: Column.name, alignment: .leading)
             AppearanceColorChoice(
                 title: "\(name) text",
+                wellLabel: "\(name) text color",
                 offTitle: "Automatic",
                 wellFirst: false,
                 isCustom: Binding(
@@ -212,6 +220,7 @@ struct AppearanceTab: View {
             .frame(width: Column.color, alignment: .leading)
             AppearanceColorChoice(
                 title: "\(name) fill",
+                wellLabel: "\(name) fill color",
                 offTitle: "Automatic",
                 wellFirst: false,
                 isCustom: Binding(
@@ -233,6 +242,18 @@ struct AppearanceTab: View {
     }
 
     // MARK: Helpers
+
+    /// Tells VoiceOver about warnings that appeared since the last announcement. Debounced, so
+    /// dragging in the color panel is read out once, with the ratio it settles on.
+    private func announceNewWarnings() async {
+        try? await Task.sleep(for: .seconds(1))
+        guard !Task.isCancelled else { return }
+        let warnings = appearance.contrastWarnings
+        let new = warnings.filter { !announcedWarnings.contains($0.subject) }
+        announcedWarnings = Set(warnings.map(\.subject))
+        guard !new.isEmpty else { return }
+        AccessibilityNotification.Announcement(new.map(\.message).joined(separator: " ")).post()
+    }
 
     private func warnings(where include: @escaping (AlertContrastWarning.Subject) -> Bool) -> some View {
         let shown = appearance.contrastWarnings.filter { include($0.subject) }
@@ -262,6 +283,7 @@ struct AppearanceTab: View {
 /// An Automatic (or None) / Custom pop-up, with a color well while Custom.
 private struct AppearanceColorChoice: View {
     let title: String
+    let wellLabel: String
     let offTitle: String
     /// The Alert rows put the well before the pop-up; the Buttons table after it.
     let wellFirst: Bool
@@ -282,7 +304,7 @@ private struct AppearanceColorChoice: View {
     }
 
     private var well: some View {
-        ColorPicker("\(title) color", selection: $color, supportsOpacity: false)
+        ColorPicker(wellLabel, selection: $color, supportsOpacity: false)
             .labelsHidden()
     }
 }
@@ -297,7 +319,7 @@ private struct AppearancePercentSlider: View {
         HStack(spacing: 10) {
             Slider(
                 value: Binding(
-                    get: { min(max(value, range.lowerBound), range.upperBound) },
+                    get: { clamped },
                     set: { value = ($0 * 100).rounded() / 100 }
                 ),
                 in: range
@@ -305,8 +327,10 @@ private struct AppearancePercentSlider: View {
                 Text(title)
             }
             .labelsHidden()
+            // The platform slider would report its position within the range, not the percentage.
+            .accessibilityValue(percent)
             .frame(minWidth: 60)
-            Text("\(Int((min(max(value, range.lowerBound), range.upperBound) * 100).rounded()))%")
+            Text(percent)
                 .monospacedDigit()
                 .foregroundStyle(.secondary)
                 .lineLimit(1)
@@ -315,6 +339,10 @@ private struct AppearancePercentSlider: View {
                 .accessibilityHidden(true)
         }
     }
+
+    private var clamped: Double { min(max(value, range.lowerBound), range.upperBound) }
+
+    private var percent: String { "\(Int((clamped * 100).rounded()))%" }
 }
 
 private struct AppearancePresetCard: View {
