@@ -16,6 +16,8 @@ final class MeetingStore {
     private(set) var meetings: [Meeting] = []
     private(set) var calendars: [CalendarInfo] = []
     private(set) var authorization: CalendarAuthorization = .notDetermined
+    /// When calendars were last read, for "Updated just now" in Settings.
+    private(set) var lastRefreshed: Date?
 
     @ObservationIgnored private let service: CalendarService
     @ObservationIgnored private let preferences: Preferences
@@ -70,6 +72,7 @@ final class MeetingStore {
             to: now.addingTimeInterval(Self.lookAhead),
             calendarIDs: preferences.enabledCalendarIDs
         )
+        lastRefreshed = now
         meetings = fetched.map { meeting in
             var resolved = meeting
             resolved.joinURL = MeetingLinkDetector.joinURL(in: meeting)

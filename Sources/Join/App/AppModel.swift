@@ -66,9 +66,9 @@ final class AppModel {
         NSWorkspace.shared.open(url)
     }
 
-    func openSettings() {
+    func openSettings(pane: SettingsPane? = nil) {
         closePanel?()
-        settingsWindow.show(model: self)
+        settingsWindow.show(model: self, pane: pane)
     }
 
     func openCalendarPrivacySettings() {

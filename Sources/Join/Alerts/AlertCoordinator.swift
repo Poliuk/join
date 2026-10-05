@@ -15,8 +15,10 @@ final class AlertCoordinator {
     static let fireLeeway: TimeInterval = 0.5
     static let appNapGuardWindow: TimeInterval = 5 * 60
     static let statesKey = "alertStates"
+    static let pauseKey = "pauseState"
 
-    private(set) var isPaused = false
+    /// Persisted, so "Pause until tomorrow" survives a relaunch.
+    private(set) var pauseState: PauseState = .active
     private(set) var activeMeetings: [Meeting] = []
     private(set) var nextFireAt: Date?
 
@@ -40,6 +42,10 @@ final class AlertCoordinator {
            let decoded = try? JSONDecoder().decode([String: AlertStateRecord].self, from: data) {
             states = decoded
         }
+        if let data = defaults.data(forKey: Self.pauseKey),
+           let decoded = try? JSONDecoder().decode(PauseState.self, from: data) {
+            pauseState = decoded.resolved(at: Date())
+        }
     }
 
     func start() {
@@ -53,8 +59,20 @@ final class AlertCoordinator {
         replan()
     }
 
-    func setPaused(_ paused: Bool) {
-        isPaused = paused
+    /// Read `pauseState.isPaused(at:)` with a fresh date when rendering; a timed pause ends on its own.
+    var isPaused: Bool { pauseState.isPaused(at: Date()) }
+
+    func pause(_ option: PauseOption) {
+        setPauseState(option.state(from: Date()))
+    }
+
+    func resume() {
+        setPauseState(.active)
+    }
+
+    private func setPauseState(_ state: PauseState) {
+        pauseState = state
+        defaults.set(try? JSONEncoder().encode(state), forKey: Self.pauseKey)
         replan()
     }
 
@@ -63,6 +81,10 @@ final class AlertCoordinator {
     func replan() {
         let now = Date()
         pruneStates(now: now)
+        if pauseState.resolved(at: now) != pauseState {
+            pauseState = .active
+            defaults.removeObject(forKey: Self.pauseKey)
+        }
 
         // One alert at a time: whatever is due next waits until the current one is closed.
         guard activeMeetings.isEmpty else {
@@ -74,7 +96,7 @@ final class AlertCoordinator {
             meetings: store.alertableMeetings,
             states: states.mapValues(\.state),
             leadTime: preferences.leadTime,
-            isPaused: isPaused,
+            isPaused: pauseState.isPaused(at: now),
             now: now
         )
 
@@ -135,7 +157,7 @@ final class AlertCoordinator {
                 join: { [weak self] meeting in self?.join(meeting) }
             )
         )
-        windows.present(session: session, showOnAllScreens: preferences.showOnAllScreens)
+        windows.present(session: session, screens: preferences.alertScreens)
         playSound()
 
         if preferences.autoCloseEnabled {
@@ -197,7 +219,7 @@ final class AlertCoordinator {
             ),
             isDemo: true
         )
-        windows.present(session: session, showOnAllScreens: preferences.showOnAllScreens)
+        windows.present(session: session, screens: preferences.alertScreens)
     }
 
     private func closeDemo() {

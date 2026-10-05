@@ -16,7 +16,8 @@ final class PreferencesTests: XCTestCase {
         let preferences = Preferences(defaults: defaults)
         XCTAssertEqual(preferences.leadTime, 180)
         XCTAssertEqual(preferences.snoozeDurations, [60, 300])
-        XCTAssertTrue(preferences.showOnAllScreens)
+        XCTAssertEqual(preferences.alertScreens, .all)
+        XCTAssertFalse(preferences.menuBarShowsEventTitles)
         XCTAssertTrue(preferences.autoCloseEnabled)
         XCTAssertNil(preferences.soundName)
         XCTAssertNil(preferences.enabledCalendarIDs)
@@ -94,5 +95,15 @@ final class PreferencesTests: XCTestCase {
         defaults.removePersistentDomain(forName: suite)
         defaults.set(true, forKey: Preferences.Keys.legacySkipOutOfOffice)
         XCTAssertFalse(Preferences(defaults: defaults).alertForOutOfOffice)
+    }
+
+    func testLegacyShowOnAllScreensIsMigrated() {
+        defaults.set(false, forKey: Preferences.Keys.legacyShowOnAllScreens)
+        XCTAssertEqual(Preferences(defaults: defaults).alertScreens, .main)
+
+        let preferences = Preferences(defaults: defaults)
+        preferences.alertScreens = .pointer
+        XCTAssertEqual(Preferences(defaults: defaults).alertScreens, .pointer)
+        XCTAssertNil(defaults.object(forKey: Preferences.Keys.legacyShowOnAllScreens))
     }
 }

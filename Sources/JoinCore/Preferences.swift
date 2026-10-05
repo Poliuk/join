@@ -9,7 +9,10 @@ public final class Preferences {
     public enum Keys {
         public static let leadTime = "leadTime"
         public static let snoozeDurations = "snoozeDurations"
-        public static let showOnAllScreens = "showOnAllScreens"
+        public static let alertScreens = "alertScreens"
+        /// Earlier builds stored a Bool here; true maps to `.all`, false to `.main`.
+        public static let legacyShowOnAllScreens = "showOnAllScreens"
+        public static let menuBarShowsEventTitles = "menuBarShowsEventTitles"
         public static let autoCloseEnabled = "autoCloseEnabled"
         public static let autoCloseAfter = "autoCloseAfter"
         public static let soundName = "soundName"
@@ -31,7 +34,8 @@ public final class Preferences {
 
     @ObservationIgnored private var _leadTime: TimeInterval
     @ObservationIgnored private var _snoozeDurations: [TimeInterval]
-    @ObservationIgnored private var _showOnAllScreens: Bool
+    @ObservationIgnored private var _alertScreens: AlertScreens
+    @ObservationIgnored private var _menuBarShowsEventTitles: Bool
     @ObservationIgnored private var _autoCloseEnabled: Bool
     @ObservationIgnored private var _autoCloseAfter: TimeInterval
     @ObservationIgnored private var _soundName: String?
@@ -47,7 +51,14 @@ public final class Preferences {
         _leadTime = Self.wholeMinutes(defaults.object(forKey: Keys.leadTime) as? TimeInterval ?? Self.defaultLeadTime)
         let storedSnooze = defaults.array(forKey: Keys.snoozeDurations) as? [TimeInterval]
         _snoozeDurations = (storedSnooze?.count == 2 ? storedSnooze : nil) ?? Self.defaultSnoozeDurations
-        _showOnAllScreens = defaults.object(forKey: Keys.showOnAllScreens) as? Bool ?? true
+        if let raw = defaults.string(forKey: Keys.alertScreens), let stored = AlertScreens(rawValue: raw) {
+            _alertScreens = stored
+        } else if let legacy = defaults.object(forKey: Keys.legacyShowOnAllScreens) as? Bool {
+            _alertScreens = legacy ? .all : .main
+        } else {
+            _alertScreens = .all
+        }
+        _menuBarShowsEventTitles = defaults.object(forKey: Keys.menuBarShowsEventTitles) as? Bool ?? false
         _autoCloseEnabled = defaults.object(forKey: Keys.autoCloseEnabled) as? Bool ?? true
         _autoCloseAfter = defaults.object(forKey: Keys.autoCloseAfter) as? TimeInterval ?? Self.defaultAutoCloseAfter
         _soundName = defaults.string(forKey: Keys.soundName)
@@ -93,12 +104,24 @@ public final class Preferences {
         }
     }
 
-    public var showOnAllScreens: Bool {
-        get { access(keyPath: \.showOnAllScreens); return _showOnAllScreens }
+    public var alertScreens: AlertScreens {
+        get { access(keyPath: \.alertScreens); return _alertScreens }
         set {
-            withMutation(keyPath: \.showOnAllScreens) {
-                _showOnAllScreens = newValue
-                defaults.set(newValue, forKey: Keys.showOnAllScreens)
+            withMutation(keyPath: \.alertScreens) {
+                _alertScreens = newValue
+                defaults.set(newValue.rawValue, forKey: Keys.alertScreens)
+                defaults.removeObject(forKey: Keys.legacyShowOnAllScreens)
+            }
+        }
+    }
+
+    /// Whether the menu bar item includes the event's title next to its time. Off by default.
+    public var menuBarShowsEventTitles: Bool {
+        get { access(keyPath: \.menuBarShowsEventTitles); return _menuBarShowsEventTitles }
+        set {
+            withMutation(keyPath: \.menuBarShowsEventTitles) {
+                _menuBarShowsEventTitles = newValue
+                defaults.set(newValue, forKey: Keys.menuBarShowsEventTitles)
             }
         }
     }

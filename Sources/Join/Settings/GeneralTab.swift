@@ -34,9 +34,10 @@ struct GeneralTab: View {
                     Text(Int(preferences.leadTime) / 60 == 1 ? "minute before the event" : "minutes before the event")
                 }
 
-                Picker("Show alert on", selection: $preferences.showOnAllScreens) {
-                    Text("All screens").tag(true)
-                    Text("Main screen only").tag(false)
+                Picker("Show alert on", selection: $preferences.alertScreens) {
+                    ForEach(AlertScreens.allCases, id: \.self) { choice in
+                        Text(choice.displayName).tag(choice)
+                    }
                 }
 
                 Toggle("Show next event in the menu bar", isOn: $preferences.menuBarShowsNextEvent)

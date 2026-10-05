@@ -3,11 +3,18 @@ import SwiftUI
 
 /// Hosts the Settings view in a plain AppKit window. SwiftUI's `Settings` scene can't be opened
 /// reliably from a menu-bar-only app, so we own the window ourselves.
+enum SettingsPane: String, CaseIterable {
+    case general
+    case calendars
+    case appearance
+}
+
 @MainActor
 final class SettingsWindowController {
     private var window: NSWindow?
 
-    func show(model: AppModel) {
+    /// `pane` nil keeps whichever pane was showing last.
+    func show(model: AppModel, pane: SettingsPane? = nil) {
         let window = self.window ?? makeWindow(model: model)
         self.window = window
         NSApp.activate()

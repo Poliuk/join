@@ -44,7 +44,7 @@ final class AlertWindowController {
 
     private var windows: [AlertWindow] = []
     private var session: AlertSession?
-    private var showOnAllScreens = true
+    private var screens: AlertScreens = .all
     private var screenObserver: NSObjectProtocol?
     private var keyMonitor: Any?
     /// System uptime when the alert became key; compared with each key event's own timestamp.
@@ -64,10 +64,10 @@ final class AlertWindowController {
 
     var isPresenting: Bool { session != nil }
 
-    func present(session: AlertSession, showOnAllScreens: Bool) {
+    func present(session: AlertSession, screens: AlertScreens) {
         dismiss()
         self.session = session
-        self.showOnAllScreens = showOnAllScreens
+        self.screens = screens
         buildWindows()
         presentedUptime = ProcessInfo.processInfo.systemUptime
         installKeyMonitor()
@@ -143,8 +143,7 @@ final class AlertWindowController {
 
     private func buildWindows() {
         guard let session else { return }
-        let screens = showOnAllScreens ? NSScreen.screens : [NSScreen.main].compactMap { $0 }
-        windows = screens.map { screen in
+        windows = Self.targetScreens(for: screens).map { screen in
             AlertWindow(screen: screen, session: session)
         }
         for (index, window) in windows.enumerated() {
@@ -177,6 +176,21 @@ final class AlertWindow: NSPanel {
     }
 
     override var canBecomeKey: Bool { true }
+}
+
+extension AlertWindowController {
+    static func targetScreens(for choice: AlertScreens) -> [NSScreen] {
+        switch choice {
+        case .all:
+            return NSScreen.screens
+        case .main:
+            return [NSScreen.main ?? NSScreen.screens.first].compactMap { $0 }
+        case .pointer:
+            let pointer = NSEvent.mouseLocation
+            let screen = NSScreen.screens.first { NSMouseInRect(pointer, $0.frame, false) } ?? NSScreen.main
+            return [screen].compactMap { $0 }
+        }
+    }
 }
 
 /// Lets a click on a window that isn't key (the alert on a secondary display) hit its button directly.

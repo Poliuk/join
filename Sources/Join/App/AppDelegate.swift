@@ -24,7 +24,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// The notification's object, when present, is the argument (e.g. "today" or "all").
     private func observeScriptHooks() {
         let hooks: [(String, @MainActor (AppDelegate, String?) -> Void)] = [
-            ("openSettings", { delegate, _ in delegate.model.openSettings() }),
+            ("openSettings", { delegate, argument in delegate.model.openSettings(pane: argument.flatMap(SettingsPane.init(rawValue:))) }),
+            ("snapshot", { _, argument in WindowSnapshots.write(to: argument ?? NSTemporaryDirectory()) }),
             ("showDemoAlert", { delegate, _ in delegate.model.alertCoordinator.showDemoAlert() }),
             ("togglePanel", { delegate, _ in delegate.statusItem?.toggle() }),
             ("panelFilter", { delegate, argument in delegate.model.panelShowsTodayOnly = argument != "all" }),

@@ -35,7 +35,11 @@ struct MenuBarPanelView: View {
             }
             Spacer()
             Button {
-                model.alertCoordinator.setPaused(!model.alertCoordinator.isPaused)
+                if model.alertCoordinator.isPaused {
+                    model.alertCoordinator.resume()
+                } else {
+                    model.alertCoordinator.pause(.untilResumed)
+                }
             } label: {
                 Image(systemName: model.alertCoordinator.isPaused ? "play.fill" : "pause.fill")
             }
