@@ -95,6 +95,8 @@ struct GeneralTab: View {
                 )
             }
 
+            OutOfOfficeSection()
+
             VStack(alignment: .leading, spacing: 8) {
                 SettingsSection(title: "Snooze & auto-close") {
                     SettingsRow(title: "First snooze button", separator: false) {

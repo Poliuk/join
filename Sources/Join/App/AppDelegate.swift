@@ -1,4 +1,5 @@
 import AppKit
+import JoinCore
 
 @MainActor
 final class AppDelegate: NSObject, NSApplicationDelegate {
@@ -28,6 +29,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             ("snapshot", { _, argument in WindowSnapshots.write(to: argument ?? NSTemporaryDirectory()) }),
             ("showDemoAlert", { delegate, _ in delegate.model.alertCoordinator.showDemoAlert() }),
             ("togglePanel", { delegate, _ in delegate.statusItem?.toggle() }),
+            ("dismissAlert", { delegate, _ in delegate.model.alertCoordinator.dismiss() }),
+            ("pause", { delegate, argument in
+                delegate.model.alertCoordinator.pause(argument.flatMap(PauseOption.init(rawValue:)) ?? .untilResumed)
+            }),
+            ("resume", { delegate, _ in delegate.model.alertCoordinator.resume() }),
+            ("appearance", { _, argument in
+                switch argument {
+                case "light": NSApp.appearance = NSAppearance(named: .aqua)
+                case "dark": NSApp.appearance = NSAppearance(named: .darkAqua)
+                default: NSApp.appearance = nil
+                }
+            }),
         ]
         for (name, action) in hooks {
             let observer = DistributedNotificationCenter.default().addObserver(

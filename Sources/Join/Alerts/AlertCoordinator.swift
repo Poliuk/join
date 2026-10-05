@@ -32,6 +32,8 @@ final class AlertCoordinator {
     @ObservationIgnored private var autoCloseTimer: Timer?
     @ObservationIgnored private var activity: NSObjectProtocol?
     @ObservationIgnored private var sound: NSSound?
+    /// Nothing is scheduled until `start()`, so a coordinator that is never started never alerts.
+    @ObservationIgnored private var started = false
 
     init(store: MeetingStore, preferences: Preferences, windows: AlertWindowController, defaults: UserDefaults = .standard) {
         self.store = store
@@ -49,6 +51,7 @@ final class AlertCoordinator {
     }
 
     func start() {
+        started = true
         observeChanges(of: { [store] in _ = store.alertableMeetings }) { [weak self] in
             self?.meetingsDidChange()
         }
@@ -79,6 +82,7 @@ final class AlertCoordinator {
     // MARK: Planning
 
     func replan() {
+        guard started else { return }
         let now = Date()
         pruneStates(now: now)
         if pauseState.resolved(at: now) != pauseState {

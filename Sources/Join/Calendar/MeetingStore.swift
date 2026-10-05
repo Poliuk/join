@@ -86,25 +86,6 @@ final class MeetingStore {
         preferences.alertForOutOfOffice ? meetings : meetings.filter { !$0.isOutOfOffice }
     }
 
-    func ongoing(at now: Date) -> [Meeting] {
-        meetings.filter { $0.isOngoing(at: now) }
-    }
-
-    func upcoming(at now: Date, todayOnly: Bool, calendar: Calendar = .current) -> [Meeting] {
-        meetings.filter { meeting in
-            guard meeting.isUpcoming(at: now) else { return false }
-            return todayOnly ? calendar.isDate(meeting.start, inSameDayAs: now) : true
-        }
-    }
-
-    func current(at now: Date) -> Meeting? {
-        alertableMeetings.first { $0.isOngoing(at: now) }
-    }
-
-    func next(at now: Date) -> Meeting? {
-        alertableMeetings.first { $0.isUpcoming(at: now) }
-    }
-
     var calendarsBySource: [(source: String, calendars: [CalendarInfo])] {
         var order: [String] = []
         var groups: [String: [CalendarInfo]] = [:]

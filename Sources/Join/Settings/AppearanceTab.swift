@@ -12,42 +12,40 @@ struct AppearanceTab: View {
     }
 
     var body: some View {
-        Form {
-            Section {
-                presetCards
-            } header: {
-                VStack(alignment: .leading, spacing: 22) {
-                    preview
-                    styleHeader
+        VStack(alignment: .leading, spacing: 22) {
+            preview
+
+            VStack(alignment: .leading, spacing: 8) {
+                styleHeader
+                SettingsBox {
+                    presetCards
+                        .padding(.vertical, 12)
                 }
             }
 
-            Section {
-                alertRows
-            } header: {
-                Text("Alert")
-            } footer: {
+            VStack(alignment: .leading, spacing: 8) {
+                SettingsSection(title: "Alert") {
+                    alertRows
+                }
                 warnings { $0 == .text }
             }
 
-            Section {
-                buttonsHeader
-                buttonRow(.join)
-                buttonRow(.dismissAndSnooze)
-            } header: {
-                Text("Buttons")
-            } footer: {
-                VStack(alignment: .leading, spacing: 22) {
-                    warnings { $0 != .text }
-                    HStack {
-                        Spacer()
-                        Button("Restore Defaults") { model.preferences.resetAppearance() }
-                            .disabled(appearance.isDefault)
-                    }
+            VStack(alignment: .leading, spacing: 8) {
+                SettingsSection(title: "Buttons") {
+                    buttonsHeader
+                    buttonRow(.join)
+                    buttonRow(.dismissAndSnooze)
                 }
+                warnings { $0 != .text }
+            }
+
+            HStack {
+                Spacer()
+                Button("Restore Defaults") { model.preferences.resetAppearance() }
+                    .disabled(appearance.isDefault)
             }
         }
-        .formStyle(.grouped)
+        .padding(SettingsMetrics.panePadding)
     }
 
     private var appearance: AlertAppearance { model.preferences.appearance }
@@ -92,6 +90,8 @@ struct AppearanceTab: View {
     private var styleHeader: some View {
         HStack {
             Text("Style")
+                .font(.body.weight(.semibold))
+                .accessibilityAddTraits(.isHeader)
             Spacer()
             if appearance.matchingPreset == nil {
                 Text("Custom")
@@ -110,25 +110,29 @@ struct AppearanceTab: View {
                 }
             }
         }
-        .padding(.vertical, 2)
+        .padding(.horizontal, 2)
     }
 
     // MARK: Alert
 
     @ViewBuilder
     private var alertRows: some View {
-        Picker("Backdrop", selection: Binding(
-            get: { appearance.blurMode },
-            set: { mode in update { $0.blurMode = mode } }
-        )) {
-            Text(BlurMode.dark.displayName).tag(BlurMode.dark)
-            Text(BlurMode.light.displayName).tag(BlurMode.light)
-            if appearance.blurMode == .none {
-                Text(BlurMode.none.displayName).tag(BlurMode.none)
+        SettingsRow(title: "Backdrop", separator: false) {
+            Picker("Backdrop", selection: Binding(
+                get: { appearance.blurMode },
+                set: { mode in update { $0.blurMode = mode } }
+            )) {
+                Text(BlurMode.dark.displayName).tag(BlurMode.dark)
+                Text(BlurMode.light.displayName).tag(BlurMode.light)
+                if appearance.blurMode == .none {
+                    Text(BlurMode.none.displayName).tag(BlurMode.none)
+                }
             }
+            .labelsHidden()
+            .fixedSize()
         }
 
-        LabeledContent("Tint") {
+        SettingsRow(title: "Tint") {
             AppearanceColorChoice(
                 title: "Tint",
                 offTitle: "None",
@@ -142,20 +146,17 @@ struct AppearanceTab: View {
         }
 
         if appearance.tint != nil {
-            LabeledContent {
+            SettingsRow(title: "Tint strength", indented: true) {
                 AppearancePercentSlider(
                     title: "Tint strength",
                     value: Binding(get: { appearance.tintStrength }, set: { value in update { $0.tintStrength = value } }),
                     range: 0...1
                 )
                 .frame(width: 220)
-            } label: {
-                Text("Tint strength")
-                    .padding(.leading, 14)
             }
         }
 
-        LabeledContent("Text color") {
+        SettingsRow(title: "Text color") {
             AppearanceColorChoice(
                 title: "Text color",
                 offTitle: "Automatic",
@@ -180,12 +181,22 @@ struct AppearanceTab: View {
         }
         .font(.system(size: 11))
         .foregroundStyle(.secondary)
+        .frame(minHeight: 30)
         .accessibilityHidden(true)
     }
 
     private func buttonRow(_ kind: AlertButtonKind) -> some View {
         let name = kind == .join ? "Join button" : "Dismiss and Snooze"
-        return HStack(spacing: 12) {
+        return VStack(spacing: 0) {
+            SettingsSeparator()
+            buttonRowControls(kind, name: name)
+                .padding(.vertical, 6)
+                .frame(minHeight: 40)
+        }
+    }
+
+    private func buttonRowControls(_ kind: AlertButtonKind, name: String) -> some View {
+        HStack(spacing: 12) {
             Text(kind.displayName)
                 .frame(width: Column.name, alignment: .leading)
             AppearanceColorChoice(

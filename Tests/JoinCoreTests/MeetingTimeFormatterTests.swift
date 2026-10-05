@@ -40,25 +40,15 @@ final class MeetingTimeFormatterTests: XCTestCase {
         XCTAssertEqual(MeetingTimeFormatter.truncate("A very long meeting title indeed", to: 10), "A very lo…")
     }
 
-    func testMenuBarTitle() {
+    func testTimeRangeAcrossMidnight() {
         var calendar = Calendar(identifier: .gregorian)
         calendar.timeZone = TimeZone(identifier: "UTC")!
-        let noon = calendar.date(from: DateComponents(year: 2026, month: 10, day: 5, hour: 12))!
-
-        XCTAssertNil(MeetingTimeFormatter.menuBarTitle(for: nil, now: noon, calendar: calendar))
-
-        let ongoing = Meeting(id: "a", title: "Board Meeting", start: noon.addingTimeInterval(-600), end: noon.addingTimeInterval(600))
-        XCTAssertEqual(MeetingTimeFormatter.menuBarTitle(for: ongoing, now: noon, calendar: calendar), "Board Meeting, now")
-
-        let soon = Meeting(id: "b", title: "Design Sync", start: noon.addingTimeInterval(12 * 60), end: noon.addingTimeInterval(72 * 60))
-        XCTAssertEqual(MeetingTimeFormatter.menuBarTitle(for: soon, now: noon, calendar: calendar), "Design Sync, in 12m")
-
-        let tomorrow = Meeting(id: "c", title: "Standup", start: noon.addingTimeInterval(20 * 3600), end: noon.addingTimeInterval(21 * 3600))
-        let title = MeetingTimeFormatter.menuBarTitle(for: tomorrow, now: noon, calendar: calendar, locale: Locale(identifier: "en_US"))
-        XCTAssertEqual(squashWhitespace(title ?? ""), "Standup, tomorrow 8:00 AM")
-
-        let farAway = Meeting(id: "d", title: "Offsite", start: noon.addingTimeInterval(3 * 86400), end: noon.addingTimeInterval(3 * 86400 + 3600))
-        XCTAssertNil(MeetingTimeFormatter.menuBarTitle(for: farAway, now: noon, calendar: calendar))
+        let late = calendar.date(from: DateComponents(year: 2026, month: 10, day: 5, hour: 23, minute: 30))!
+        let locale = Locale(identifier: "en_US")
+        let overnight = MeetingTimeFormatter.timeRange(start: late, end: late.addingTimeInterval(3600), locale: locale, timeZone: calendar.timeZone)
+        XCTAssertEqual(squashWhitespace(overnight), "11:30 PM – 12:30 AM")
+        let multiDay = MeetingTimeFormatter.timeRange(start: late, end: late.addingTimeInterval(2 * 86400), locale: locale, timeZone: calendar.timeZone)
+        XCTAssertEqual(squashWhitespace(multiDay), "Mon 11:30 PM – Wed 11:30 PM")
     }
 
     func testTimeRange() {

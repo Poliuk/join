@@ -40,13 +40,27 @@ public enum MeetingTimeFormatter {
         return nil
     }
 
+    /// "4:00 – 5:00 PM" within a day, "11:30 PM – 12:30 AM" overnight, "Mon 9:00 AM – Wed 5:00 PM"
+    /// beyond a day. DateIntervalFormatter alone prints full dates as soon as a range crosses midnight.
     public static func timeRange(start: Date, end: Date, locale: Locale = .current, timeZone: TimeZone = .current) -> String {
-        let formatter = DateIntervalFormatter()
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = timeZone
+        if calendar.isDate(start, inSameDayAs: end) {
+            let formatter = DateIntervalFormatter()
+            formatter.locale = locale
+            formatter.timeZone = timeZone
+            formatter.dateStyle = .none
+            formatter.timeStyle = .short
+            return formatter.string(from: start, to: end)
+        }
+        if end.timeIntervalSince(start) < 24 * 60 * 60 {
+            return "\(shortTime(start, locale: locale, timeZone: timeZone)) – \(shortTime(end, locale: locale, timeZone: timeZone))"
+        }
+        let formatter = DateFormatter()
         formatter.locale = locale
         formatter.timeZone = timeZone
-        formatter.dateStyle = .none
-        formatter.timeStyle = .short
-        return formatter.string(from: start, to: end)
+        formatter.setLocalizedDateFormatFromTemplate("EEEjmm")
+        return "\(formatter.string(from: start)) – \(formatter.string(from: end))"
     }
 
     public static func shortTime(_ date: Date, locale: Locale = .current, timeZone: TimeZone = .current) -> String {
@@ -72,26 +86,6 @@ public enum MeetingTimeFormatter {
         return formatter.string(from: date)
     }
 
-    /// Text shown next to the menu bar icon. nil means "show the icon only".
-    public static func menuBarTitle(
-        for meeting: Meeting?,
-        now: Date,
-        calendar: Calendar = .current,
-        locale: Locale = .current,
-        maxTitleLength: Int = 24
-    ) -> String? {
-        guard let meeting else { return nil }
-        let title = truncate(meeting.title, to: maxTitleLength)
-        if meeting.isOngoing(at: now) { return "\(title), now" }
-        guard meeting.start > now else { return nil }
-        if calendar.isDate(meeting.start, inSameDayAs: now) {
-            return "\(title), in \(compactDuration(meeting.start.timeIntervalSince(now)))"
-        }
-        if let tomorrow = calendar.date(byAdding: .day, value: 1, to: now), calendar.isDate(meeting.start, inSameDayAs: tomorrow) {
-            return "\(title), tomorrow \(shortTime(meeting.start, locale: locale, timeZone: calendar.timeZone))"
-        }
-        return nil
-    }
 
     public static func truncate(_ text: String, to maxLength: Int) -> String {
         guard text.count > maxLength, maxLength > 1 else { return text }

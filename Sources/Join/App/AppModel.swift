@@ -17,17 +17,24 @@ final class AppModel {
     /// Closes the menu bar panel; set by the status item controller.
     @ObservationIgnored var closePanel: (() -> Void)?
 
+    /// Set when running with a fake calendar (see FixtureCalendarService).
+    let isFixture: Bool
+
     init() {
-        let preferences = Preferences()
-        let store = MeetingStore(service: EventKitCalendarService(), preferences: preferences)
+        let fixture = FixtureCalendarService.scenario
+        let defaults = fixture.flatMap { _ in UserDefaults(suiteName: FixtureCalendarService.defaultsSuite) } ?? .standard
+        let service: CalendarService = fixture.map { FixtureCalendarService(scenario: $0) } ?? EventKitCalendarService()
+        let preferences = Preferences(defaults: defaults)
+        let store = MeetingStore(service: service, preferences: preferences)
+        self.isFixture = fixture != nil
         self.preferences = preferences
         self.meetingStore = store
-        self.alertCoordinator = AlertCoordinator(store: store, preferences: preferences, windows: AlertWindowController())
+        self.alertCoordinator = AlertCoordinator(store: store, preferences: preferences, windows: AlertWindowController(), defaults: defaults)
     }
 
     func start() {
         Task { await meetingStore.start() }
-        alertCoordinator.start()
+        if !isFixture { alertCoordinator.start() }
 
         // Ticking on :00 and :30 keeps "in 4 min" in step with meetings, which start on whole minutes.
         let interval: TimeInterval = 30
