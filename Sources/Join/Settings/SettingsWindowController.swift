@@ -85,8 +85,6 @@ private final class SettingsTabViewController: NSTabViewController {
             let controller = SettingsPaneController(pane: pane, model: model)
             controller.onContentHeightChange = { [weak self, weak controller] in
                 guard let self, let controller, controller === self.selectedPaneController else { return }
-                // Not animated: an animated resize driven by SwiftUI's own layout can leave the
-                // pane drawn at its old offset (content under the toolbar, or a gap above it).
                 self.fitWindowToSelectedPane(animate: false)
             }
             let item = NSTabViewItem(viewController: controller)
@@ -160,11 +158,6 @@ private final class SettingsTabViewController: NSTabViewController {
         }
         guard frame != window.frame else { return }
         window.setFrame(frame, display: true, animate: animate && window.isVisible)
-        // Lay the pane out against the final frame so what's on screen matches it.
-        if let container = pane.view.superview { pane.view.frame = container.bounds }
-        pane.view.needsLayout = true
-        pane.view.layoutSubtreeIfNeeded()
-        pane.view.needsDisplay = true
     }
 }
 
@@ -214,9 +207,21 @@ private final class SettingsPaneController: NSViewController {
         }
     }
 
+    private var resizeScheduled = false
+
+    /// SwiftUI reports a new height from inside its layout pass. Resizing the window right there
+    /// (a clicked style preset adding the Tint strength row) left the window's content view out of
+    /// step with its frame by the height change: the pane slid under the toolbar or below a gap.
+    /// So the window follows on the next run-loop turn, once per batch of changes.
     private func contentHeightDidChange(_ height: CGFloat) {
         guard height > 0, height != contentHeight else { return }
         contentHeight = height
-        onContentHeightChange?()
+        guard !resizeScheduled else { return }
+        resizeScheduled = true
+        DispatchQueue.main.async { [weak self] in
+            guard let self else { return }
+            self.resizeScheduled = false
+            self.onContentHeightChange?()
+        }
     }
 }

@@ -13,7 +13,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     static let hookPrefix = "com.poliuk.join.fixture."
 
     func applicationDidFinishLaunching(_ notification: Notification) {
-        NSApp.setActivationPolicy(.accessory)
+        // A fixture run can ask for a Dock icon (JOIN_FIXTURE_REGULAR=1) so UI automation tools can target it.
+        let regular = model.isFixture && ProcessInfo.processInfo.environment["JOIN_FIXTURE_REGULAR"] == "1"
+        NSApp.setActivationPolicy(regular ? .regular : .accessory)
         model.start()
         let statusItem = StatusItemController(model: model)
         model.closePanel = { [weak statusItem] in statusItem?.close() }
