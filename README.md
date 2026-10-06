@@ -1,32 +1,48 @@
 # Join!
 
+[![macOS 14+](https://img.shields.io/badge/macOS-14%2B-blue)](#requirements)
+[![Swift](https://img.shields.io/badge/Swift-5.10-orange)](Package.swift)
+[![License: MIT](https://img.shields.io/badge/license-MIT-green)](LICENSE)
+
 A free, open-source macOS menu bar app that makes calendar meetings impossible to miss.
+
+Join! watches the calendars on your Mac and, a few minutes before each meeting, puts a full-screen alert above everything you're doing, with a one-click button to join the call. The menu bar tells you how long until your next meeting, and a panel below it shows the rest of your day.
+
+## Features
 
 - **Full-screen alert** a few minutes before each meeting, on every display (or just the main one, or the one with the pointer), above everything else. It shows a live countdown, the title, time and location, and buttons to Join, Snooze, snooze until the start, or Dismiss.
 - **Menu bar item** that tells you where you are in your day: a countdown to the next meeting today ("Next in 11 h 40 min", "Next in 42 min") or its day and time ("Tomorrow at 1:00 PM", "In 3 days at 9:10 AM"), an accent pill in the last 5 minutes, and a draining ring with "40 min left" during a meeting. Event titles are optional.
-- **Menu bar panel** with one card for what matters now (starting soon, in progress, next, or nothing left today), then the rest of today and the coming days. Overlapping meetings are flagged.
+- **Menu bar panel** with one card for what matters now (starting soon, in progress, next, or nothing left today), then everything still to come today and in the coming days. Overlapping meetings are flagged. It uses the same glass as the system menus, in light and dark mode.
 - **One-click Join** for Google Meet, Zoom, Microsoft Teams and Webex links found in the event, and **Directions** in Apple Maps for in-person meetings.
 - **Pause reminders** for an hour, until tomorrow, or until you resume.
 - **Configurable** lead time, snooze durations, auto-close, sound, and the alert's look: four presets, backdrop, tint, text and button colors (automatic by default), with contrast warnings, a live preview and a demo alert.
 
-Works with any calendar your Mac knows about (Google, iCloud, Exchange, Outlook, CalDAV) through macOS Calendar. Native Swift, no dependencies, idles at a few tens of MB.
+Works with any calendar your Mac knows about (Google, iCloud, Exchange, Outlook, CalDAV) through macOS Calendar. Native Swift and SwiftUI, no third-party dependencies.
+
+## Privacy
+
+Join! reads your calendars on your Mac through Apple's EventKit and keeps everything there. It makes no network requests, has no accounts and no analytics. Links only open, in your browser or Apple Maps, when you click Join or Directions.
 
 ## Requirements
 
 - macOS 14 Sonoma or later
 - To build: Xcode Command Line Tools (`xcode-select --install`). Full Xcode is only needed to run the unit tests.
 
-## Build and run
+## Install
+
+There are no prebuilt releases yet; build it from source:
 
 ```sh
+git clone https://github.com/poliuk/join.git
+cd join
 make run
 ```
 
-This builds `build/Join.app` and opens it. The app lives in the menu bar only; there is no Dock icon. To build without launching, `make app`. Opening the app again while it runs opens Settings.
+This builds `build/Join.app` and opens it. Move it to `/Applications` to keep it. The app lives in the menu bar only; there is no Dock icon. To build without launching, `make app`. Opening the app again while it runs opens Settings.
 
-The app is ad-hoc signed, not notarized. Because you built it locally, Gatekeeper won't complain. If you download a build from somewhere else, right-click the app → Open the first time.
+The app is ad-hoc signed, not notarized. Because you built it locally, Gatekeeper won't complain. If you copy a build to another Mac, right-click the app → Open the first time.
 
-The signature is pinned to the bundle identifier, so macOS remembers the calendar permission across rebuilds. If you built Join! before this change, macOS asks once more after updating.
+The signature is pinned to the bundle identifier, so macOS remembers the calendar permission across rebuilds.
 
 ## First launch
 
@@ -69,7 +85,11 @@ open --env JOIN_FIXTURE=busy build/Join.app
 
 Fixture runs keep their settings in a separate defaults domain, never schedule alerts, show a "Fixture" marker, and quit after two hours. Only fixture runs listen for a few distributed notifications (`com.poliuk.join.fixture.openSettings`, `snapshot`, `togglePanel`, `pause`, `appearance`, …) so scripts can open windows, take snapshots and switch light/dark; a normal run ignores them. See [Testing strategy](docs/TECHNICAL_DESIGN.md#12-testing-strategy) in the technical design.
 
-Design documents live in [`docs/`](docs/).
+The [product brief](docs/PRODUCT_BRIEF.md) and the [technical design](docs/TECHNICAL_DESIGN.md) explain what the app does and how it's built.
+
+## Contributing
+
+Issues and pull requests are welcome. Keep `JoinCore` free of UI and EventKit code, add tests there for new logic, and update the docs in `docs/` when behavior changes.
 
 ## License
 
