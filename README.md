@@ -10,6 +10,10 @@ A free, open-source macOS menu bar app that makes calendar meetings impossible t
 
 Join! watches the calendars on your Mac and, a few minutes before each meeting, puts a full-screen alert above everything you're doing, with a one-click button to join the call. The menu bar tells you how long until your next meeting, and a panel below it shows the rest of your day.
 
+<p align="center">
+  <img src="docs/screenshots/alert.jpg" alt="The full-screen alert three minutes before a meeting: the title, a countdown, a Join button, three snooze options and Dismiss">
+</p>
+
 ## Features
 
 - **Full-screen alert** a few minutes before each meeting, on every display (or just the main one, or the one with the pointer), above everything else. It shows a live countdown, the title, time and location, and buttons to Join, Snooze, snooze until the start, or Dismiss.
@@ -20,6 +24,15 @@ Join! watches the calendars on your Mac and, a few minutes before each meeting, 
 - **Configurable** lead time, snooze durations, auto-close, sound, and the alert's look: four presets, backdrop, tint, text and button colors (automatic by default), with contrast warnings, a live preview and a demo alert. The starting-soon pill's colors, and how long before a meeting it appears, are configurable too.
 
 Works with any calendar your Mac knows about (Google, iCloud, Exchange, Outlook, CalDAV) through macOS Calendar. Native Swift and SwiftUI, no third-party dependencies.
+
+<p align="center">
+  <img src="docs/screenshots/panel-light.jpg" alt="The menu bar panel in light mode, under a pill that reads Next in 4 min: a starting-soon card with a Join video call button, the meeting in progress, and the coming days" width="49%">
+  <img src="docs/screenshots/panel-dark.jpg" alt="The same menu bar panel in dark mode" width="49%">
+</p>
+<p align="center">
+  <img src="docs/screenshots/settings.jpg" alt="The Appearance settings: a live preview of the alert, style presets, backdrop, tint, button colors and the starting-soon pill" width="60%">
+</p>
+<p align="center"><sub>Screenshots show sample meetings, not a real calendar.</sub></p>
 
 ## Privacy
 
