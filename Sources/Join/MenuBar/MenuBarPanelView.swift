@@ -195,6 +195,7 @@ private struct HeaderButton: View {
     @State private var anchor = ViewAnchor()
     @State private var isMenuOpen = false
     @State private var isHovered = false
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
         let active = isOn || isMenuOpen
@@ -218,13 +219,14 @@ private struct HeaderButton: View {
                 .frame(width: 28, height: 28)
                 .background(
                     RoundedRectangle(cornerRadius: 7, style: .continuous)
-                        .fill(active ? PanelColors.buttonFill : (isHovered ? PanelColors.hoverFill : .clear))
+                        .fill(active ? (isHovered ? PanelColors.buttonHoverFill : PanelColors.buttonFill) : (isHovered ? PanelColors.hoverFill : .clear))
                 )
+                .animation(reduceMotion ? nil : .easeOut(duration: 0.12), value: isHovered)
                 .contentShape(RoundedRectangle(cornerRadius: 7, style: .continuous))
         }
         .buttonStyle(.plain)
         .background(AnchorView(anchor: anchor))
-        .onHover { isHovered = $0 }
+        .panelHover($isHovered)
         .help(label)
         .accessibilityLabel(label)
         .accessibilityAddTraits(isOn ? .isSelected : [])
@@ -281,7 +283,12 @@ private struct PausedBar: View {
                     .padding(.horizontal, 10)
                     .frame(height: 24)
             }
-            .buttonStyle(PanelFillButtonStyle(fill: PanelColors.buttonFill, foreground: PanelColors.title, cornerRadius: 6))
+            .buttonStyle(PanelFillButtonStyle(
+                fill: PanelColors.buttonFill,
+                foreground: PanelColors.title,
+                cornerRadius: 6,
+                hoverFill: PanelColors.buttonHoverFill
+            ))
         }
         .padding(.leading, 12)
         .padding(.trailing, 6)

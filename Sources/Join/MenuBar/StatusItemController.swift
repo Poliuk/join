@@ -80,7 +80,7 @@ final class StatusItemController: NSObject, NSWindowDelegate {
     private func open() {
         model.refreshNow()
         panel.contentView?.layoutSubtreeIfNeeded()
-        updatePanelFrame()
+        updatePanelFrame(reanchoring: true)
         panel.makeKeyAndOrderFront(nil)
         installMonitors()
         // The button un-highlights itself when the click that opened the panel ends; set it afterwards.
@@ -159,13 +159,14 @@ final class StatusItemController: NSObject, NSWindowDelegate {
         // Resizing the window from inside a SwiftUI layout pass re-enters layout; do it right after.
         DispatchQueue.main.async { [weak self] in
             guard let self, self.isOpen else { return }
-            self.updatePanelFrame()
+            self.updatePanelFrame(reanchoring: false)
         }
     }
 
     /// Hangs the panel under the status item: top edge anchored, height fitted to the content up to the
-    /// space left on screen, nudged sideways to stay on screen.
-    private func updatePanelFrame() {
+    /// space left on screen, nudged sideways to stay on screen. Once open, only the height follows: the
+    /// item changes width with its text (pausing shrinks it to a bell), and the panel would jump with it.
+    private func updatePanelFrame(reanchoring: Bool) {
         guard let button = statusItem.button, let buttonWindow = button.window else { return }
         let anchor = buttonWindow.convertToScreen(button.convert(button.bounds, to: nil))
         let screen = buttonWindow.screen ?? NSScreen.screens.first { $0.frame.intersects(anchor) } ?? NSScreen.main
@@ -175,7 +176,8 @@ final class StatusItemController: NSObject, NSWindowDelegate {
         let top = min(anchor.minY, visible.maxY) - Self.panelGap
         let available = top - visible.minY - Self.screenMargin
         let height = max(80, min(naturalHeight.rounded(.up), Self.maxPanelHeight, available))
-        let x = min(max(anchor.minX, visible.minX + Self.screenMargin), visible.maxX - Self.screenMargin - width)
+        let left = reanchoring || !panel.isVisible ? anchor.minX : panel.frame.minX
+        let x = min(max(left, visible.minX + Self.screenMargin), visible.maxX - Self.screenMargin - width)
         let frame = NSRect(x: x.rounded(), y: (top - height).rounded(), width: width, height: height)
         guard frame != panel.frame else { return }
         panel.setFrame(frame, display: true)

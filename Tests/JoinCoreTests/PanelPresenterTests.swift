@@ -67,8 +67,8 @@ final class PanelPresenterTests: XCTestCase {
         XCTAssertNil(card.progress)
         XCTAssertEqual(card.action, .directions(LocationFormatter.directionsURL(to: F.lunch.location!)!))
 
-        XCTAssertEqual(titles(result), ["Later today", "Tomorrow / Wed, Oct 7", "Thursday / Oct 8"])
-        XCTAssertEqual(ids(result.sections[0]), ["ooo", "val", "plan"], "the hero meeting isn't repeated")
+        XCTAssertEqual(titles(result), ["Today", "Tomorrow / Wed, Oct 7", "Thursday / Oct 8"])
+        XCTAssertEqual(ids(result.sections[0]), ["ooo", "lunch", "val", "plan"], "Today lists the hero's meeting too")
     }
 
     // Busy artboard: Tuesday 3:56 PM, a meeting starts in 4 minutes while another one runs.
@@ -80,8 +80,9 @@ final class PanelPresenterTests: XCTestCase {
         XCTAssertEqual(F.squash(card.overlap), "Overlaps Workshop, which runs until 7:30 PM")
         XCTAssertEqual(card.action, .join(F.meet))
 
-        XCTAssertEqual(titles(result), ["Now", "Tomorrow / Wed, Oct 7", "Thursday / Oct 8"])
+        XCTAssertEqual(titles(result), ["Now", "Today", "Tomorrow / Wed, Oct 7", "Thursday / Oct 8"])
         XCTAssertEqual(ids(result.sections[0]), ["val"])
+        XCTAssertEqual(ids(result.sections[1]), ["plan"], "the starting-soon meeting is also listed under Today")
         guard case .progress(let elapsed, let left) = result.sections[0].rows[0].detail else {
             return XCTFail("expected progress, got \(String(describing: result.sections[0].rows[0].detail))")
         }
@@ -101,6 +102,7 @@ final class PanelPresenterTests: XCTestCase {
         XCTAssertEqual(card.action, .join(F.meet))
 
         XCTAssertEqual(titles(result), ["Also now", "Tomorrow / Wed, Oct 7", "Thursday / Oct 8"])
+        XCTAssertEqual(ids(result.sections[0]), ["val"], "the meeting on the Now card isn't repeated")
         guard case .progress(let elapsed, let left) = result.sections[0].rows[0].detail else {
             return XCTFail("expected progress, got \(String(describing: result.sections[0].rows[0].detail))")
         }
@@ -120,7 +122,7 @@ final class PanelPresenterTests: XCTestCase {
 
         let afterLunch = content(at: F.date(6, 14, 10))
         guard case .next = afterLunch.hero else { return XCTFail("expected next, got \(afterLunch.hero)") }
-        XCTAssertEqual(titles(afterLunch).prefix(2), ["Now", "Later today"])
+        XCTAssertEqual(titles(afterLunch).prefix(2), ["Now", "Today"])
     }
 
     func testNextUpBeyondTomorrowLeavesOutTheCountdown() {
@@ -195,6 +197,16 @@ final class PanelPresenterTests: XCTestCase {
 
         let backToBack = Meeting(id: "f", title: "Next", start: F.date(6, 10), end: F.date(6, 11))
         XCTAssertNil(PanelPresenter.overlap(for: backToBack, in: [first, backToBack]))
+    }
+
+    // Just before midnight a meeting at 12:03 AM is starting soon; its day's section lists it too.
+    func testStartingSoonAfterMidnightIsListedUnderItsDay() {
+        let early = Meeting(id: "early", title: "Early", start: F.date(7, 0, 3), end: F.date(7, 0, 30), joinURL: F.meet)
+        let result = content(at: F.date(6, 23, 59), meetings: [early, F.review])
+        guard case .startingSoon(let card) = result.hero else { return XCTFail("expected startingSoon, got \(result.hero)") }
+        XCTAssertEqual(card.meeting.id, "early")
+        XCTAssertEqual(titles(result), ["Tomorrow / Wed, Oct 7"])
+        XCTAssertEqual(ids(result.sections[0]), ["early", "rev"])
     }
 
     func testOutOfOfficeRowsCanBeLeftOutOfTheList() {

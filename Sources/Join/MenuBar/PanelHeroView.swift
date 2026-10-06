@@ -147,7 +147,8 @@ private struct MeetingCard: View {
         .buttonStyle(PanelFillButtonStyle(
             fill: prominent ? PanelColors.accent : PanelColors.buttonFill,
             foreground: prominent ? .white : PanelColors.title,
-            cornerRadius: 8
+            cornerRadius: 8,
+            hoverFill: prominent ? PanelColors.accentHover : PanelColors.buttonHoverFill
         ))
         .accessibilityLabel(action.accessibilityLabel(for: card.meeting))
     }

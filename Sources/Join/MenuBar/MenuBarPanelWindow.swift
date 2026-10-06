@@ -45,7 +45,17 @@ final class MenuBarPanelWindow: NSPanel {
             let glass = glassType.init(frame: NSRect(x: 0, y: 0, width: width, height: 200))
             glass.setValue(Double(cornerRadius), forKey: "cornerRadius")
             glass.setValue(content, forKey: "contentView")
-            return glass
+            glass.autoresizingMask = [.width, .height]
+            // The window's shadow follows what the window draws, and the glass counts as its whole
+            // rectangle: unclipped, the shadow was square, a dark outline with darkened corners around
+            // the rounded glass. Clipping it to the rounded shape gives the shadow the same corners.
+            let clip = NSView(frame: glass.frame)
+            clip.wantsLayer = true
+            clip.layer?.cornerRadius = cornerRadius
+            clip.layer?.cornerCurve = .continuous
+            clip.layer?.masksToBounds = true
+            clip.addSubview(glass)
+            return clip
         }
         let blur = NSVisualEffectView(frame: NSRect(x: 0, y: 0, width: width, height: 200))
         blur.material = .menu

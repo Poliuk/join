@@ -71,7 +71,7 @@ public struct PanelCard: Equatable, Sendable {
 
 public struct PanelSection: Equatable, Identifiable, Sendable {
     public var id: String
-    /// "Now", "Also now", "Later today", "Tomorrow", "Wednesday".
+    /// "Now", "Also now", "Today", "Tomorrow", "Wednesday".
     public var title: String
     /// "Wed 7 Oct" after "Tomorrow", "7 Oct" after a weekday.
     public var subtitle: String?
@@ -145,13 +145,15 @@ public enum PanelPresenter {
             hero = .nothingToday(detail: builder.nextUpDetail(next))
         }
 
-        let heroID = hero.card?.meeting.id
         let listed = builder.sorted.filter { meeting in
-            meeting.id != heroID && !meeting.hasEnded(at: now) && (showsOutOfOffice || !meeting.isOutOfOffice)
+            !meeting.hasEnded(at: now) && (showsOutOfOffice || !meeting.isOutOfOffice)
         }
         var sections: [PanelSection] = []
 
-        let ongoing = listed.filter { $0.isOngoing(at: now) }
+        // The meeting you are in has the card, so Now lists the others. Meetings yet to start are all
+        // listed, the card's included, so Today reads as the rest of the day (the user's choice).
+        let heroID = hero.card?.meeting.id
+        let ongoing = listed.filter { $0.isOngoing(at: now) && $0.id != heroID }
         if !ongoing.isEmpty {
             let title: String
             if case .now = hero { title = "Also now" } else { title = "Now" }
@@ -159,9 +161,9 @@ public enum PanelPresenter {
         }
 
         let upcoming = listed.filter { $0.isUpcoming(at: now) }
-        let laterToday = upcoming.filter { calendar.isDate($0.start, inSameDayAs: now) }
-        if !laterToday.isEmpty {
-            sections.append(PanelSection(id: "today", title: "Later today", rows: laterToday.map(builder.row)))
+        let today = upcoming.filter { calendar.isDate($0.start, inSameDayAs: now) }
+        if !today.isEmpty {
+            sections.append(PanelSection(id: "today", title: "Today", rows: today.map(builder.row)))
         }
 
         var days: [(day: Date, meetings: [Meeting])] = []

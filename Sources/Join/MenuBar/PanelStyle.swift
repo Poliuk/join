@@ -25,6 +25,7 @@ enum PanelColors {
     static let rowButtonFill = fill(light: 0.06, dark: 0.08)
     static let rowButtonHoverFill = fill(light: 0.11, dark: 0.15)
     static let buttonFill = fill(light: 0.07, dark: 0.10)
+    static let buttonHoverFill = fill(light: 0.12, dark: 0.17)
     static let hoverFill = fill(light: 0.05, dark: 0.06)
     static let track = fill(light: 0.09, dark: 0.10)
     static let stripe = fill(light: 0.04, dark: 0.045)
@@ -36,14 +37,21 @@ enum PanelColors {
     static let accentLine = accentTint(light: 0.45, dark: 0.5)
     /// The accent lifted toward white on dark backgrounds (and deepened a little on light ones) so the
     /// "Starts in 4 min" label stays readable on the accent-tinted card.
-    static let accentText = Color(nsColor: NSColor(name: nil) { appearance in
-        let isDark = appearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
-        var accent = NSColor.controlAccentColor
-        appearance.performAsCurrentDrawingAppearance {
-            accent = NSColor.controlAccentColor.usingColorSpace(.sRGB) ?? NSColor.controlAccentColor
-        }
-        return (isDark ? accent.blended(withFraction: 0.35, of: .white) : accent.blended(withFraction: 0.12, of: .black)) ?? accent
-    })
+    static let accentText = accentShade(towardWhite: 0.35, towardBlack: 0.12)
+    /// The accent button under the pointer.
+    static let accentHover = accentShade(towardWhite: 0.12, towardBlack: 0.1)
+
+    /// The accent blended toward white in dark mode, toward black in light mode.
+    private static func accentShade(towardWhite: CGFloat, towardBlack: CGFloat) -> Color {
+        Color(nsColor: NSColor(name: nil) { appearance in
+            let isDark = appearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
+            var accent = NSColor.controlAccentColor
+            appearance.performAsCurrentDrawingAppearance {
+                accent = NSColor.controlAccentColor.usingColorSpace(.sRGB) ?? NSColor.controlAccentColor
+            }
+            return (isDark ? accent.blended(withFraction: towardWhite, of: .white) : accent.blended(withFraction: towardBlack, of: .black)) ?? accent
+        })
+    }
 
     private static func accentTint(light: CGFloat, dark: CGFloat) -> Color {
         Color(nsColor: NSColor(name: nil) { appearance in
@@ -75,13 +83,13 @@ enum PanelColors {
     }
 }
 
-/// A rounded, filled button that dims while pressed. With a `hoverFill`, the fill brightens under
-/// the pointer and the cursor becomes a pointing hand.
+/// A rounded, filled button that dims while pressed. Under the pointer its fill turns `hoverFill`
+/// and the cursor becomes a pointing hand, like every clickable thing in the panel.
 struct PanelFillButtonStyle: ButtonStyle {
     var fill: Color
     var foreground: Color
     var cornerRadius: CGFloat
-    var hoverFill: Color? = nil
+    var hoverFill: Color
 
     func makeBody(configuration: Configuration) -> some View {
         PanelFillButtonBody(configuration: configuration, style: self)
@@ -98,24 +106,40 @@ private struct PanelFillButtonBody: View {
         let shape = RoundedRectangle(cornerRadius: style.cornerRadius, style: .continuous)
         configuration.label
             .foregroundStyle(style.foreground)
-            .background(shape.fill(hovering ? (style.hoverFill ?? style.fill) : style.fill))
+            .background(shape.fill(hovering ? style.hoverFill : style.fill))
             .contentShape(shape)
             .opacity(configuration.isPressed ? 0.7 : 1)
             .animation(reduceMotion ? nil : .easeOut(duration: 0.12), value: hovering)
+            .panelHover($hovering)
+    }
+}
+
+extension View {
+    /// What every clickable thing in the panel does under the pointer: `isHovered` follows it, so the
+    /// control can brighten its fill, and the cursor becomes a pointing hand.
+    func panelHover(_ isHovered: Binding<Bool>) -> some View {
+        modifier(PanelHover(isHovered: isHovered))
+    }
+}
+
+private struct PanelHover: ViewModifier {
+    @Binding var isHovered: Bool
+
+    func body(content: Content) -> some View {
+        content
             .onContinuousHover { phase in
-                guard style.hoverFill != nil else { return }
                 switch phase {
                 case .active:
-                    hovering = true
+                    isHovered = true
                     // Set on every move: AppKit resets the cursor when the pointer moves over the hosting view.
                     NSCursor.pointingHand.set()
                 case .ended:
-                    hovering = false
+                    isHovered = false
                     NSCursor.arrow.set()
                 }
             }
             .onDisappear {
-                if hovering { NSCursor.arrow.set() }
+                if isHovered { NSCursor.arrow.set() }
             }
     }
 }
