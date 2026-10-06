@@ -38,7 +38,20 @@ enum MenuBarFixtures {
     static let nextMonday = Meeting(id: "weekly", title: "Weekly", start: date(12, 9), end: date(12, 9, 30), joinURL: meet)
     static let sunday = Meeting(id: "sun", title: "Brunch", start: date(11, 9), end: date(11, 10))
 
+    /// Foundation formats times with narrow no-break spaces, and the spacing varies by OS: normalize before comparing.
     static func squash(_ text: String?) -> String? {
         text?.replacingOccurrences(of: "\\s+", with: " ", options: .regularExpression)
+    }
+
+    /// Foundation's own rendering of a date template on a fixture day. Locale data changes punctuation between
+    /// macOS releases (en_GB "EEEdMMM" is "Tue, 6 Oct" on macOS 14 and "Tue 6 Oct" later), so expectations built
+    /// with this pin which template, day and locale our code uses, not one release's punctuation.
+    static func formatted(_ template: String, day: Int, locale: Locale) -> String {
+        let formatter = DateFormatter()
+        formatter.calendar = calendar
+        formatter.timeZone = calendar.timeZone
+        formatter.locale = locale
+        formatter.setLocalizedDateFormatFromTemplate(template)
+        return squash(formatter.string(from: date(day, 12)))!
     }
 }

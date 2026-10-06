@@ -12,7 +12,6 @@ final class StartingSoonPillTests: XCTestCase {
         XCTAssertEqual(pill.window, 300)
         XCTAssertNil(pill.fill)
         XCTAssertNil(pill.text)
-        XCTAssertTrue(pill.isDefault)
         XCTAssertEqual(pill.resolvedFill(accent: blueAccent), blueAccent)
         XCTAssertEqual(pill.resolvedText(accent: blueAccent), .white)
         XCTAssertNil(pill.contrastWarning(accent: blueAccent), "the accent with white text is never flagged")
@@ -40,40 +39,30 @@ final class StartingSoonPillTests: XCTestCase {
     func testContrastWarningOnlyForUnreadableCustomColors() {
         XCTAssertNil(StartingSoonPill(fill: yellow).contrastWarning(accent: blueAccent))
         XCTAssertNil(StartingSoonPill(fill: blueAccent).contrastWarning(accent: blueAccent), "a custom copy of the accent isn't flagged")
-        XCTAssertNil(StartingSoonPill(text: .black).contrastWarning(accent: RGBA(rgb: 0xFFD60A)))
+        XCTAssertNil(StartingSoonPill(text: .black).contrastWarning(accent: yellow))
         let warning = StartingSoonPill(fill: yellow, text: .white).contrastWarning(accent: blueAccent)
         XCTAssertEqual(warning, "The pill's label contrast is 1.4:1. It may be hard to read; aim for at least 3:1.")
     }
 
     func testSwitchingToCustomKeepsTheColorsShown() {
-        var pill = StartingSoonPill.default
-        pill.setFillCustom(true, accent: blueAccent)
-        XCTAssertEqual(pill.fill, blueAccent)
-        pill.setTextCustom(true, accent: blueAccent)
-        XCTAssertEqual(pill.text, .white)
+        // White text on the blue accent; under 3:1 on a yellow accent, so dark text.
+        for (accent, text) in [(blueAccent, RGBA.white), (RGBA(rgb: 0xFFC600), StartingSoonPill.darkText)] {
+            var pill = StartingSoonPill.default
+            XCTAssertEqual(pill.resolvedText(accent: accent), text, accent.hexString)
+            pill.setFillCustom(true, accent: accent)
+            XCTAssertEqual(pill.fill, accent, accent.hexString)
+            XCTAssertEqual(pill.resolvedText(accent: accent), text, accent.hexString)
+            pill.setTextCustom(true, accent: accent)
+            XCTAssertEqual(pill.text, text, accent.hexString)
+            XCTAssertNil(pill.contrastWarning(accent: accent), accent.hexString)
+        }
 
-        pill.fill = yellow
+        var pill = StartingSoonPill(fill: yellow, text: navy)
         pill.setFillCustom(true, accent: blueAccent)
         XCTAssertEqual(pill.fill, yellow, "already custom: the picked color stays")
-
         pill.setFillCustom(false, accent: blueAccent)
         pill.setTextCustom(false, accent: blueAccent)
         XCTAssertTrue(pill.isDefault)
-    }
-
-    func testALightAccentGetsDarkTextAndSwitchingToCustomChangesNothing() {
-        let yellowAccent = RGBA(rgb: 0xFFC600)
-        var pill = StartingSoonPill.default
-        XCTAssertEqual(pill.resolvedText(accent: yellowAccent), StartingSoonPill.darkText, "white is under 3:1 on yellow")
-        XCTAssertNil(pill.contrastWarning(accent: yellowAccent))
-
-        pill.setFillCustom(true, accent: yellowAccent)
-        XCTAssertEqual(pill.resolvedText(accent: yellowAccent), StartingSoonPill.darkText)
-        XCTAssertNil(pill.contrastWarning(accent: yellowAccent))
-
-        pill.setTextCustom(true, accent: yellowAccent)
-        XCTAssertEqual(pill.text, StartingSoonPill.darkText)
-        XCTAssertNil(pill.contrastWarning(accent: yellowAccent))
     }
 
     func testCodingRoundTripsAndFillsInMissingValues() throws {

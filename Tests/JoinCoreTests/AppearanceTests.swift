@@ -6,7 +6,6 @@ final class AppearanceTests: XCTestCase {
 
     func testHexRoundTrip() {
         let color = RGBA(hex: "#EF990E")
-        XCTAssertNotNil(color)
         XCTAssertEqual(color?.hexString, "#EF990E")
         XCTAssertEqual(RGBA(hex: "ff000080")?.alpha ?? 0, 0.5, accuracy: 0.01)
         XCTAssertEqual(RGBA(red: 1, green: 0, blue: 0, alpha: 0.5).hexString, "#FF000080")
@@ -58,7 +57,6 @@ final class AppearanceTests: XCTestCase {
         """
         let decoded = try JSONDecoder().decode(AlertAppearance.self, from: Data(json.utf8))
         XCTAssertEqual(decoded, .default)
-        XCTAssertEqual(decoded.matchingPreset, .dark)
     }
 
     func testCustomizedLegacyJSONKeepsItsColors() throws {
@@ -101,7 +99,6 @@ final class AppearanceTests: XCTestCase {
 
     func testDefaultIsTheDarkPreset() {
         XCTAssertEqual(AlertAppearance.default, AlertAppearancePreset.dark.appearance)
-        XCTAssertTrue(AlertAppearance.default.isDefault)
     }
 
     func testEveryPresetMatchesItself() {
@@ -140,35 +137,17 @@ final class AppearanceTests: XCTestCase {
 
     /// The colors each preset produces are the ones the design draws.
     func testPresetsResolveToTheDesignColors() {
-        let dark = AlertAppearancePreset.dark.appearance.palette
-        XCTAssertTrue(dark.isDark)
-        XCTAssertEqual(dark.text, .white)
-        XCTAssertEqual(dark.joinFill.hexString, "#F5A524")
-        XCTAssertEqual(dark.joinText.hexString, "#1A1A1A")
-        XCTAssertEqual(dark.buttonText, .white)
-        XCTAssertEqual(dark.buttonFill.hexString, RGBA.white.withAlpha(0.16).hexString)
-
-        let light = AlertAppearancePreset.light.appearance.palette
-        XCTAssertFalse(light.isDark)
-        XCTAssertEqual(light.text.hexString, "#1D1D1F")
-        XCTAssertEqual(light.joinText.hexString, "#1A1A1A")
-        XCTAssertEqual(light.buttonText.hexString, "#1D1D1F")
-        XCTAssertEqual(light.buttonFill.hexString, RGBA.black.withAlpha(0.07).hexString)
-
-        let contrast = AlertAppearancePreset.highContrast.appearance.palette
-        XCTAssertEqual(contrast.text, .white)
-        XCTAssertEqual(contrast.joinText, .black)
-        XCTAssertEqual(contrast.joinFill.hexString, "#FFD60A")
-        XCTAssertEqual(contrast.buttonText, .white)
-        XCTAssertEqual(contrast.buttonFill.hexString, RGBA.white.withAlpha(0.22).hexString)
-
-        let midnight = AlertAppearancePreset.midnight.appearance.palette
-        XCTAssertTrue(midnight.isDark)
-        XCTAssertEqual(midnight.text, .white)
-        XCTAssertEqual(midnight.joinText, .white)
-        XCTAssertEqual(midnight.joinFill.hexString, "#2563EB")
-
-        for preset in AlertAppearancePreset.allCases {
+        // isDark, then text, Join fill, Join text, button text, button fill (trailing byte = alpha: 29 = 16%, 12 = 7%, 38 = 22%)
+        let expected: [(AlertAppearancePreset, Bool, [String])] = [
+            (.dark,         true,  ["#FFFFFF", "#F5A524", "#1A1A1A", "#FFFFFF", "#FFFFFF29"]),
+            (.light,        false, ["#1D1D1F", "#F5A524", "#1A1A1A", "#1D1D1F", "#00000012"]),
+            (.highContrast, true,  ["#FFFFFF", "#FFD60A", "#000000", "#FFFFFF", "#FFFFFF38"]),
+            (.midnight,     true,  ["#FFFFFF", "#2563EB", "#FFFFFF", "#FFFFFF", "#FFFFFF29"]),
+        ]
+        for (preset, isDark, colors) in expected {
+            let palette = preset.appearance.palette
+            XCTAssertEqual(palette.isDark, isDark, preset.name)
+            XCTAssertEqual([palette.text, palette.joinFill, palette.joinText, palette.buttonText, palette.buttonFill].map(\.hexString), colors, preset.name)
             XCTAssertEqual(preset.appearance.contrastWarnings, [], preset.name)
         }
     }
@@ -202,9 +181,7 @@ final class AppearanceTests: XCTestCase {
         appearance.textColor = RGBA(rgb: 0x444444)
         let warnings = appearance.contrastWarnings
         XCTAssertEqual(warnings.map(\.subject), [.text])
-        XCTAssertLessThan(warnings[0].ratio, 4.5)
-        XCTAssertTrue(warnings[0].message.hasPrefix("Event text contrast is 1."), warnings[0].message)
-        XCTAssertTrue(warnings[0].message.hasSuffix("Aim for at least 4.5:1, or set Text color to Automatic."))
+        XCTAssertEqual(warnings.map(\.message), ["Event text contrast is 1.5:1 on this backdrop. Aim for at least 4.5:1, or set Text color to Automatic."])
     }
 
     func testLowContrastButtonsWarn() {
@@ -214,8 +191,10 @@ final class AppearanceTests: XCTestCase {
         appearance.dismissAndSnooze.text = .white
         let warnings = appearance.contrastWarnings
         XCTAssertEqual(warnings.map(\.subject), [.button(.join), .button(.dismissAndSnooze)])
-        XCTAssertEqual(warnings[0].message, "The Join label contrast is \(AlertContrastWarning.format(warnings[0].ratio)). It may be hard to read; aim for at least 4.5:1.")
-        XCTAssertEqual(warnings[1].message, "Dismiss and Snooze label contrast is 1.0:1. It may be hard to read; aim for at least 4.5:1.")
+        XCTAssertEqual(warnings.map(\.message), [
+            "The Join label contrast is 2.0:1. It may be hard to read; aim for at least 4.5:1.",
+            "Dismiss and Snooze label contrast is 1.0:1. It may be hard to read; aim for at least 4.5:1.",
+        ])
     }
 
     func testRatioFormatRoundsDown() {

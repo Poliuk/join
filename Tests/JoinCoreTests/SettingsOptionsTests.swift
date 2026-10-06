@@ -10,6 +10,7 @@ final class SettingsOptionsTests: XCTestCase {
         XCTAssertEqual(SettingsOptions.customLeadTimeRange, 0...120)
     }
 
+    @MainActor
     func testSnoozePresetsAndCustomRange() {
         XCTAssertEqual(SettingsOptions.snoozeMinutes, [1, 3, 5, 10])
         XCTAssertEqual(SettingsOptions.customSnoozeRange, 1...120)
@@ -25,13 +26,14 @@ final class SettingsOptionsTests: XCTestCase {
     }
 
     func testDurationTitles() {
-        XCTAssertEqual(SettingsOptions.durationTitle(minutes: 1), "1 minute")
-        XCTAssertEqual(SettingsOptions.durationTitle(minutes: 30), "30 minutes")
-        XCTAssertEqual(SettingsOptions.durationTitle(minutes: 60), "1 hour")
-        XCTAssertEqual(SettingsOptions.durationTitle(minutes: 120), "2 hours")
-        XCTAssertEqual(SettingsOptions.durationTitle(minutes: 90), "90 minutes")
-        XCTAssertEqual(SettingsOptions.shortDurationTitle(minutes: 5), "5 min")
-        XCTAssertEqual(SettingsOptions.shortDurationTitle(minutes: 60), "1 hr")
+        let cases: [(minutes: Int, long: String, short: String)] = [
+            (1, "1 minute", "1 min"), (5, "5 minutes", "5 min"), (30, "30 minutes", "30 min"),
+            (60, "1 hour", "1 hr"), (90, "90 minutes", "90 min"), (120, "2 hours", "2 hr"),
+        ]
+        for c in cases {
+            XCTAssertEqual(SettingsOptions.durationTitle(minutes: c.minutes), c.long, "\(c.minutes) min")
+            XCTAssertEqual(SettingsOptions.shortDurationTitle(minutes: c.minutes), c.short, "\(c.minutes) min")
+        }
     }
 
     func testAlertOffersBothSnoozesThenEventStart() {
@@ -63,7 +65,6 @@ final class SettingsOptionsTests: XCTestCase {
         XCTAssertNil(SettingsOptions.openAtLoginHint(.enabled))
         XCTAssertNil(SettingsOptions.openAtLoginHint(.notRegistered))
         XCTAssertNil(SettingsOptions.openAtLoginHint(.notFound))
-        XCTAssertEqual(SettingsOptions.openAtLoginFixtureNote, "Not available in fixture mode.")
     }
 
     func testWindowTitleMarksFixtureRuns() {

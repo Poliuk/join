@@ -19,12 +19,6 @@ public enum PauseState: Codable, Hashable, Sendable {
         if case .until(let end) = self, end <= now { return .active }
         return self
     }
-
-    /// When a timed pause ends, nil otherwise.
-    public var endsAt: Date? {
-        if case .until(let end) = self { return end }
-        return nil
-    }
 }
 
 /// The pause choices offered by the menu bar panel's bell menu.

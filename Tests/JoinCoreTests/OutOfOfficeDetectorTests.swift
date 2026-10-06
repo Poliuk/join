@@ -26,8 +26,4 @@ final class OutOfOfficeDetectorTests: XCTestCase {
         XCTAssertTrue(OutOfOfficeDetector.isOutOfOffice(title: "Vacaciones en Asturias", keywords: ["vacaciones"]))
         XCTAssertFalse(OutOfOfficeDetector.isOutOfOffice(title: "Out of office", keywords: []))
     }
-
-    func testParseKeywords() {
-        XCTAssertEqual(OutOfOfficeDetector.parseKeywords(" out of office, OOO ,, \nPTO "), ["out of office", "OOO", "PTO"])
-    }
 }

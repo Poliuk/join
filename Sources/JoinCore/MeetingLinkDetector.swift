@@ -50,10 +50,6 @@ public enum MeetingLinkDetector {
         return nil
     }
 
-    public static func providerName(for url: URL) -> String? {
-        providers.first { firstMatch(of: $0.pattern, in: url.absoluteString) != nil }?.name
-    }
-
     private static func firstMatch(of pattern: String, in text: String) -> String? {
         guard let regex = regexCache[pattern] else { return nil }
         let range = NSRange(text.startIndex..., in: text)

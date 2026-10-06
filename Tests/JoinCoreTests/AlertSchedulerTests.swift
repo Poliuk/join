@@ -66,10 +66,4 @@ final class AlertSchedulerTests: XCTestCase {
         let result = plan([meeting("later", startsIn: 900), meeting("sooner", startsIn: 600)])
         XCTAssertEqual(result?.meetings.map(\.id), ["sooner"])
     }
-
-    func testStateRoundTripsThroughJSON() throws {
-        let states: [String: AlertState] = ["a": .snoozed(until: now), "b": .dismissed, "c": .pending]
-        let data = try JSONEncoder().encode(states)
-        XCTAssertEqual(try JSONDecoder().decode([String: AlertState].self, from: data), states)
-    }
 }

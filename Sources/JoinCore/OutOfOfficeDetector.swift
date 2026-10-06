@@ -28,10 +28,4 @@ public enum OutOfOfficeDetector {
         }
         return false
     }
-
-    public static func parseKeywords(_ text: String) -> [String] {
-        text.split(whereSeparator: { $0 == "," || $0 == "\n" })
-            .map { $0.trimmingCharacters(in: .whitespaces) }
-            .filter { !$0.isEmpty }
-    }
 }
