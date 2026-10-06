@@ -4,8 +4,11 @@ import XCTest
 final class PanelPresenterTests: XCTestCase {
     typealias F = MenuBarFixtures
 
-    private func content(at now: Date, meetings: [Meeting] = F.week, alertable: [Meeting]? = nil, locale: Locale = F.us) -> PanelContent {
-        PanelPresenter.content(meetings: meetings, alertable: alertable ?? meetings.filter { !$0.isOutOfOffice }, now: now, calendar: F.calendar, locale: locale)
+    private func content(at now: Date, meetings: [Meeting] = F.week, alertable: [Meeting]? = nil,
+                         showsOutOfOffice: Bool = true, startingSoonWindow: TimeInterval = MenuBarPresenter.startingSoonWindow,
+                         locale: Locale = F.us) -> PanelContent {
+        PanelPresenter.content(meetings: meetings, alertable: alertable ?? meetings.filter { !$0.isOutOfOffice }, now: now,
+                               showsOutOfOffice: showsOutOfOffice, startingSoonWindow: startingSoonWindow, calendar: F.calendar, locale: locale)
     }
 
     private func titles(_ content: PanelContent) -> [String] {
@@ -16,23 +19,34 @@ final class PanelPresenterTests: XCTestCase {
         section.rows.map(\.meeting.id)
     }
 
+    /// An en_US date as Foundation renders `template` on fixture day `day`, e.g. us("EEEdMMM", 6) is "Tue, Oct 6".
+    private func us(_ template: String, _ day: Int) -> String {
+        F.formatted(template, day: day, locale: F.us)
+    }
+
     // Main artboard: Monday 9:30 PM, nothing left today.
     func testNothingLeftToday() {
         let result = content(at: F.date(5, 21, 30))
         guard case .nothingToday(let detail) = result.hero else { return XCTFail("expected nothingToday, got \(result.hero)") }
         XCTAssertEqual(F.squash(detail), "Next up tomorrow at 1:00 PM, in 15 h 30 min")
-        XCTAssertEqual(titles(result), ["Tomorrow / Tue, Oct 6", "Wednesday / Oct 7", "Thursday / Oct 8"])
-        XCTAssertEqual(ids(result.sections[0]), ["ooo", "lunch", "val", "plan"])
-        XCTAssertEqual(ids(result.sections[1]), ["rev", "one", "road"])
+        XCTAssertEqual(titles(result), ["Tomorrow / \(us("EEEdMMM", 6))", "Wednesday / \(us("dMMM", 7))", "Thursday / \(us("dMMM", 8))"])
+        XCTAssertEqual(result.sections.map(ids), [["ooo", "lunch", "val", "plan"], ["rev", "one", "road"], ["thu"]])
     }
 
-    func testDayHeadingsAreLocalized() {
-        let result = content(at: F.date(5, 21, 30), locale: F.gb)
-        XCTAssertEqual(titles(result), ["Tomorrow / Tue 6 Oct", "Wednesday / 7 Oct", "Thursday / 8 Oct"])
+    // en_GB: day before month and a 24-hour clock, e.g. "Tomorrow / Tue 6 Oct" and "Next up Mon 12 Oct at 09:00".
+    // ICU's punctuation (a comma after the weekday on macOS 14) comes from Foundation rather than being pinned.
+    func testDatesAndTimesFollowTheLocale() {
+        func gb(_ template: String, _ day: Int) -> String { F.formatted(template, day: day, locale: F.gb) }
+        XCTAssertEqual(titles(content(at: F.date(5, 21, 30), locale: F.gb)),
+                       ["Tomorrow / \(gb("EEEdMMM", 6))", "Wednesday / \(gb("dMMM", 7))", "Thursday / \(gb("dMMM", 8))"])
+        let nextWeek = content(at: F.date(5, 10), meetings: [F.nextMonday], locale: F.gb)
+        guard case .nothingToday(let detail) = nextWeek.hero else { return XCTFail("expected nothingToday, got \(nextWeek.hero)") }
+        XCTAssertEqual(F.squash(detail), "Next up \(gb("EEEdMMM", 12)) at 09:00", "a week ahead: the date, and a 24-hour time")
     }
 
     func testRowsFromTheDesign() {
-        let tuesday = content(at: F.date(5, 21, 30)).sections[0].rows
+        let tuesday = content(at: F.date(5, 21, 30)).sections.first?.rows ?? []
+        guard tuesday.count == 4 else { return XCTFail("expected Tuesday's 4 rows, got \(tuesday.map(\.id))") }
 
         let outOfOffice = tuesday[0]
         XCTAssertTrue(outOfOffice.isMuted)
@@ -67,8 +81,8 @@ final class PanelPresenterTests: XCTestCase {
         XCTAssertNil(card.progress)
         XCTAssertEqual(card.action, .directions(LocationFormatter.directionsURL(to: F.lunch.location!)!))
 
-        XCTAssertEqual(titles(result), ["Today", "Tomorrow / Wed, Oct 7", "Thursday / Oct 8"])
-        XCTAssertEqual(ids(result.sections[0]), ["ooo", "lunch", "val", "plan"], "Today lists the hero's meeting too")
+        XCTAssertEqual(titles(result), ["Today", "Tomorrow / \(us("EEEdMMM", 7))", "Thursday / \(us("dMMM", 8))"])
+        XCTAssertEqual(result.sections.first.map(ids), ["ooo", "lunch", "val", "plan"], "Today lists the hero's meeting too")
     }
 
     // Busy artboard: Tuesday 3:56 PM, a meeting starts in 4 minutes while another one runs.
@@ -80,11 +94,11 @@ final class PanelPresenterTests: XCTestCase {
         XCTAssertEqual(F.squash(card.overlap), "Overlaps Workshop, which runs until 7:30 PM")
         XCTAssertEqual(card.action, .join(F.meet))
 
-        XCTAssertEqual(titles(result), ["Now", "Today", "Tomorrow / Wed, Oct 7", "Thursday / Oct 8"])
-        XCTAssertEqual(ids(result.sections[0]), ["val"])
-        XCTAssertEqual(ids(result.sections[1]), ["plan"], "the starting-soon meeting is also listed under Today")
-        guard case .progress(let elapsed, let left) = result.sections[0].rows[0].detail else {
-            return XCTFail("expected progress, got \(String(describing: result.sections[0].rows[0].detail))")
+        XCTAssertEqual(titles(result), ["Now", "Today", "Tomorrow / \(us("EEEdMMM", 7))", "Thursday / \(us("dMMM", 8))"])
+        XCTAssertEqual(result.sections.prefix(2).map(ids), [["val"], ["plan"]], "the starting-soon meeting is also listed under Today")
+        let nowRow = result.sections.first?.rows.first
+        guard case .progress(let elapsed, let left) = nowRow?.detail else {
+            return XCTFail("expected progress, got \(String(describing: nowRow?.detail))")
         }
         XCTAssertEqual(elapsed, 56.0 / 270.0, accuracy: 0.0001)
         XCTAssertEqual(left, "3 h 34 min left")
@@ -101,10 +115,11 @@ final class PanelPresenterTests: XCTestCase {
         XCTAssertNil(card.overlap)
         XCTAssertEqual(card.action, .join(F.meet))
 
-        XCTAssertEqual(titles(result), ["Also now", "Tomorrow / Wed, Oct 7", "Thursday / Oct 8"])
-        XCTAssertEqual(ids(result.sections[0]), ["val"], "the meeting on the Now card isn't repeated")
-        guard case .progress(let elapsed, let left) = result.sections[0].rows[0].detail else {
-            return XCTFail("expected progress, got \(String(describing: result.sections[0].rows[0].detail))")
+        XCTAssertEqual(titles(result), ["Also now", "Tomorrow / \(us("EEEdMMM", 7))", "Thursday / \(us("dMMM", 8))"])
+        XCTAssertEqual(result.sections.first.map(ids), ["val"], "the meeting on the Now card isn't repeated")
+        let alsoNow = result.sections.first?.rows.first
+        guard case .progress(let elapsed, let left) = alsoNow?.detail else {
+            return XCTFail("expected progress, got \(String(describing: alsoNow?.detail))")
         }
         XCTAssertEqual(elapsed, 80.0 / 270.0, accuracy: 0.0001)
         XCTAssertEqual(left, "3 h 10 min left")
@@ -116,40 +131,41 @@ final class PanelPresenterTests: XCTestCase {
         XCTAssertEqual(card.meeting.id, "lunch")
         XCTAssertEqual(card.action, .directions(LocationFormatter.directionsURL(to: F.lunch.location!)!))
         XCTAssertEqual(titles(result).first, "Also now")
-        XCTAssertEqual(ids(result.sections[0]), ["ooo"])
-        XCTAssertTrue(result.sections[0].rows[0].isMuted)
-        XCTAssertNil(result.sections[0].rows[0].detail)
+        XCTAssertEqual(result.sections.first.map(ids), ["ooo"])
+        guard let row = result.sections.first?.rows.first else { return XCTFail("expected an Also now row") }
+        XCTAssertTrue(row.isMuted)
+        XCTAssertNil(row.detail)
 
         let afterLunch = content(at: F.date(6, 14, 10))
         guard case .next = afterLunch.hero else { return XCTFail("expected next, got \(afterLunch.hero)") }
         XCTAssertEqual(titles(afterLunch).prefix(2), ["Now", "Today"])
     }
 
-    func testNextUpBeyondTomorrowLeavesOutTheCountdown() {
-        let result = content(at: F.date(6, 20), meetings: [F.thursday])
-        guard case .nothingToday(let detail) = result.hero else { return XCTFail("expected nothingToday, got \(result.hero)") }
-        XCTAssertEqual(F.squash(detail), "Next up Thursday at 10:00 AM")
-        let empty = content(at: F.date(6, 20), meetings: [])
-        XCTAssertEqual(empty.hero, .nothingToday(detail: "Nothing in the next 7 days"))
-        XCTAssertTrue(empty.sections.isEmpty)
-    }
-
-    func testNextUpAWeekAheadShowsTheDate() {
-        func detail(_ meetings: [Meeting], locale: Locale = F.us) -> String? {
-            guard case .nothingToday(let detail) = content(at: F.date(5, 10), meetings: meetings, locale: locale).hero else { return nil }
-            return F.squash(detail)
+    // "No more meetings today": a countdown only within 24 h (see testNothingLeftToday), the weekday within
+    // the coming week, the date a week or more ahead.
+    func testNextUpDetail() {
+        let cases: [(now: Date, meetings: [Meeting], expected: String)] = [
+            (F.date(6, 20), [F.thursday], "Next up Thursday at 10:00 AM"),
+            (F.date(5, 10), [F.sunday], "Next up Sunday at 9:00 AM"),
+            (F.date(5, 10), [F.nextMonday], "Next up \(us("EEEdMMM", 12)) at 9:00 AM"),
+            (F.date(6, 20), [], "Nothing in the next 7 days"),
+        ]
+        for (now, meetings, expected) in cases {
+            let result = content(at: now, meetings: meetings)
+            guard case .nothingToday(let detail) = result.hero else {
+                XCTFail("expected nothingToday for \(expected), got \(result.hero)"); continue
+            }
+            XCTAssertEqual(F.squash(detail), expected)
         }
-        XCTAssertEqual(detail([F.nextMonday]), "Next up Mon, Oct 12 at 9:00 AM")
-        XCTAssertEqual(detail([F.nextMonday], locale: F.gb), "Next up Mon 12 Oct at 09:00")
-        XCTAssertEqual(detail([F.sunday]), "Next up Sunday at 9:00 AM")
-        XCTAssertEqual(titles(content(at: F.date(5, 10), meetings: [F.nextMonday])), ["Monday / Oct 12"])
+        XCTAssertEqual(content(at: F.date(6, 20), meetings: []).sections, [], "an empty store lists nothing")
     }
 
     func testLocationsThatAreNotPlaces() {
         let hybrid = Meeting(id: "h", title: "Hybrid", start: F.date(6, 9), end: F.date(6, 10), location: "Sala Retiro; Microsoft Teams Meeting")
         let bareLink = Meeting(id: "l", title: "Link", start: F.date(6, 11), end: F.date(6, 12), location: "meet.google.com/abc-defg-hij")
         let dialIn = Meeting(id: "p", title: "Call", start: F.date(6, 13), end: F.date(6, 14), location: "Tel: +34 600 123 456")
-        let rows = content(at: F.date(5, 21), meetings: [hybrid, bareLink, dialIn]).sections[0].rows
+        let rows = content(at: F.date(5, 21), meetings: [hybrid, bareLink, dialIn]).sections.first?.rows ?? []
+        guard rows.count == 3 else { return XCTFail("expected 3 rows, got \(rows.map(\.id))") }
 
         XCTAssertEqual(rows[0].detail, .location("Sala Retiro"))
         XCTAssertEqual(rows[0].action, .directions(LocationFormatter.directionsURL(to: "Sala Retiro")!))
@@ -205,30 +221,20 @@ final class PanelPresenterTests: XCTestCase {
         let result = content(at: F.date(6, 23, 59), meetings: [early, F.review])
         guard case .startingSoon(let card) = result.hero else { return XCTFail("expected startingSoon, got \(result.hero)") }
         XCTAssertEqual(card.meeting.id, "early")
-        XCTAssertEqual(titles(result), ["Tomorrow / Wed, Oct 7"])
-        XCTAssertEqual(ids(result.sections[0]), ["early", "rev"])
+        XCTAssertEqual(titles(result), ["Tomorrow / \(us("EEEdMMM", 7))"])
+        XCTAssertEqual(result.sections.map(ids), [["early", "rev"]])
     }
 
     func testOutOfOfficeRowsCanBeLeftOutOfTheList() {
-        let now = F.date(5, 21, 30)
-        let shown = PanelPresenter.content(meetings: F.week, alertable: F.week.filter { !$0.isOutOfOffice }, now: now, calendar: F.calendar, locale: F.us)
-        XCTAssertTrue(shown.sections.flatMap(\.rows).contains { $0.meeting.id == F.outOfOffice.id })
-
-        let hidden = PanelPresenter.content(
-            meetings: F.week, alertable: F.week.filter { !$0.isOutOfOffice }, now: now,
-            showsOutOfOffice: false, calendar: F.calendar, locale: F.us
-        )
-        XCTAssertFalse(hidden.sections.flatMap(\.rows).contains { $0.meeting.isOutOfOffice })
-        XCTAssertEqual(hidden.sections.flatMap(\.rows).count, shown.sections.flatMap(\.rows).count - 1)
+        let shown = content(at: F.date(5, 21, 30)).sections.flatMap(ids)
+        XCTAssertTrue(shown.contains(F.outOfOffice.id))
+        XCTAssertEqual(content(at: F.date(5, 21, 30), showsOutOfOffice: false).sections.flatMap(ids), shown.filter { $0 != F.outOfOffice.id })
     }
 
     func testTheStartingSoonCardFollowsTheMenuBarPillsWindow() {
-        let now = F.date(6, 12, 52)
-        let usual = PanelPresenter.content(meetings: F.week, alertable: F.alertable, now: now, calendar: F.calendar, locale: F.us)
+        let usual = content(at: F.date(6, 12, 52))
         guard case .next = usual.hero else { return XCTFail("expected next, got \(usual.hero)") }
-        let wider = PanelPresenter.content(
-            meetings: F.week, alertable: F.alertable, now: now, startingSoonWindow: 10 * 60, calendar: F.calendar, locale: F.us
-        )
+        let wider = content(at: F.date(6, 12, 52), startingSoonWindow: 10 * 60)
         guard case .startingSoon(let card) = wider.hero else { return XCTFail("expected startingSoon, got \(wider.hero)") }
         XCTAssertEqual(card.label, "Starts in 8 min")
     }
@@ -266,7 +272,7 @@ final class PanelPresenterTests: XCTestCase {
         XCTAssertTrue(state.isShown)
         XCTAssertFalse(state.isTodayAvailable)
         XCTAssertEqual(state.effective, .week)
-        XCTAssertEqual(filteredTitles(state), ["Tomorrow / Tue, Oct 6", "Wednesday / Oct 7", "Thursday / Oct 8"])
+        XCTAssertEqual(filteredTitles(state), ["Tomorrow / \(us("EEEdMMM", 6))", "Wednesday / \(us("dMMM", 7))", "Thursday / \(us("dMMM", 8))"])
     }
 
     func testDuringTheDaysLastMeetingTodayIsDimmed() {

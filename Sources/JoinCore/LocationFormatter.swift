@@ -46,11 +46,6 @@ public enum LocationFormatter {
         return "\(parts[0]) · \(locality)"
     }
 
-    /// True for a location that names a place, false for links, phone numbers and video services.
-    public static func isPhysicalPlace(_ location: String?) -> Bool {
-        physicalPlace(in: location) != nil
-    }
-
     /// The part of `location` that names a place, without the links, phone numbers and video services that
     /// share the field: "Sala Retiro; Microsoft Teams Meeting" → "Sala Retiro". Nil when nothing is left.
     public static func physicalPlace(in location: String?) -> String? {
@@ -62,11 +57,6 @@ public enum LocationFormatter {
         let places = segments.filter { !isVirtual($0) }
         if places.isEmpty { return nil }
         return places.count == segments.count ? text : places.joined(separator: "\n")
-    }
-
-    /// A meeting you go to rather than join: it has a place and no join link.
-    public static func isInPerson(_ meeting: Meeting) -> Bool {
-        meeting.joinURL == nil && isPhysicalPlace(meeting.location)
     }
 
     /// Apple Maps directions from the current location to `location`.

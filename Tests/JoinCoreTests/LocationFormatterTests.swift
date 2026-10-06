@@ -53,44 +53,44 @@ final class LocationFormatterTests: XCTestCase {
     }
 
     func testPhysicalPlaces() {
-        XCTAssertTrue(LocationFormatter.isPhysicalPlace("C. de Ruiz de Alarcón, 23, Retiro, 28014 Madrid, España"))
-        XCTAssertTrue(LocationFormatter.isPhysicalPlace("Conference Room A"))
-        XCTAssertFalse(LocationFormatter.isPhysicalPlace(nil))
-        XCTAssertFalse(LocationFormatter.isPhysicalPlace("   "))
-        XCTAssertFalse(LocationFormatter.isPhysicalPlace("https://zoom.us/j/123456"))
-        XCTAssertFalse(LocationFormatter.isPhysicalPlace("www.example.com/room"))
-        XCTAssertFalse(LocationFormatter.isPhysicalPlace("Zoom"))
-        XCTAssertFalse(LocationFormatter.isPhysicalPlace("Microsoft Teams Meeting"))
-        XCTAssertFalse(LocationFormatter.isPhysicalPlace("Google Meet"))
-        XCTAssertFalse(LocationFormatter.isPhysicalPlace("Online"))
-        XCTAssertTrue(LocationFormatter.isPhysicalPlace("Zoomarine, Algarve"), "keywords match whole words only")
+        XCTAssertTrue(isPlace("C. de Ruiz de Alarcón, 23, Retiro, 28014 Madrid, España"))
+        XCTAssertTrue(isPlace("Conference Room A"))
+        XCTAssertFalse(isPlace(nil))
+        XCTAssertFalse(isPlace("   "))
+        XCTAssertFalse(isPlace("https://zoom.us/j/123456"))
+        XCTAssertFalse(isPlace("www.example.com/room"))
+        XCTAssertFalse(isPlace("Zoom"))
+        XCTAssertFalse(isPlace("Microsoft Teams Meeting"))
+        XCTAssertFalse(isPlace("Google Meet"))
+        XCTAssertFalse(isPlace("Online"))
+        XCTAssertTrue(isPlace("Zoomarine, Algarve"), "keywords match whole words only")
     }
 
     func testLinksWithoutAScheme() {
-        XCTAssertFalse(LocationFormatter.isPhysicalPlace("meet.google.com/abc-defg-hij"))
-        XCTAssertFalse(LocationFormatter.isPhysicalPlace("teams.microsoft.com/l/meetup-join/19%3ameeting_abc%40thread.v2/0"))
-        XCTAssertFalse(LocationFormatter.isPhysicalPlace("zoom.us/j/123456789"))
-        XCTAssertFalse(LocationFormatter.isPhysicalPlace("example.com"))
-        XCTAssertTrue(LocationFormatter.isPhysicalPlace("Room 4.2"))
-        XCTAssertTrue(LocationFormatter.isPhysicalPlace("C. de Ruiz de Alarcón, 23"))
+        XCTAssertFalse(isPlace("meet.google.com/abc-defg-hij"))
+        XCTAssertFalse(isPlace("teams.microsoft.com/l/meetup-join/19%3ameeting_abc%40thread.v2/0"))
+        XCTAssertFalse(isPlace("zoom.us/j/123456789"))
+        XCTAssertFalse(isPlace("example.com"))
+        XCTAssertTrue(isPlace("Room 4.2"))
+        XCTAssertTrue(isPlace("C. de Ruiz de Alarcón, 23"))
     }
 
     func testPhoneNumbers() {
-        XCTAssertFalse(LocationFormatter.isPhysicalPlace("Tel: +34 600 123 456"))
-        XCTAssertFalse(LocationFormatter.isPhysicalPlace("+1 646-558-8656,,123456789#"))
-        XCTAssertFalse(LocationFormatter.isPhysicalPlace("tel:+34600123456"))
-        XCTAssertFalse(LocationFormatter.isPhysicalPlace("Phone: (415) 555-0132"))
-        XCTAssertTrue(LocationFormatter.isPhysicalPlace("28013"), "too short for a phone number")
-        XCTAssertTrue(LocationFormatter.isPhysicalPlace("Calle Mayor, 28013"))
+        XCTAssertFalse(isPlace("Tel: +34 600 123 456"))
+        XCTAssertFalse(isPlace("+1 646-558-8656,,123456789#"))
+        XCTAssertFalse(isPlace("tel:+34600123456"))
+        XCTAssertFalse(isPlace("Phone: (415) 555-0132"))
+        XCTAssertTrue(isPlace("28013"), "too short for a phone number")
+        XCTAssertTrue(isPlace("Calle Mayor, 28013"))
     }
 
     func testServiceNamesOnlyCountOnTheirOwn() {
-        XCTAssertFalse(LocationFormatter.isPhysicalPlace("Teams"))
-        XCTAssertFalse(LocationFormatter.isPhysicalPlace(" meet "))
-        XCTAssertFalse(LocationFormatter.isPhysicalPlace("Chime"))
-        XCTAssertFalse(LocationFormatter.isPhysicalPlace("GoToMeeting"))
-        XCTAssertTrue(LocationFormatter.isPhysicalPlace("Teams Room 3"))
-        XCTAssertTrue(LocationFormatter.isPhysicalPlace("Meeting Room 2"))
+        XCTAssertFalse(isPlace("Teams"))
+        XCTAssertFalse(isPlace(" meet "))
+        XCTAssertFalse(isPlace("Chime"))
+        XCTAssertFalse(isPlace("GoToMeeting"))
+        XCTAssertTrue(isPlace("Teams Room 3"))
+        XCTAssertTrue(isPlace("Meeting Room 2"))
     }
 
     func testHybridLocationsKeepThePlace() {
@@ -99,21 +99,6 @@ final class LocationFormatterTests: XCTestCase {
         XCTAssertEqual(LocationFormatter.physicalPlace(in: "Microsoft Teams Meeting; Sala Retiro; Tel: +34 600 123 456"), "Sala Retiro")
         XCTAssertEqual(LocationFormatter.physicalPlace(in: " Café Comercial\nGlorieta de Bilbao, 7 "), "Café Comercial\nGlorieta de Bilbao, 7")
         XCTAssertNil(LocationFormatter.physicalPlace(in: "Microsoft Teams Meeting; https://teams.microsoft.com/l/meetup-join/abc"))
-        XCTAssertNil(LocationFormatter.physicalPlace(in: nil))
-        XCTAssertTrue(LocationFormatter.isPhysicalPlace("Sala Retiro; Microsoft Teams Meeting"))
-    }
-
-    func testInPersonNeedsAPlaceAndNoJoinLink() {
-        let place = "C. de Ruiz de Alarcón, 23, Retiro, 28014 Madrid, España"
-        XCTAssertTrue(LocationFormatter.isInPerson(Meeting(id: "a", title: "A", start: .distantPast, end: .distantFuture, location: place)))
-        XCTAssertFalse(LocationFormatter.isInPerson(Meeting(
-            id: "b", title: "B", start: .distantPast, end: .distantFuture, location: place,
-            joinURL: URL(string: "https://meet.google.com/abc-defg-hij")
-        )))
-        XCTAssertFalse(LocationFormatter.isInPerson(Meeting(id: "c", title: "C", start: .distantPast, end: .distantFuture)))
-        XCTAssertFalse(LocationFormatter.isInPerson(Meeting(
-            id: "d", title: "D", start: .distantPast, end: .distantFuture, location: "meet.google.com/abc-defg-hij"
-        )))
     }
 
     func testDirectionsURL() {
@@ -128,4 +113,6 @@ final class LocationFormatterTests: XCTestCase {
         XCTAssertEqual(LocationFormatter.directionsURL(to: "A & B+C")?.absoluteString, "https://maps.apple.com/?daddr=A%20%26%20B%2BC")
         XCTAssertNil(LocationFormatter.directionsURL(to: " \n "))
     }
+
+    private func isPlace(_ text: String?) -> Bool { LocationFormatter.physicalPlace(in: text) != nil }
 }

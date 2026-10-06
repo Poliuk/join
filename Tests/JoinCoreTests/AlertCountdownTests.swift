@@ -2,6 +2,8 @@ import XCTest
 @testable import JoinCore
 
 final class AlertCountdownTests: XCTestCase {
+    typealias F = MenuBarFixtures
+
     let start = Date(timeIntervalSince1970: 1_800_000_000)
     var end: Date { start.addingTimeInterval(3 * 3600) }
 
@@ -38,39 +40,23 @@ final class AlertCountdownTests: XCTestCase {
     }
 
     func testSnoozeLabels() {
-        XCTAssertEqual(AlertCountdown.snoozeLabel(60), "1 min")
-        XCTAssertEqual(AlertCountdown.snoozeLabel(300), "5 min")
-        XCTAssertEqual(AlertCountdown.snoozeAccessibilityLabel(60), "Snooze 1 minute")
-        XCTAssertEqual(AlertCountdown.snoozeAccessibilityLabel(300), "Snooze 5 minutes")
-        XCTAssertEqual(AlertCountdown.snoozeLabel(30), "1 min", "Never 0 min")
-        XCTAssertEqual(AlertCountdown.snoozeAccessibilityLabel(30), "Snooze 1 minute")
+        // Seconds to whole minutes, never 0; the wording itself is SettingsOptions' (testDurationTitles).
+        let cases: [(seconds: TimeInterval, label: String, spoken: String)] = [
+            (30, "1 min", "Snooze 1 minute"), (60, "1 min", "Snooze 1 minute"),
+            (300, "5 min", "Snooze 5 minutes"), (3600, "1 hr", "Snooze 1 hour"),
+        ]
+        for c in cases {
+            XCTAssertEqual(AlertCountdown.snoozeLabel(c.seconds), c.label, "\(c.seconds)s")
+            XCTAssertEqual(AlertCountdown.snoozeAccessibilityLabel(c.seconds), c.spoken, "\(c.seconds)s")
+        }
+        let presets = SettingsOptions.snoozeMinutes.map { TimeInterval($0 * 60) }
+        XCTAssertEqual(Array(SettingsOptions.alertOffers(snoozeDurations: presets).dropLast()),
+                       presets.map(AlertCountdown.snoozeLabel), "Settings' chips preview the alert's buttons")
+    }
 
-        var calendar = Calendar(identifier: .gregorian)
-        calendar.timeZone = TimeZone(identifier: "UTC")!
-        let twoPM = calendar.date(from: DateComponents(year: 2026, month: 10, day: 5, hour: 14))!
-        let locale = Locale(identifier: "en_US")
+    func testSnoozeUntilStartLabels() {
         XCTAssertEqual(AlertCountdown.snoozeUntilStartLabel, "At event start")
-        XCTAssertEqual(
-            squashWhitespace(AlertCountdown.snoozeUntilStartAccessibilityLabel(twoPM, locale: locale, timeZone: calendar.timeZone)),
-            "Snooze until the event starts at 2:00 PM"
-        )
-    }
-
-    func testSnoozeLabelsMatchTheSettingsWording() {
-        XCTAssertEqual(AlertCountdown.snoozeLabel(3600), "1 hr")
-        XCTAssertEqual(AlertCountdown.snoozeAccessibilityLabel(3600), "Snooze 1 hour")
-        XCTAssertEqual(AlertCountdown.snoozeLabel(7200), "2 hr")
-        XCTAssertEqual(AlertCountdown.snoozeAccessibilityLabel(7200), "Snooze 2 hours")
-        XCTAssertEqual(AlertCountdown.snoozeLabel(90 * 60), "90 min")
-        XCTAssertEqual(AlertCountdown.snoozeAccessibilityLabel(90 * 60), "Snooze 90 minutes")
-
-        let durations: [TimeInterval] = SettingsOptions.snoozeMinutes.map { TimeInterval($0 * 60) }
-        let offers = SettingsOptions.alertOffers(snoozeDurations: durations)
-        XCTAssertEqual(Array(offers.prefix(durations.count)), durations.map(AlertCountdown.snoozeLabel), "Settings' chips preview the alert's buttons")
-        XCTAssertEqual(offers.last, AlertCountdown.snoozeUntilStartLabel)
-    }
-
-    private func squashWhitespace(_ text: String) -> String {
-        text.replacingOccurrences(of: "\\s+", with: " ", options: .regularExpression)
+        XCTAssertEqual(F.squash(AlertCountdown.snoozeUntilStartAccessibilityLabel(F.date(5, 14), locale: F.us, timeZone: F.calendar.timeZone)),
+                       "Snooze until the event starts at 2:00 PM")
     }
 }

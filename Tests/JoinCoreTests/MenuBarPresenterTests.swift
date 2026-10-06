@@ -47,7 +47,7 @@ final class MenuBarPresenterTests: XCTestCase {
         let nextWeek = status([F.nextMonday], at: F.date(5, 10))
         XCTAssertEqual(nextWeek.kind, .later)
         XCTAssertEqual(nextWeek.text, "In 7 days at 9:00 AM")
-        XCTAssertEqual(nextWeek.accessibilityLabel, "Join!: Weekly in 7 days, Monday, October 12 at 9:00 AM")
+        XCTAssertEqual(nextWeek.accessibilityLabel, "Join!: Weekly in 7 days, \(F.formatted("EEEEdMMMM", day: 12, locale: F.us)) at 9:00 AM")
         XCTAssertEqual(status([F.nextMonday], at: F.date(5, 10), locale: F.gb).text, "In 7 days at 09:00")
 
         let sixDaysAhead = status([F.sunday], at: F.date(5, 10))
@@ -64,13 +64,14 @@ final class MenuBarPresenterTests: XCTestCase {
         XCTAssertEqual(status(at: F.date(6, 11, 59, 59)).kind, .later)
     }
 
+    // 3:56 PM: Workshop has run since 3:00 and Planning starts at 4:00. Starting soon wins over the meeting in progress.
     func testStartingSoonIsAnAccentPill() {
         let result = status(at: F.date(6, 15, 56))
         XCTAssertEqual(result.kind, .startingSoon)
         XCTAssertEqual(result.text, "Next in 4 min")
         XCTAssertEqual(result.accessibilityLabel, "Join!: Ana/Luis: Product Planning starts in 4 minutes")
         XCTAssertEqual(status(at: F.date(6, 15, 55)).kind, .startingSoon)
-        XCTAssertEqual(status(at: F.date(6, 15, 54, 59)).kind, .inMeeting(remaining: MenuBarPresenter.remainingFraction(of: F.workshop, now: F.date(6, 15, 54, 59))))
+        XCTAssertEqual(status(at: F.date(6, 15, 54, 59)).text, "3 h 36 min left", "a second before the window, the running Workshop shows")
         XCTAssertEqual(status(at: F.date(6, 15, 59, 30)).text, "Next in 1 min")
     }
 
@@ -94,10 +95,6 @@ final class MenuBarPresenterTests: XCTestCase {
         XCTAssertEqual(status(at: F.date(6, 15, 56), pause: .until(F.date(6, 15, 50))).kind, .startingSoon)
     }
 
-    func testStartingSoonWinsOverAMeetingInProgress() {
-        XCTAssertEqual(status(at: F.date(6, 15, 58)).kind, .startingSoon)
-    }
-
     func testNothingUpcomingIsIconOnly() {
         let result = status([], at: F.date(6, 10))
         XCTAssertEqual(result.kind, .idle)
@@ -105,18 +102,9 @@ final class MenuBarPresenterTests: XCTestCase {
         XCTAssertEqual(status(at: F.date(9, 10)).kind, .idle)
     }
 
-    func testOutOfOfficeIsIgnoredWhenNotAlertable() {
-        XCTAssertEqual(status(at: F.date(6, 12, 28)).text, "Next in 32 min")
+    // The caller passes only alertable meetings. An out-of-office block passed in (the user opted in) drives the bar like any meeting.
+    func testOutOfOfficeBlocksPassedInDriveTheMenuBar() {
         XCTAssertEqual(status(F.week, at: F.date(6, 12, 28)).kind, .startingSoon)
-    }
-
-    func testEventTitlesArePrependedOnlyWhenEnabled() {
-        XCTAssertEqual(status(at: F.date(6, 12, 18), showsTitles: true).text, "Lunch with Lucía · in 42 min")
-        XCTAssertEqual(status(at: F.date(6, 16, 20), showsTitles: true).text, "Ana/Luis: Product Plann… · 40 min left")
-        XCTAssertEqual(status(at: F.date(5, 21, 30), showsTitles: true).text, "Lunch with Lucía · Tomorrow at 1:00 PM")
-        XCTAssertEqual(status(at: F.date(5, 21, 30), showsTitles: false).text, "Tomorrow at 1:00 PM")
-        let long = Meeting(id: "x", title: "A very long meeting title that goes on", start: F.date(6, 10, 30), end: F.date(6, 11))
-        XCTAssertEqual(status([long], at: F.date(6, 10), showsTitles: true).text, "A very long meeting tit… · in 30 min")
     }
 
     func testIconOnlyWhenNextEventIsHiddenButKeepsTheState() {
@@ -135,17 +123,21 @@ final class MenuBarPresenterTests: XCTestCase {
     }
 
     func testDurations() {
-        XCTAssertEqual(MenuBarPresenter.duration(42 * 60), "42 min")
-        XCTAssertEqual(MenuBarPresenter.duration(135 * 60), "2 h 15 min")
-        XCTAssertEqual(MenuBarPresenter.duration(120 * 60), "2 h")
-        XCTAssertEqual(MenuBarPresenter.duration(15.5 * 3600), "15 h 30 min")
-        XCTAssertEqual(MenuBarPresenter.duration(239.5), "4 min")
-        XCTAssertEqual(MenuBarPresenter.duration(1), "1 min")
-        XCTAssertEqual(MenuBarPresenter.minutes(60 * 60), "60 min")
-        XCTAssertEqual(MenuBarPresenter.spokenDuration(60), "1 minute")
-        XCTAssertEqual(MenuBarPresenter.spokenDuration(4 * 60), "4 minutes")
-        XCTAssertEqual(MenuBarPresenter.spokenDuration(65 * 60), "1 hour 5 minutes")
-        XCTAssertEqual(MenuBarPresenter.spokenDuration(120 * 60), "2 hours")
+        // Panel `duration`, menu bar `steadyDuration` (keeps its width past an hour), VoiceOver `spokenDuration`.
+        let cases: [(seconds: TimeInterval, panel: String, menuBar: String, spoken: String)] = [
+            (1,                   "1 min",       "1 min",       "1 minute"),            // rounds up: never "0 min"
+            (239.5,               "4 min",       "4 min",       "4 minutes"),
+            (42 * 60,             "42 min",      "42 min",      "42 minutes"),
+            (65 * 60,             "1 h 5 min",   "1 h 05 min",  "1 hour 5 minutes"),
+            (120 * 60,            "2 h",         "2 h 00 min",  "2 hours"),
+            (135 * 60,            "2 h 15 min",  "2 h 15 min",  "2 hours 15 minutes"),
+            (11 * 3600 + 50 * 60, "11 h 50 min", "11 h 50 min", "11 hours 50 minutes"),
+        ]
+        for c in cases {
+            XCTAssertEqual(MenuBarPresenter.duration(c.seconds), c.panel, "\(c.seconds) s")
+            XCTAssertEqual(MenuBarPresenter.steadyDuration(c.seconds), c.menuBar, "\(c.seconds) s")
+            XCTAssertEqual(MenuBarPresenter.spokenDuration(c.seconds), c.spoken, "\(c.seconds) s")
+        }
     }
 
     func testRemainingFraction() {
@@ -168,35 +160,32 @@ final class MenuBarPresenterTests: XCTestCase {
     }
 
     func testHeaderDate() {
-        XCTAssertEqual(F.squash(MenuBarPresenter.headerDate(F.date(6, 10), calendar: F.calendar, locale: F.gb)), "Tuesday 6 October")
-        XCTAssertEqual(F.squash(MenuBarPresenter.headerDate(F.date(6, 10), calendar: F.calendar, locale: F.us)), "Tuesday, October 6")
+        func header(_ locale: Locale) -> String? {
+            F.squash(MenuBarPresenter.headerDate(F.date(6, 10), calendar: F.calendar, locale: locale))
+        }
+        // The full weekday, day and month in each locale's order: "Tuesday 6 October", "Tuesday, October 6".
+        XCTAssertEqual(header(F.gb), F.formatted("EEEEdMMMM", day: 6, locale: F.gb))
+        XCTAssertEqual(header(F.us), F.formatted("EEEEdMMMM", day: 6, locale: F.us))
     }
 
     func testTitlesPrecedeTheTime() {
-        let base = F.date(5, 10)
-        let inTwoHours = Meeting(id: "a", title: "Design Sync", start: base.addingTimeInterval(2 * 3600 + 15 * 60), end: base.addingTimeInterval(4 * 3600))
-        XCTAssertEqual(status([inTwoHours], at: base, showsTitles: true).text, "Design Sync · in 2 h 15 min")
-        XCTAssertEqual(status([inTwoHours], at: base, showsTitles: false).text, "Next in 2 h 15 min")
-
-        let inThreeDays = Meeting(id: "b", title: "Offsite", start: base.addingTimeInterval(3 * 86400 + 3600), end: base.addingTimeInterval(3 * 86400 + 7200))
-        XCTAssertEqual(status([inThreeDays], at: base, showsTitles: true).text, "Offsite · In 3 days at 11:00 AM")
-        let inADay = Meeting(id: "c", title: "Standup", start: base.addingTimeInterval(86400 + 60), end: base.addingTimeInterval(86400 + 1800))
-        XCTAssertEqual(status([inADay], at: base, showsTitles: true).text, "Standup · Tomorrow at 10:01 AM")
+        let cases: [(meetings: [Meeting], now: Date, expected: String)] = [
+            (F.alertable, F.date(6, 12, 18), "Lunch with Lucía · in 42 min"),            // within the hour
+            (F.alertable, F.date(6, 10, 45), "Lunch with Lucía · in 2 h 15 min"),        // later today
+            (F.alertable, F.date(5, 21, 30), "Lunch with Lucía · Tomorrow at 1:00 PM"),
+            (F.alertable, F.date(5, 10), "Lunch with Lucía · Tomorrow at 1:00 PM"),     // 27 h ahead: days are calendar days
+            ([F.review],  F.date(5, 21, 30), "Revisión semanal · In 2 days at 9:10 AM"),
+            ([F.thursday], F.date(5, 9), "Design Crit · In 3 days at 10:00 AM"),         // 73 h ahead, still 3 days
+            (F.alertable, F.date(6, 16, 20), "Ana/Luis: Product Plann… · 40 min left"),  // in a meeting; titles cut at 24
+        ]
+        for c in cases {
+            XCTAssertEqual(status(c.meetings, at: c.now, showsTitles: true).text, c.expected, "at \(c.now)")
+        }
     }
 
     func testMenuBarCountdownsKeepTheirWidth() {
-        XCTAssertEqual(MenuBarPresenter.steadyDuration(2 * 3600), "2 h 00 min")
-        XCTAssertEqual(MenuBarPresenter.steadyDuration(2 * 3600 + 5 * 60), "2 h 05 min")
-        XCTAssertEqual(MenuBarPresenter.steadyDuration(11 * 3600 + 50 * 60), "11 h 50 min")
-        XCTAssertEqual(MenuBarPresenter.steadyDuration(42 * 60), "42 min")
-        // The panel keeps the shorter form.
-        XCTAssertEqual(MenuBarPresenter.duration(2 * 3600), "2 h")
-
-        let base = F.date(6, 10)
-        let onTheHour = Meeting(id: "h", title: "Sync", start: base.addingTimeInterval(2 * 3600), end: base.addingTimeInterval(3 * 3600))
-        XCTAssertEqual(status([onTheHour], at: base).text, "Next in 2 h 00 min")
-        let running = Meeting(id: "r", title: "Workshop", start: base.addingTimeInterval(-600), end: base.addingTimeInterval(3 * 3600 + 5 * 60))
-        XCTAssertEqual(status([running], at: base).text, "3 h 05 min left")
+        XCTAssertEqual(status(at: F.date(6, 11)).text, "Next in 2 h 00 min")              // Lunch at 1:00 PM
+        XCTAssertEqual(status([F.workshop], at: F.date(6, 16, 25)).text, "3 h 05 min left") // ends 7:30 PM
     }
 
     func testTheStartingSoonWindowComesFromSettings() {

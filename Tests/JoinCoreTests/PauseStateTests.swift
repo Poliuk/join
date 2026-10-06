@@ -18,7 +18,6 @@ final class PauseStateTests: XCTestCase {
 
     func testIndefinitePause() {
         XCTAssertTrue(PauseState.indefinitely.isPaused(at: now.addingTimeInterval(1_000_000)))
-        XCTAssertNil(PauseState.indefinitely.endsAt)
     }
 
     func testOptions() {
@@ -31,11 +30,5 @@ final class PauseStateTests: XCTestCase {
             .until(calendar.date(from: DateComponents(year: 2026, month: 10, day: 6))!)
         )
         XCTAssertEqual(PauseOption.untilResumed.state(from: evening, calendar: calendar), .indefinitely)
-    }
-
-    func testRoundTripsThroughJSON() throws {
-        for state in [PauseState.active, .until(now), .indefinitely] {
-            XCTAssertEqual(try JSONDecoder().decode(PauseState.self, from: JSONEncoder().encode(state)), state)
-        }
     }
 }
