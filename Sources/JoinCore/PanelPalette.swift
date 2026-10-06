@@ -4,7 +4,8 @@ import Foundation
 /// known surface whatever is behind the window: clear glass let wallpapers and windows through at any
 /// brightness, and the old grays, tuned for a solid panel, fell to 1–2:1 on it. Five inks replace them.
 /// Each keeps 4.5:1 on the frost over the brightest dark glass and the darkest light glass measured on
-/// screen (`darkGlassEnvelope`, `lightGlassEnvelope`).
+/// screen (`darkGlassEnvelope`, `lightGlassEnvelope`). The frost is light enough to keep the glass
+/// showing, so a backdrop brighter (dark mode) or darker (light mode) than those can dip below that.
 public struct PanelPalette: Equatable, Sendable {
     /// Header date, meeting titles, button labels, row icons.
     public var primary: RGBA
@@ -25,17 +26,18 @@ public struct PanelPalette: Equatable, Sendable {
     /// The hero card. In light mode it's white, away from the dark text, so it lifts the text's contrast.
     public var card: RGBA
 
-    /// Frost opacity over Liquid Glass.
-    public static let frostOpacity = 0.70
+    /// Frost opacity over Liquid Glass: half the glass still shows. Chosen on screen; 70% kept more
+    /// contrast margin.
+    public static let frostOpacity = 0.50
     /// Frost opacity with Increase Contrast on. Reduce Transparency makes the frost opaque.
     public static let increasedContrastFrostOpacity = 0.88
     /// Frost opacity over the pre-Liquid Glass menu material, which is already thick.
     public static let legacyMaterialFrostOpacity = 0.40
 
-    /// The lightest glass seen behind dark-mode text (over white windows and bright wallpaper) and the
-    /// darkest behind light-mode text (over dark windows), with some margin.
-    public static let darkGlassEnvelope = RGBA(rgb: 0x8B8B8B)
-    public static let lightGlassEnvelope = RGBA(rgb: 0x808080)
+    /// The lightest glass measured behind dark-mode text (over a white window) and the darkest behind
+    /// light-mode text (over a dark window), on screenshots of the panel on macOS 27.
+    public static let darkGlassEnvelope = RGBA(rgb: 0x7A7A7A)
+    public static let lightGlassEnvelope = RGBA(rgb: 0x8D8E8F)
 
     // Fills, as opacities of `ink`. They match the system fills (systemFill, secondarySystemFill,
     // tertiarySystemFill, separatorColor) but stay fixed, so their contrast is predictable.
@@ -57,9 +59,9 @@ public struct PanelPalette: Equatable, Sendable {
             return PanelPalette(
                 primary: RGBA(rgb: increasedContrast ? 0xFFFFFF : 0xF5F5F7),
                 strong: RGBA(rgb: increasedContrast ? 0xF5F5F7 : 0xEBEBF0),
-                secondary: RGBA(rgb: increasedContrast ? 0xE0E0E5 : 0xC6C6CC),
-                tertiary: RGBA(rgb: increasedContrast ? 0xD2D2D7 : 0xBCBCC2),
-                warning: RGBA(rgb: increasedContrast ? 0xFFC46E : 0xF5B65E),
+                secondary: RGBA(rgb: increasedContrast ? 0xE0E0E5 : 0xCCCCD1),
+                tertiary: RGBA(rgb: increasedContrast ? 0xD2D2D7 : 0xC8C8CD),
+                warning: RGBA(rgb: increasedContrast ? 0xFFC46E : 0xF7C37B),
                 mutedBar: RGBA(rgb: 0x6E6E73),
                 frost: RGBA(rgb: 0x1E1E20),
                 ink: .white,
@@ -70,8 +72,8 @@ public struct PanelPalette: Equatable, Sendable {
             primary: RGBA(rgb: increasedContrast ? 0x000000 : 0x1D1D1F),
             strong: RGBA(rgb: increasedContrast ? 0x1D1D1F : 0x2A2A2E),
             secondary: RGBA(rgb: increasedContrast ? 0x38383D : 0x4D4D52),
-            tertiary: RGBA(rgb: increasedContrast ? 0x3E3E43 : 0x545459),
-            warning: RGBA(rgb: increasedContrast ? 0x6E3800 : 0x854400),
+            tertiary: RGBA(rgb: increasedContrast ? 0x3E3E43 : 0x4B4B4F),
+            warning: RGBA(rgb: increasedContrast ? 0x6E3800 : 0x804100),
             mutedBar: RGBA(rgb: 0xA2A4AA),
             frost: RGBA(rgb: 0xFAFAFC),
             ink: .black,
@@ -86,18 +88,17 @@ public struct PanelPalette: Equatable, Sendable {
 
     /// How strongly the starting-soon card is tinted with `accent`. The tint sits on the regular card: in
     /// light mode that's white, and 12% keeps the card's text above 4.5:1 for every accent. In dark mode
-    /// it's up to 10%, less for bright accents (yellow, orange, green), until the card's text reads at
-    /// 4.5:1 over the brightest glass; the accent border still marks the card.
+    /// it's up to 10%, less for bright accents (yellow, orange, green), down to none, until the card's
+    /// text reads at 4.5:1 over the brightest glass; the accent border still marks the card.
     public func startingSoonTint(accent: RGBA, dark: Bool) -> Double {
         guard dark else { return 0.12 }
         let cardSurface = card.composited(over: surface(over: Self.darkGlassEnvelope))
-        var tint = 0.10
-        while tint > 0.031 {
+        for percent in stride(from: 10, to: 0, by: -1) {
+            let tint = Double(percent) / 100
             let tinted = accent.withAlpha(tint).composited(over: cardSurface)
-            if [primary, secondary, warning].allSatisfy({ $0.contrastRatio(to: tinted) >= 4.5 }) { break }
-            tint -= 0.01
+            if [primary, secondary, warning].allSatisfy({ $0.contrastRatio(to: tinted) >= 4.5 }) { return tint }
         }
-        return tint
+        return 0
     }
 
     /// The starting-soon card over `surface`: the regular card, then the accent tint.
