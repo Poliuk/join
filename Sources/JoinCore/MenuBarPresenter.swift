@@ -38,7 +38,8 @@ public enum MenuBarPresenter {
     public static let withinHourWindow: TimeInterval = 60 * 60
     public static let maxTitleLength = 24
 
-    /// Precedence: paused > starting soon > in a meeting > within the hour > later.
+    /// Precedence: paused > starting soon > in a meeting > within the hour > later, among the meetings
+    /// in `focus`: a Maybe or unanswered meeting in progress steps aside for one you're attending inside it.
     /// `meetings` are the alertable ones: out-of-office blocks never drive the menu bar unless the user opted in.
     public static func status(
         meetings: [Meeting],
@@ -53,6 +54,7 @@ public enum MenuBarPresenter {
         if pauseState.isPaused(at: now) {
             return MenuBarStatus(kind: .paused, text: nil, accessibilityLabel: "Join!: reminders paused")
         }
+        let meetings = focus(meetings, now: now)
 
         /// A countdown without a title reads "Next in 42 min"; with a title, the title says what's next.
         func compose(_ kind: MenuBarStatus.Kind, _ text: String, meeting: Meeting, spoken: String, isCountdown: Bool = false) -> MenuBarStatus {
@@ -99,6 +101,20 @@ public enum MenuBarPresenter {
         }
         let spokenDay = relativeDay(next.start, now: now, calendar: calendar, locale: locale, spoken: true)
         return compose(.later, "In \(dayCount) days at \(time)", meeting: next, spoken: "in \(dayCount) days, \(spokenDay) at \(time)")
+    }
+
+    /// The meetings the menu bar and the panel's card choose from. A Maybe or unanswered meeting that's
+    /// already in progress steps aside while a meeting you're attending overlaps it and is on now or starts
+    /// within the hour: a long tentative block gives way to the call you accepted inside it, and comes back
+    /// when nothing you've accepted is that close. Before it starts it counts like any meeting (its alert
+    /// fires, so it keeps its pill), and meetings that clash with nothing you've accepted are untouched.
+    public static func focus(_ meetings: [Meeting], now: Date) -> [Meeting] {
+        let horizon = now.addingTimeInterval(withinHourWindow)
+        let attending = meetings.filter { $0.isAttending && !$0.hasEnded(at: now) && $0.start <= horizon }
+        return meetings.filter { meeting in
+            meeting.isAttending || !meeting.isOngoing(at: now)
+                || !attending.contains { $0.start < meeting.end && meeting.start < $0.end }
+        }
     }
 
     /// The earliest meeting that hasn't started yet.

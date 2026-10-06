@@ -302,4 +302,36 @@ final class PanelPresenterTests: XCTestCase {
         let result = content(at: F.date(6, 15, 56))
         XCTAssertEqual(result.sections.map(\.kind), [.today, .today, .later, .later])
     }
+
+    // The card picks like the menu bar: the accepted call at 4:00 PM, not the Maybe block running since 3:00,
+    // which is listed under Now (not "Also now", since it isn't the card's).
+    func testTheCardPicksTheAcceptedMeetingOverAMaybeBlock() {
+        var maybeWorkshop = F.workshop
+        maybeWorkshop.myStatus = .tentative
+        let result = content(at: F.date(6, 15, 13), meetings: [maybeWorkshop, F.planning])
+        guard case .next(let card) = result.hero else { return XCTFail("expected next, got \(result.hero)") }
+        XCTAssertEqual(card.meeting.id, "plan")
+        XCTAssertEqual(result.sections.first?.title, "Now")
+        XCTAssertEqual(result.sections.first.map(ids), ["val"])
+
+        let duringTheCall = content(at: F.date(6, 16, 20), meetings: [maybeWorkshop, F.planning])
+        guard case .now(let nowCard) = duringTheCall.hero else { return XCTFail("expected now, got \(duringTheCall.hero)") }
+        XCTAssertEqual(nowCard.meeting.id, "plan")
+        XCTAssertEqual(duringTheCall.sections.first?.title, "Also now")
+        XCTAssertEqual(duringTheCall.sections.first.map(ids), ["val"])
+    }
+
+    // An accepted Workshop with a Maybe call inside it: the call still gets the starting-soon card (its alert
+    // fires), but once it runs, the card goes back to the accepted Workshop.
+    func testAMaybeCallInsideAnAcceptedMeetingGetsTheStartingSoonCardOnly() {
+        var maybePlanning = F.planning
+        maybePlanning.myStatus = .tentative
+        let soon = content(at: F.date(6, 15, 56), meetings: [F.workshop, maybePlanning])
+        guard case .startingSoon(let soonCard) = soon.hero else { return XCTFail("expected startingSoon, got \(soon.hero)") }
+        XCTAssertEqual(soonCard.meeting.id, "plan")
+        let running = content(at: F.date(6, 16, 20), meetings: [F.workshop, maybePlanning])
+        guard case .now(let nowCard) = running.hero else { return XCTFail("expected now, got \(running.hero)") }
+        XCTAssertEqual(nowCard.meeting.id, "val")
+        XCTAssertEqual(running.sections.first.map(ids), ["plan"], "the Maybe call is listed under Also now")
+    }
 }

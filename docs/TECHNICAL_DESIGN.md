@@ -74,7 +74,7 @@ struct Meeting: Identifiable, Hashable, Sendable, Codable {
     var location: String?
     var notes: String?
     var url: URL?
-    var myStatus: ParticipationStatus    // accepted, tentative, declined, unknown
+    var myStatus: ParticipationStatus    // accepted (also organized events, and events without attendees on calendars you can edit), tentative, declined, unknown (not answered, not invited, or someone else's calendar)
     var joinURL: URL?                    // filled by MeetingLinkDetector
     var isOutOfOffice: Bool              // filled by OutOfOfficeDetector (§9a)
 }
@@ -292,7 +292,7 @@ Presets (`AlertAppearancePreset`):
 
 `StatusItemController` owns an `NSStatusItem` and a `MenuBarPanelWindow`. SwiftUI's `MenuBarExtra` was used first and dropped: its window grows with its content but never shrinks, and it can't be closed programmatically. An `NSPopover` replaced it until the redesign, which called for a borderless panel with its own corners and material and no arrow. SwiftUI still requires one scene, so `JoinApp` declares a `MenuBarExtra` with `isInserted: .constant(false)`, which keeps SwiftUI's standard Edit menu (copy and paste in text fields) without adding UI.
 
-**Status item.** `MenuBarPresenter.status(...)` (JoinCore) returns a `MenuBarStatus`: a kind, optional text and an accessibility label. Its inputs are the alertable meetings (so out-of-office blocks count only when the user opted in), `now`, the `PauseState`, `menuBarShowsNextEvent`, `menuBarShowsEventTitles` and the starting-soon window (`startingSoonPill.window`, 5 minutes by default). Precedence: paused > starting soon > in a meeting > within the hour > later.
+**Status item.** `MenuBarPresenter.status(...)` (JoinCore) returns a `MenuBarStatus`: a kind, optional text and an accessibility label. Its inputs are the alertable meetings (so out-of-office blocks count only when the user opted in), `now`, the `PauseState`, `menuBarShowsNextEvent`, `menuBarShowsEventTitles` and the starting-soon window (`startingSoonPill.window`, 5 minutes by default). Precedence: paused > starting soon > in a meeting > within the hour > later, among the meetings `MenuBarPresenter.focus` keeps: a Maybe or unanswered meeting already in progress steps aside while a meeting you're attending (accepted, your own on a calendar you can edit, or organized by you) overlaps it and is on now or starts within the hour. So a long Maybe block in progress gives way to the call you accepted inside it ("Next in 47 min", not "4 h 17 min left") and comes back when nothing you've accepted is that close. Before it starts, a Maybe or unanswered meeting counts like any other, since its alert fires (a Maybe call inside an accepted meeting still gets its pill), and one that clashes with nothing you've accepted keeps its pill, ring and card. The user asked for this, after In Your Face; declined events never get this far, since the calendar service drops them.
 
 | Kind | When | Drawn as |
 |---|---|---|
@@ -321,7 +321,7 @@ Presets (`AlertAppearancePreset`):
 
 - **Header:** today's date ("Tuesday, 6 October", localized), a "Fixture" badge in fixture runs (§12), the bell button and the gear menu. The panel window's accessible name is "Join! meetings".
 - **Paused bar**, while paused: "Reminders paused until 11:50 AM", "… until tomorrow" or "Reminders paused", with **Resume**.
-- **Hero**, exactly one, chosen from the alertable meetings:
+- **Hero**, exactly one, chosen from the alertable meetings the way the status item chooses (`MenuBarPresenter.focus`: a Maybe or unanswered meeting in progress steps aside for one you're attending inside it):
   - **Starting soon**, when the next start is within the starting-soon window, the same as the menu bar pill's (5 minutes by default): accent-tinted card, "Starts in 4 min", accent button. Wins over Now.
   - **Now**, the meeting you are in: "Now · 40 min left", a progress bar in the calendar color, accent button.
   - **Next**, the next meeting later today: neutral card, "Next · in 2 h 15 min", neutral button.
@@ -489,13 +489,14 @@ Bundle id `com.poliuk.join`, `LSUIElement = YES`.
   | `later` | an in-person appointment in 2 h 15 min, then a video call |
   | `busy` | one call started 56 min ago; another starts in 4 min |
   | `meeting` | in two overlapping calls |
+  | `maybe` | a Maybe block started 18 min ago; a call you accepted starts in 47 min, and drives the menu bar and the card |
   | `denied` | calendar access denied, so the permission prompts show |
 
   `JOIN_SETTINGS_MAX_HEIGHT=<points>` (fixture runs only) caps the Settings window's content height, to check the scrolling layout of a short screen on a tall one.
 
   `JOIN_FIXTURE_REGULAR=1` (fixture runs only) gives Join! a Dock icon and a menu bar of its own, so UI automation tools that only see regular apps can click through Settings. Some bugs only show up with real clicks, not with the script hooks below.
 
-  Every scenario has the same following days: an out-of-office block, an in-person appointment, two overlapping calls, and more meetings on the two days after. Five calendars in two accounts fill the Calendars pane. Times are relative to launch, rounded to the minute. Only these five names turn fixture mode on; any other value is logged and ignored, so a typo launches the real app. A fixture run uses its own defaults domain (`com.poliuk.join.fixture`), so it can't change real settings, never starts the alert scheduler, so it can't put an alert on screen by itself, and leaves the login item alone. It shows a "Fixture" marker in the panel header and the Settings title, and it quits after two hours so a forgotten one can't silence real alerts for long. Show Demo Alert still works. Quit a running Join! first: `open` hands the request to the running copy instead of starting a new one, and the variable is lost.
+  Every scenario has the same following days: an out-of-office block, an in-person appointment, two overlapping calls, and more meetings on the two days after. Five calendars in two accounts fill the Calendars pane. Times are relative to launch, rounded to the minute. Only these six names turn fixture mode on; any other value is logged and ignored, so a typo launches the real app. A fixture run uses its own defaults domain (`com.poliuk.join.fixture`), so it can't change real settings, never starts the alert scheduler, so it can't put an alert on screen by itself, and leaves the login item alone. It shows a "Fixture" marker in the panel header and the Settings title, and it quits after two hours so a forgotten one can't silence real alerts for long. Show Demo Alert still works. Quit a running Join! first: `open` hands the request to the running copy instead of starting a new one, and the variable is lost.
 - **Script hooks.** To drive a fixture run from scripts without clicking, `AppDelegate` listens for distributed notifications named `com.poliuk.join.fixture.<hook>`. Only fixture runs register them: any process can post a distributed notification, so a normal run must not let one pause, dismiss or capture the real app. The notification's object, when present, is the argument.
 
   | Hook | Argument | Does |

@@ -5,13 +5,14 @@ import JoinCore
 /// variable (`open --env JOIN_FIXTURE=busy build/Join.app`). Fixture runs use their own defaults
 /// domain and never schedule alerts, so they can't disturb real settings or cover the screen.
 /// Scenarios follow the menu bar design's week: nothing (no more meetings today), later (next
-/// meeting later today), busy (one starts in 4 min while another runs), meeting (in a meeting).
+/// meeting later today), busy (one starts in 4 min while another runs), meeting (in a meeting),
+/// maybe (a long Maybe block runs while a call you accepted starts in 47 min).
 @MainActor
 final class FixtureCalendarService: CalendarService {
     static let environmentKey = "JOIN_FIXTURE"
     static let defaultsSuite = "com.poliuk.join.fixture"
 
-    static let scenarios: Set<String> = ["nothing", "later", "busy", "meeting", "denied"]
+    static let scenarios: Set<String> = ["nothing", "later", "busy", "meeting", "maybe", "denied"]
 
     /// Only a known scenario name turns fixture mode on, so a stray or mistyped value can't
     /// silently replace the real calendar.
@@ -64,9 +65,9 @@ final class FixtureCalendarService: CalendarService {
             return Date(timeIntervalSinceReferenceDate: rounded + minutes * 60)
         }
         func meeting(_ id: String, _ title: String, _ start: Date, _ end: Date, _ info: CalendarInfo,
-                     location: String? = nil, notes: String? = nil) -> Meeting {
+                     location: String? = nil, notes: String? = nil, status: ParticipationStatus = .accepted) -> Meeting {
             Meeting(id: id, title: title, start: start, end: end, calendarID: info.id, calendarTitle: info.title,
-                    calendarColor: info.color, location: location, notes: notes)
+                    calendarColor: info.color, location: location, notes: notes, myStatus: status)
         }
         let meet = "Join with Google Meet: https://meet.google.com/abc-defg-hij"
         let zoom = "https://us06web.zoom.us/j/12345678901?pwd=sample"
@@ -83,6 +84,9 @@ final class FixtureCalendarService: CalendarService {
         case "meeting":
             today_ = [meeting("workshop", "Workshop", minutesFromNow(-80), minutesFromNow(190), Self.personal, notes: meet),
                       meeting("planning", "Ana/Luis: Product Planning", minutesFromNow(-20), minutesFromNow(40), Self.work, location: zoom)]
+        case "maybe":
+            today_ = [meeting("workshop", "Workshop", minutesFromNow(-18), minutesFromNow(252), Self.personal, notes: meet, status: .tentative),
+                      meeting("planning", "Ana/Luis: Product Planning", minutesFromNow(47), minutesFromNow(107), Self.work, location: zoom)]
         default:
             today_ = []
         }

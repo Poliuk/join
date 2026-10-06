@@ -88,9 +88,17 @@ final class EventKitCalendarService: CalendarService {
         )
     }
 
+    /// Your own events and ones you organize count as accepted; an invitation you haven't answered,
+    /// or one you're not on, is `unknown`, which ranks below accepted meetings in the menu bar. An event
+    /// without attendees is yours only on a calendar you can edit: a subscribed or read-only shared
+    /// calendar's blocks are someone else's.
     private static func participationStatus(for event: EKEvent) -> ParticipationStatus {
-        guard let attendees = event.attendees, !attendees.isEmpty else { return .accepted }
-        guard let me = attendees.first(where: { $0.isCurrentUser }) else { return .unknown }
+        guard let attendees = event.attendees, !attendees.isEmpty else {
+            return event.calendar?.allowsContentModifications == false ? .unknown : .accepted
+        }
+        guard let me = attendees.first(where: { $0.isCurrentUser }) else {
+            return event.organizer?.isCurrentUser == true ? .accepted : .unknown
+        }
         switch me.participantStatus {
         case .accepted: return .accepted
         case .tentative: return .tentative

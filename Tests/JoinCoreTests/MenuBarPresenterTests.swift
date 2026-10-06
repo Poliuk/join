@@ -198,4 +198,58 @@ final class MenuBarPresenterTests: XCTestCase {
         XCTAssertEqual(status(at: F.date(6, 12, 58), startingSoonWindow: 60).kind, .withinHour, "1 minute: not yet at 2 minutes")
         XCTAssertEqual(status(at: F.date(6, 12, 59), startingSoonWindow: 60).kind, .startingSoon)
     }
+
+    /// `meeting` with your answer set to `status`.
+    private func answered(_ meeting: Meeting, _ status: ParticipationStatus) -> Meeting {
+        var meeting = meeting
+        meeting.myStatus = status
+        return meeting
+    }
+
+    func testAMaybeMeetingInProgressStepsAsideForAnAcceptedOneInsideIt() {
+        let maybeWorkshop = answered(F.workshop, .tentative)
+        let lateCall = Meeting(id: "late", title: "Late call", start: F.date(6, 18), end: F.date(6, 18, 30))
+        let cases: [(meetings: [Meeting], now: Date, focus: [String], why: String)] = [
+            ([maybeWorkshop, F.planning], F.date(6, 15, 13), ["plan"], "in progress, with the accepted call inside it within the hour"),
+            ([maybeWorkshop, F.planning], F.date(6, 14, 57), ["val", "plan"], "not started yet: it counts, like its alert"),
+            ([maybeWorkshop, F.planning], F.date(6, 17, 5), ["val", "plan"], "the call is over: the block counts again"),
+            ([maybeWorkshop, lateCall], F.date(6, 15, 13), ["val", "late"], "the accepted call is hours away: the block shows until the hour before"),
+            ([answered(F.lunch, .unknown), F.planning], F.date(6, 13, 30), ["lunch", "plan"], "an unanswered meeting that clashes with nothing counts"),
+            ([answered(F.review, .tentative), F.thursday], F.date(6, 20), ["rev", "thu"], "a Maybe meeting tomorrow isn't skipped for an accepted one later"),
+            ([maybeWorkshop, answered(F.planning, .unknown)], F.date(6, 15, 13), ["val", "plan"], "nothing accepted: everything counts"),
+        ]
+        for c in cases {
+            XCTAssertEqual(MenuBarPresenter.focus(c.meetings, now: c.now).map(\.id), c.focus, c.why)
+        }
+    }
+
+    // A Maybe or unanswered block has run since 3:00 PM; a call you accepted starts at 4:00. The call drives the bar.
+    func testAnAcceptedMeetingOutranksAMaybeBlockInProgress() {
+        for answer in [ParticipationStatus.tentative, .unknown] {
+            let meetings = [answered(F.workshop, answer), F.planning]
+            XCTAssertEqual(status(meetings, at: F.date(6, 15, 13)).text, "Next in 47 min", "\(answer)")
+            XCTAssertEqual(status(meetings, at: F.date(6, 16, 20)).text, "40 min left", "\(answer): the call in progress")
+            XCTAssertEqual(status(meetings, at: F.date(6, 17, 5)).text, "2 h 25 min left", "\(answer): after the call, the block shows")
+        }
+    }
+
+    func testAMaybeMeetingInsideAnAcceptedOneGetsItsPillButNotTheRing() {
+        let meetings = [F.workshop, answered(F.planning, .tentative)]
+        XCTAssertEqual(status(meetings, at: F.date(6, 15, 56)).text, "Next in 4 min", "its alert is coming, so the pill shows")
+        XCTAssertEqual(status(meetings, at: F.date(6, 16, 20)).text, "3 h 10 min left",
+                       "in progress, the Maybe call steps aside: the accepted meeting keeps the ring though it started earlier")
+        XCTAssertEqual(status([answered(F.planning, .tentative), F.review], at: F.date(6, 15, 13)).text, "Next in 47 min",
+                       "a Maybe meeting today still comes before an accepted one tomorrow")
+        let unansweredLunch = [answered(F.lunch, .unknown), F.planning]
+        XCTAssertEqual(status(unansweredLunch, at: F.date(6, 12, 57)).kind, .startingSoon, "no clash: an unanswered meeting keeps its pill")
+        XCTAssertEqual(status(unansweredLunch, at: F.date(6, 13, 20)).text, "40 min left", "and its ring")
+    }
+
+    // A tentative 8 PM to 2 AM block with an accepted 1 AM check-in: the block keeps the ring until the hour before.
+    func testAMaybeBlockAcrossMidnightKeepsItsRingUntilTheHourBefore() {
+        let hackathon = Meeting(id: "hack", title: "Hackathon", start: F.date(6, 20), end: F.date(7, 2), myStatus: .tentative)
+        let checkIn = Meeting(id: "check", title: "Check-in", start: F.date(7, 1), end: F.date(7, 1, 15))
+        XCTAssertEqual(status([hackathon, checkIn], at: F.date(6, 21)).text, "5 h 00 min left")
+        XCTAssertEqual(status([hackathon, checkIn], at: F.date(7, 0, 10)).text, "Next in 50 min")
+    }
 }

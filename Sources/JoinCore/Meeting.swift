@@ -1,5 +1,7 @@
 import Foundation
 
+/// Your answer to the invitation. Events without attendees, and ones you organize, count as accepted;
+/// `unknown` covers invitations you haven't answered and events you aren't invited to.
 public enum ParticipationStatus: String, Codable, Hashable, Sendable {
     case accepted
     case tentative
@@ -61,6 +63,9 @@ public struct Meeting: Identifiable, Hashable, Sendable, Codable {
     public static func occurrenceID(eventIdentifier: String, start: Date) -> String {
         "\(eventIdentifier)@\(Int(start.timeIntervalSince1970))"
     }
+
+    /// You said yes, or it's your own event. Maybe and unanswered invitations don't count.
+    public var isAttending: Bool { myStatus == .accepted }
 
     public func isOngoing(at now: Date) -> Bool { start <= now && now < end }
     public func isUpcoming(at now: Date) -> Bool { start > now }

@@ -161,7 +161,8 @@ public struct PanelRow: Equatable, Identifiable, Sendable {
 public enum PanelPresenter {
     /// - Parameters:
     ///   - meetings: everything in the store, out-of-office blocks included; they fill the lists.
-    ///   - alertable: the meetings that may alert; only these drive the hero card.
+    ///   - alertable: the meetings that may alert; only these drive the hero card, picked the way the
+    ///     menu bar picks (`MenuBarPresenter.focus`).
     ///   - showsOutOfOffice: false leaves out-of-office blocks out of the lists.
     ///   - startingSoonWindow: how soon before its start the next meeting gets the starting-soon card,
     ///     the same window as the menu bar pill.
@@ -175,8 +176,10 @@ public enum PanelPresenter {
         locale: Locale = .current
     ) -> PanelContent {
         let builder = Builder(meetings: meetings, now: now, calendar: calendar, locale: locale)
-        let next = MenuBarPresenter.nextMeeting(in: alertable, now: now)
-        let current = MenuBarPresenter.currentMeeting(in: alertable, now: now)
+        // The same choice as the menu bar: a Maybe or unanswered meeting in progress steps aside for an accepted one inside it.
+        let focused = MenuBarPresenter.focus(alertable, now: now)
+        let next = MenuBarPresenter.nextMeeting(in: focused, now: now)
+        let current = MenuBarPresenter.currentMeeting(in: focused, now: now)
 
         let hero: PanelHero
         if let next, next.start.timeIntervalSince(now) <= startingSoonWindow {
