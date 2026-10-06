@@ -232,4 +232,68 @@ final class PanelPresenterTests: XCTestCase {
         guard case .startingSoon(let card) = wider.hero else { return XCTFail("expected startingSoon, got \(wider.hero)") }
         XCTAssertEqual(card.label, "Starts in 8 min")
     }
+
+    // MARK: Today | 7 Days
+
+    private func filteredTitles(_ state: PanelFilterState) -> [String] {
+        state.sections.map { [$0.title, F.squash($0.subtitle)].compactMap { $0 }.joined(separator: " / ") }
+    }
+
+    func testTodayListsTodayAndTheWeekAddsTheFollowingDays() {
+        let result = content(at: F.date(6, 10, 45))
+        let today = result.filtered(by: .today)
+        XCTAssertTrue(today.isShown)
+        XCTAssertTrue(today.isTodayAvailable)
+        XCTAssertEqual(today.effective, .today)
+        XCTAssertEqual(filteredTitles(today), ["Today"])
+        XCTAssertEqual(today.sections.flatMap(ids), ["ooo", "lunch", "val", "plan"])
+
+        let week = result.filtered(by: .week)
+        XCTAssertEqual(week.effective, .week)
+        XCTAssertEqual(week.sections, result.sections, "7 Days is the whole list")
+        XCTAssertEqual(Array(week.sections.prefix(today.sections.count)), today.sections, "switching never moves a row above the change")
+    }
+
+    func testTodayKeepsWhatIsOnNow() {
+        let state = content(at: F.date(6, 15, 56)).filtered(by: .today)
+        XCTAssertEqual(filteredTitles(state), ["Now", "Today"])
+        XCTAssertEqual(state.sections.flatMap(ids), ["val", "plan"])
+    }
+
+    // Evening: the old app's Today showed an empty list here. Today is dimmed and the week shows.
+    func testNothingLeftTodayDimsTodayAndShowsTheWeek() {
+        let state = content(at: F.date(5, 21, 30)).filtered(by: .today)
+        XCTAssertTrue(state.isShown)
+        XCTAssertFalse(state.isTodayAvailable)
+        XCTAssertEqual(state.effective, .week)
+        XCTAssertEqual(filteredTitles(state), ["Tomorrow / Tue, Oct 6", "Wednesday / Oct 7", "Thursday / Oct 8"])
+    }
+
+    func testDuringTheDaysLastMeetingTodayIsDimmed() {
+        let result = content(at: F.date(6, 17, 30))
+        guard case .now(let card) = result.hero else { return XCTFail("expected now, got \(result.hero)") }
+        XCTAssertEqual(card.meeting.id, "val")
+        let state = result.filtered(by: .today)
+        XCTAssertFalse(state.isTodayAvailable)
+        XCTAssertEqual(state.effective, .week)
+    }
+
+    func testOutOfOfficeRowsAloneDoNotMakeToday() {
+        let away = Meeting(id: "away", title: "Out of office", start: F.date(6, 18), end: F.date(6, 23), isOutOfOffice: true)
+        let state = content(at: F.date(6, 18, 30), meetings: [away, F.review]).filtered(by: .today)
+        XCTAssertEqual(state.effective, .week, "a today made only of out-of-office rows would be an empty list in all but name")
+        XCTAssertEqual(state.sections.flatMap(ids), ["away", "rev"], "the week still lists the out-of-office block")
+    }
+
+    func testTheSwitchHidesWhenNothingComesAfterToday() {
+        let state = content(at: F.date(6, 10, 45), meetings: [F.lunch, F.workshop]).filtered(by: .week)
+        XCTAssertFalse(state.isShown)
+        XCTAssertEqual(state.sections.flatMap(ids), ["lunch", "val"])
+        XCTAssertFalse(content(at: F.date(6, 20), meetings: []).filtered(by: .today).isShown)
+    }
+
+    func testDaySectionsAreLaterAndTodaysAreToday() {
+        let result = content(at: F.date(6, 15, 56))
+        XCTAssertEqual(result.sections.map(\.kind), [.today, .today, .later, .later])
+    }
 }

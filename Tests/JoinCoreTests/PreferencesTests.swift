@@ -122,4 +122,12 @@ final class PreferencesTests: XCTestCase {
         preferences.showOutOfOfficeInList = false
         XCTAssertFalse(Preferences(defaults: defaults).showOutOfOfficeInList)
     }
+
+    func testPanelListFilterDefaultsToTheWeekAndPersists() {
+        XCTAssertEqual(Preferences(defaults: defaults).panelListFilter, .week)
+        Preferences(defaults: defaults).panelListFilter = .today
+        XCTAssertEqual(Preferences(defaults: defaults).panelListFilter, .today)
+        defaults.set("everything", forKey: Preferences.Keys.panelListFilter)
+        XCTAssertEqual(Preferences(defaults: defaults).panelListFilter, .week, "an unknown value falls back to the default")
+    }
 }

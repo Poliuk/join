@@ -12,11 +12,11 @@ struct PanelSectionView: View {
             HStack(alignment: .firstTextBaseline, spacing: 6) {
                 Text(section.title)
                     .font(.system(size: 12, weight: .semibold))
-                    .foregroundStyle(PanelColors.heading)
+                    .foregroundStyle(PanelColors.secondary)
                 if let subtitle = section.subtitle {
                     Text(subtitle)
                         .font(.system(size: 12))
-                        .foregroundStyle(PanelColors.subtle)
+                        .foregroundStyle(PanelColors.tertiary)
                 }
             }
             .lineLimit(1)
@@ -50,10 +50,10 @@ struct PanelRowView: View {
         HStack(alignment: .center, spacing: 10) {
             VStack(alignment: .trailing, spacing: 0) {
                 Text(row.startTime)
-                    .foregroundStyle(row.isMuted ? PanelColors.muted : PanelColors.strong)
+                    .foregroundStyle(row.isMuted ? PanelColors.tertiary : PanelColors.strong)
                     .frame(height: 16)
                 Text(row.endTime)
-                    .foregroundStyle(row.isMuted ? PanelColors.muted : PanelColors.subtle)
+                    .foregroundStyle(row.isMuted ? PanelColors.tertiary : PanelColors.tertiary)
                     .frame(height: 16)
             }
             .font(.system(size: 12).monospacedDigit())
@@ -69,7 +69,7 @@ struct PanelRowView: View {
             VStack(alignment: .leading, spacing: 0) {
                 Text(meeting.title)
                     .font(.system(size: 13.5, weight: row.isMuted ? .medium : .semibold))
-                    .foregroundStyle(row.isMuted ? PanelColors.muted : PanelColors.title)
+                    .foregroundStyle(row.isMuted ? PanelColors.tertiary : PanelColors.primary)
                     .lineLimit(1)
                     .truncationMode(.tail)
                     .frame(minHeight: 18)
@@ -89,7 +89,7 @@ struct PanelRowView: View {
                 }
                 .buttonStyle(PanelFillButtonStyle(
                     fill: PanelColors.rowButtonFill,
-                    foreground: PanelColors.rowIcon,
+                    foreground: PanelColors.primary,
                     cornerRadius: 8,
                     hoverFill: PanelColors.rowButtonHoverFill
                 ))

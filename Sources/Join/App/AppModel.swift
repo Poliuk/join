@@ -19,6 +19,8 @@ final class AppModel {
 
     /// Set when running with a fake calendar (see FixtureCalendarService).
     let isFixture: Bool
+    /// Fixture runs only (the `panelFrost` hook): a frost opacity to try on the real panel; nil keeps the palette's.
+    var panelFrostOverride: Double?
 
     init() {
         let fixture = FixtureCalendarService.scenario

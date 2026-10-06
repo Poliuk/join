@@ -34,7 +34,7 @@ private struct NothingTodayCard: View {
             VStack(alignment: .leading, spacing: 2) {
                 Text("No more meetings today")
                     .font(.system(size: 13, weight: .semibold))
-                    .foregroundStyle(PanelColors.title)
+                    .foregroundStyle(PanelColors.primary)
                     .frame(minHeight: 18)
                 Text(detail)
                     .font(.system(size: 12))
@@ -45,7 +45,7 @@ private struct NothingTodayCard: View {
         }
         .padding(.vertical, 11)
         .padding(.horizontal, 12)
-        .background(RoundedRectangle(cornerRadius: 10, style: .continuous).fill(PanelColors.cardFill))
+        .panelCard(cornerRadius: 10)
         .accessibilityElement(children: .combine)
     }
 }
@@ -69,7 +69,7 @@ private struct MeetingCard: View {
             HStack(spacing: 8) {
                 Text(card.label)
                     .font(.system(size: 12, weight: .semibold).monospacedDigit())
-                    .foregroundStyle(style == .startingSoon ? PanelColors.accentText : PanelColors.heading)
+                    .foregroundStyle(style == .startingSoon ? PanelColors.accentText : PanelColors.secondary)
                 Spacer(minLength: 0)
                 Text(card.timeRange)
                     .font(.system(size: 12).monospacedDigit())
@@ -84,7 +84,7 @@ private struct MeetingCard: View {
                     .frame(width: 8, height: 8)
                 Text(card.meeting.title)
                     .font(.system(size: 17, weight: .semibold))
-                    .foregroundStyle(PanelColors.heroTitle)
+                    .foregroundStyle(PanelColors.primary)
                     .lineLimit(1)
                     .truncationMode(.tail)
             }
@@ -107,10 +107,17 @@ private struct MeetingCard: View {
             }
         }
         .padding(14)
-        .background(RoundedRectangle(cornerRadius: 12, style: .continuous).fill(style == .startingSoon ? PanelColors.accentSoft : PanelColors.cardFill))
+        .background {
+            let shape = RoundedRectangle(cornerRadius: 12, style: .continuous)
+            ZStack {
+                shape.fill(PanelColors.card)
+                // The accent tint sits on the card, so in light mode it starts from white.
+                if style == .startingSoon { shape.fill(PanelColors.accentSoft) }
+            }
+        }
         .overlay(
             RoundedRectangle(cornerRadius: 12, style: .continuous)
-                .strokeBorder(style == .startingSoon ? PanelColors.accentLine : PanelColors.cardBorder, lineWidth: 1)
+                .strokeBorder(style == .startingSoon ? PanelColors.accentLine : PanelColors.separator, lineWidth: 1)
         )
     }
 
@@ -145,10 +152,10 @@ private struct MeetingCard: View {
             .frame(height: 34)
         }
         .buttonStyle(PanelFillButtonStyle(
-            fill: prominent ? PanelColors.accent : PanelColors.buttonFill,
-            foreground: prominent ? .white : PanelColors.title,
+            fill: prominent ? PanelColors.accentButton : PanelColors.buttonFill,
+            foreground: prominent ? PanelColors.accentButtonLabel : PanelColors.primary,
             cornerRadius: 8,
-            hoverFill: prominent ? PanelColors.accentHover : PanelColors.buttonHoverFill
+            hoverFill: prominent ? PanelColors.accentButtonHover : PanelColors.buttonHoverFill
         ))
         .accessibilityLabel(action.accessibilityLabel(for: card.meeting))
     }

@@ -26,6 +26,7 @@ public final class Preferences {
         public static let outOfOfficeKeywords = "outOfOfficeKeywords"
         public static let showOutOfOfficeInList = "showOutOfOfficeInList"
         public static let startingSoonPill = "startingSoonPill"
+        public static let panelListFilter = "panelListFilter"
     }
 
     public static let defaultLeadTime: TimeInterval = 3 * 60
@@ -49,6 +50,7 @@ public final class Preferences {
     @ObservationIgnored private var _outOfOfficeKeywords: [String]
     @ObservationIgnored private var _showOutOfOfficeInList: Bool
     @ObservationIgnored private var _startingSoonPill: StartingSoonPill
+    @ObservationIgnored private var _panelListFilter: PanelListFilter
 
     public init(defaults: UserDefaults = .standard) {
         self.defaults = defaults
@@ -82,6 +84,7 @@ public final class Preferences {
         _showOutOfOfficeInList = defaults.object(forKey: Keys.showOutOfOfficeInList) as? Bool ?? true
         _startingSoonPill = defaults.data(forKey: Keys.startingSoonPill)
             .flatMap { try? JSONDecoder().decode(StartingSoonPill.self, from: $0) } ?? .default
+        _panelListFilter = defaults.string(forKey: Keys.panelListFilter).flatMap(PanelListFilter.init(rawValue:)) ?? .week
     }
 
     /// Seconds before the meeting start at which the alert fires, always a whole number of minutes.
@@ -252,6 +255,18 @@ public final class Preferences {
             withMutation(keyPath: \.startingSoonPill) {
                 _startingSoonPill = newValue
                 defaults.set(try? JSONEncoder().encode(newValue), forKey: Keys.startingSoonPill)
+            }
+        }
+    }
+
+    /// The menu bar panel's Today | 7 Days choice, remembered between openings. 7 Days by default, so the
+    /// list starts out showing the coming days.
+    public var panelListFilter: PanelListFilter {
+        get { access(keyPath: \.panelListFilter); return _panelListFilter }
+        set {
+            withMutation(keyPath: \.panelListFilter) {
+                _panelListFilter = newValue
+                defaults.set(newValue.rawValue, forKey: Keys.panelListFilter)
             }
         }
     }

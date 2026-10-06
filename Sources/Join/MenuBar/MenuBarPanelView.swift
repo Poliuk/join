@@ -3,10 +3,13 @@ import SwiftUI
 import JoinCore
 
 /// The drop-down panel: a header with today's date and two menus, then a scrolling body with one hero
-/// card and the coming days. Its natural height is reported to the window, which fits it up to a cap.
+/// card, the Today | 7 Days switch and the list. Its natural height is reported to the window, which
+/// fits it up to a cap.
 @MainActor
 struct MenuBarPanelView: View {
-    static let fadeHeight: CGFloat = 46
+    static let fadeHeight: CGFloat = 32
+    /// How faint the last visible row gets while there is more to scroll to.
+    static let fadeFloor: CGFloat = 0.4
 
     let context: MenuBarPanelContext
     @Environment(AppModel.self) private var model
@@ -34,10 +37,11 @@ struct MenuBarPanelView: View {
         }
         .frame(width: MenuBarPanelWindow.width)
         .frame(maxHeight: .infinity, alignment: .top)
+        .background(PanelFrost())
         .clipShape(RoundedRectangle(cornerRadius: MenuBarPanelWindow.cornerRadius, style: .continuous))
         .overlay(
             RoundedRectangle(cornerRadius: MenuBarPanelWindow.cornerRadius, style: .continuous)
-                .strokeBorder(PanelColors.hairline, lineWidth: 1)
+                .strokeBorder(PanelColors.separator, lineWidth: 1)
         )
         .onPreferenceChange(HeaderHeightKey.self) { height in
             headerHeight = height
@@ -62,13 +66,22 @@ struct MenuBarPanelView: View {
                 if let pausedMessage {
                     PausedBar(message: pausedMessage) { model.resume() }
                 }
+                let filter = content.filtered(by: model.preferences.panelListFilter)
                 PanelHeroView(hero: content.hero, perform: model.perform)
                     .padding(.horizontal, 10)
                     .padding(.top, pausedMessage == nil ? 10 : 8)
                     .padding(.bottom, 2)
-                ForEach(content.sections) { section in
-                    PanelSectionView(section: section, perform: model.perform)
+                if filter.isShown {
+                    PanelFilterToggle(state: filter) { model.preferences.panelListFilter = $0 }
+                        .padding(.top, 8)
                 }
+                // Only the switch's thumb slides; the list snaps, so the window resizes in one step.
+                Group {
+                    ForEach(filter.sections) { section in
+                        PanelSectionView(section: section, perform: model.perform)
+                    }
+                }
+                .transaction { $0.animation = nil }
             } else {
                 PermissionPrompt(authorization: model.meetingStore.authorization)
             }
@@ -77,16 +90,18 @@ struct MenuBarPanelView: View {
         .frame(maxWidth: .infinity, alignment: .leading)
     }
 
-    /// Fades the list out at the bottom while there is more to scroll to, like the design.
+    /// Fades the list out at the bottom while there is more to scroll to. It fades into the frost, not
+    /// into the glass, and only part way, so the last row stays legible.
     private var fadeMask: some View {
         let hidden = bodyHeight + scrollOffset - viewportHeight
         let strength = min(max(hidden / Self.fadeHeight, 0), 1)
+        let lastRowOpacity = Double(1 - (1 - Self.fadeFloor) * strength)
         return VStack(spacing: 0) {
             Rectangle()
             LinearGradient(
                 stops: [
                     .init(color: .black, location: 0),
-                    .init(color: .black.opacity(1 - strength), location: 0.85),
+                    .init(color: .black.opacity(lastRowOpacity), location: 0.85),
                 ],
                 startPoint: .top,
                 endPoint: .bottom
@@ -99,6 +114,34 @@ struct MenuBarPanelView: View {
         GeometryReader { proxy in
             Color.clear.preference(key: key, value: proxy.size.height)
         }
+    }
+}
+
+/// The frost between the glass and the content: it pins what's behind the text to a known surface while
+/// some of the glass's color and depth still shows through. Opaque with Reduce Transparency, thicker
+/// with Increase Contrast, lighter over the pre-Liquid Glass menu blur.
+@MainActor
+private struct PanelFrost: View {
+    @Environment(AppModel.self) private var model
+    @Environment(\.colorSchemeContrast) private var contrast
+    @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
+
+    var body: some View {
+        Rectangle()
+            .fill(PanelColors.frost)
+            .opacity(opacity)
+            .allowsHitTesting(false)
+            .accessibilityHidden(true)
+    }
+
+    private var opacity: Double {
+        let workspace = NSWorkspace.shared
+        if reduceTransparency || workspace.accessibilityDisplayShouldReduceTransparency { return 1 }
+        if let override = model.panelFrostOverride { return override }
+        if contrast == .increased || workspace.accessibilityDisplayShouldIncreaseContrast {
+            return PanelPalette.increasedContrastFrostOpacity
+        }
+        return MenuBarPanelWindow.usesGlass ? PanelPalette.frostOpacity : PanelPalette.legacyMaterialFrostOpacity
     }
 }
 
@@ -134,7 +177,7 @@ private struct PanelHeader: View {
             HStack(spacing: 2) {
                 Text(MenuBarPresenter.headerDate(model.now))
                     .font(.system(size: 13, weight: .semibold))
-                    .foregroundStyle(PanelColors.title)
+                    .foregroundStyle(PanelColors.primary)
                     .lineLimit(1)
                     .accessibilityAddTraits(.isHeader)
                 if model.isFixture {
@@ -156,7 +199,7 @@ private struct PanelHeader: View {
             .padding(.vertical, 10)
 
             Rectangle()
-                .fill(PanelColors.divider)
+                .fill(PanelColors.separator)
                 .frame(height: 1)
         }
     }
@@ -215,11 +258,16 @@ private struct HeaderButton: View {
         } label: {
             Image(systemName: symbol)
                 .font(.system(size: 14))
-                .foregroundStyle(active ? PanelColors.strong : PanelColors.icon)
+                .foregroundStyle(active ? PanelColors.strong : PanelColors.secondary)
                 .frame(width: 28, height: 28)
                 .background(
                     RoundedRectangle(cornerRadius: 7, style: .continuous)
                         .fill(active ? (isHovered ? PanelColors.buttonHoverFill : PanelColors.buttonFill) : (isHovered ? PanelColors.hoverFill : .clear))
+                )
+                // Filled while active (the paused bell, an open menu), so it gets the Increase Contrast edge.
+                .overlay(
+                    RoundedRectangle(cornerRadius: 7, style: .continuous)
+                        .strokeBorder(active ? PanelColors.controlBorder : .clear, lineWidth: 1)
                 )
                 .animation(reduceMotion ? nil : .easeOut(duration: 0.12), value: isHovered)
                 .contentShape(RoundedRectangle(cornerRadius: 7, style: .continuous))
@@ -270,7 +318,7 @@ private struct PausedBar: View {
         HStack(spacing: 8) {
             Image(systemName: "bell.slash")
                 .font(.system(size: 12))
-                .foregroundStyle(PanelColors.heading)
+                .foregroundStyle(PanelColors.secondary)
                 .frame(width: 14, height: 14)
             Text(message)
                 .font(.system(size: 12.5).monospacedDigit())
@@ -285,7 +333,7 @@ private struct PausedBar: View {
             }
             .buttonStyle(PanelFillButtonStyle(
                 fill: PanelColors.buttonFill,
-                foreground: PanelColors.title,
+                foreground: PanelColors.primary,
                 cornerRadius: 6,
                 hoverFill: PanelColors.buttonHoverFill
             ))
@@ -293,7 +341,7 @@ private struct PausedBar: View {
         .padding(.leading, 12)
         .padding(.trailing, 6)
         .padding(.vertical, 6)
-        .background(RoundedRectangle(cornerRadius: 10, style: .continuous).fill(PanelColors.cardFill))
+        .panelCard(cornerRadius: 10)
         .padding(.horizontal, 10)
         .padding(.top, 10)
     }
@@ -311,7 +359,7 @@ private struct PermissionPrompt: View {
             Label {
                 Text("Calendar access needed")
                     .font(.system(size: 13, weight: .semibold))
-                    .foregroundStyle(PanelColors.title)
+                    .foregroundStyle(PanelColors.primary)
             } icon: {
                 Image(systemName: "calendar.badge.exclamationmark")
                     .foregroundStyle(PanelColors.secondary)
@@ -329,7 +377,7 @@ private struct PermissionPrompt: View {
         }
         .padding(14)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(RoundedRectangle(cornerRadius: 12, style: .continuous).fill(PanelColors.cardFill))
+        .panelCard(cornerRadius: 12)
         .padding(.horizontal, 10)
         .padding(.top, 10)
     }

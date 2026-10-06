@@ -15,6 +15,40 @@ public struct PanelContent: Equatable, Sendable {
         self.hero = hero
         self.sections = sections
     }
+
+    /// The list as the panel's Today | 7 Days switch shows it. The hero card never depends on it.
+    public func filtered(by choice: PanelListFilter) -> PanelFilterState {
+        let today = sections.filter { $0.kind == .today }
+        let isTodayAvailable = today.contains { section in section.rows.contains { !$0.isMuted } }
+        let effective: PanelListFilter = choice == .today && isTodayAvailable ? .today : .week
+        return PanelFilterState(
+            isShown: sections.contains { $0.kind == .later },
+            isTodayAvailable: isTodayAvailable,
+            effective: effective,
+            sections: effective == .today ? today : sections
+        )
+    }
+}
+
+/// The choice behind the panel's Today | 7 Days switch.
+public enum PanelListFilter: String, CaseIterable, Sendable {
+    /// What's on now and what's still to start today.
+    case today
+    /// Today, then each following day in the 7-day window.
+    case week
+}
+
+/// The Today | 7 Days switch for one moment's content.
+public struct PanelFilterState: Equatable, Sendable {
+    /// False when nothing comes after today: both choices would list the same rows, so the switch hides.
+    public var isShown: Bool
+    /// False when nothing is left today but out-of-office blocks (evenings, the day's last meeting): Today
+    /// is dimmed and the week shows, so Today never leads to an empty list. The stored choice is kept, so
+    /// Today comes back by itself the next morning.
+    public var isTodayAvailable: Bool
+    /// What the list shows: the stored choice, or the week while Today has nothing.
+    public var effective: PanelListFilter
+    public var sections: [PanelSection]
 }
 
 /// Only one hero card is shown at a time.
@@ -70,18 +104,26 @@ public struct PanelCard: Equatable, Sendable {
 }
 
 public struct PanelSection: Equatable, Identifiable, Sendable {
+    /// Now and Today belong to today; each following day's section is later.
+    public enum Kind: Equatable, Sendable {
+        case today
+        case later
+    }
+
     public var id: String
     /// "Now", "Also now", "Today", "Tomorrow", "Wednesday".
     public var title: String
     /// "Wed 7 Oct" after "Tomorrow", "7 Oct" after a weekday.
     public var subtitle: String?
     public var rows: [PanelRow]
+    public var kind: Kind
 
-    public init(id: String, title: String, subtitle: String? = nil, rows: [PanelRow]) {
+    public init(id: String, title: String, subtitle: String? = nil, rows: [PanelRow], kind: Kind = .today) {
         self.id = id
         self.title = title
         self.subtitle = subtitle
         self.rows = rows
+        self.kind = kind
     }
 }
 
@@ -184,7 +226,8 @@ public enum PanelPresenter {
                 id: "day-\(Int(day.timeIntervalSince1970))",
                 title: heading.title,
                 subtitle: heading.subtitle,
-                rows: meetings.map(builder.row)
+                rows: meetings.map(builder.row),
+                kind: .later
             ))
         }
 

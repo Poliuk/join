@@ -25,6 +25,10 @@ final class StatusItemController: NSObject, NSWindowDelegate {
         static let escape: UInt16 = 53
         static let returnKey: UInt16 = 36
         static let keypadEnter: UInt16 = 76
+        // The number row's 1 and 2 and the keypad's, matched by key so ⌘1 and ⌘2 work on layouts like
+        // AZERTY, where those keys type "&" and "é".
+        static let one: Set<UInt16> = [18, 83]
+        static let two: Set<UInt16> = [19, 84]
     }
 
     private let model: AppModel
@@ -240,6 +244,8 @@ final class StatusItemController: NSObject, NSWindowDelegate {
     private func handleKey(keyCode: UInt16, windowNumber: Int, modifiers: NSEvent.ModifierFlags, characters: String?) -> Bool {
         guard isOpen, windowNumber == panel.windowNumber else { return false }
         if modifiers == .command {
+            if KeyCode.one.contains(keyCode) { selectListFilter(.today); return true }
+            if KeyCode.two.contains(keyCode) { selectListFilter(.week); return true }
             switch characters {
             case ",": model.openSettings(); return true
             case "q": model.quit(); return true
@@ -263,6 +269,17 @@ final class StatusItemController: NSObject, NSWindowDelegate {
             }
         default:
             return false
+        }
+    }
+
+    /// ⌘1 and ⌘2 pick Today or 7 Days, like clicking the switch. When that half can't be picked (the
+    /// switch is hidden, or nothing is left today) the panel beeps rather than doing nothing.
+    private func selectListFilter(_ filter: PanelListFilter) {
+        let state = model.panelContent.filtered(by: model.preferences.panelListFilter)
+        let available = state.isShown && (filter == .week || state.isTodayAvailable)
+        guard available else { return NSSound.beep() }
+        withAnimation(PanelFilterToggle.selectionAnimation(reduceMotion: NSWorkspace.shared.accessibilityDisplayShouldReduceMotion)) {
+            model.preferences.panelListFilter = filter
         }
     }
 
