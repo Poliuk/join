@@ -257,7 +257,7 @@ final class PanelPresenterTests: XCTestCase {
         let week = result.filtered(by: .week)
         XCTAssertEqual(week.effective, .week)
         XCTAssertEqual(week.sections, result.sections, "7 Days is the whole list")
-        XCTAssertEqual(Array(week.sections.prefix(today.sections.count)), today.sections, "switching never moves a row above the change")
+        XCTAssertEqual(Array(week.sections.prefix(today.sections.count)), today.sections, "switching keeps today's sections first; the week only adds day headings and the days after")
     }
 
     func testTodayKeepsWhatIsOnNow() {
@@ -300,7 +300,7 @@ final class PanelPresenterTests: XCTestCase {
 
     func testDaySectionsAreLaterAndTodaysAreToday() {
         let result = content(at: F.date(6, 15, 56))
-        XCTAssertEqual(result.sections.map(\.kind), [.today, .today, .later, .later])
+        XCTAssertEqual(result.sections.map(\.kind), [.now, .today, .later, .later])
     }
 
     // The card picks like the menu bar: the accepted call at 4:00 PM, not the Maybe block running since 3:00,
@@ -333,5 +333,25 @@ final class PanelPresenterTests: XCTestCase {
         guard case .now(let nowCard) = running.hero else { return XCTFail("expected now, got \(running.hero)") }
         XCTAssertEqual(nowCard.meeting.id, "val")
         XCTAssertEqual(running.sections.first.map(ids), ["plan"], "the Maybe call is listed under Also now")
+    }
+
+    // Today: "Now", then "Upcoming events" with today's rows and no day heading. 7 Days: the same "Upcoming
+    // events", with each day (Today, Tomorrow, Thursday) as a heading under it, as In Your Face does.
+    func testUpcomingEventsGroupsTheDaysUnderOneHeading() {
+        let result = content(at: F.date(6, 15, 56))
+        let today = result.filtered(by: .today)
+        XCTAssertEqual(today.now?.title, "Now")
+        XCTAssertEqual(today.now.map(ids), ["val"])
+        XCTAssertEqual(today.upcoming.flatMap(ids), ["plan"])
+        XCTAssertFalse(today.showsDayHeadings)
+
+        let week = result.filtered(by: .week)
+        XCTAssertEqual(week.now.map(ids), ["val"])
+        XCTAssertEqual(week.upcoming.map(\.title), ["Today", "Tomorrow", "Thursday"])
+        XCTAssertTrue(week.showsDayHeadings)
+
+        let onlyToday = content(at: F.date(6, 10, 45), meetings: [F.lunch, F.workshop]).filtered(by: .week)
+        XCTAssertFalse(onlyToday.showsDayHeadings, "nothing after today: a lone Today heading would say nothing")
+        XCTAssertEqual(PanelFilterState.upcomingTitle, "Upcoming events")
     }
 }

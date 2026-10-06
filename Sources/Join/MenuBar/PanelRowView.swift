@@ -4,28 +4,29 @@ import JoinCore
 /// "Tomorrow  Wed 7 Oct" followed by that day's rows.
 @MainActor
 struct PanelSectionView: View {
+    enum Heading {
+        /// A list heading: "Now", "Also now".
+        case section
+        /// A day under "Upcoming events": "Today", "Tomorrow Wed 7 Oct", with a hairline after it.
+        case day
+        /// Rows only, as under "Upcoming events" in the Today view.
+        case none
+    }
+
     let section: PanelSection
+    let heading: Heading
     let perform: (PanelAction) -> Void
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
-            HStack(alignment: .firstTextBaseline, spacing: 6) {
-                Text(section.title)
-                    .font(.system(size: 12, weight: .semibold))
-                    .foregroundStyle(PanelColors.secondary)
-                if let subtitle = section.subtitle {
-                    Text(subtitle)
-                        .font(.system(size: 12))
-                        .foregroundStyle(PanelColors.tertiary)
-                }
+            switch heading {
+            case .section:
+                PanelSectionHeading(title: section.title, subtitle: section.subtitle)
+            case .day:
+                PanelDayHeading(title: section.title, subtitle: section.subtitle)
+            case .none:
+                EmptyView()
             }
-            .lineLimit(1)
-            .frame(minHeight: 16)
-            .padding(.horizontal, 8)
-            .padding(.top, 10)
-            .padding(.bottom, 4)
-            .accessibilityElement(children: .combine)
-            .accessibilityAddTraits(.isHeader)
 
             VStack(spacing: 2) {
                 ForEach(section.rows) { row in
@@ -34,7 +35,66 @@ struct PanelSectionView: View {
             }
         }
         .padding(.horizontal, 6)
-        .padding(.top, 2)
+        // Rows without a heading follow "Upcoming events" as closely as rows follow their own heading.
+        .padding(.top, heading == .none ? 0 : 2)
+    }
+}
+
+/// A list heading in the panel: "Now", "Also now", "Upcoming events".
+struct PanelSectionHeading: View {
+    let title: String
+    var subtitle: String?
+
+    var body: some View {
+        HStack(alignment: .firstTextBaseline, spacing: 6) {
+            Text(title)
+                .font(.system(size: 12, weight: .semibold))
+                .foregroundStyle(PanelColors.secondary)
+            if let subtitle {
+                Text(subtitle)
+                    .font(.system(size: 12))
+                    .foregroundStyle(PanelColors.tertiary)
+            }
+        }
+        .lineLimit(1)
+        .frame(minHeight: 16)
+        .padding(.horizontal, 8)
+        .padding(.top, 10)
+        .padding(.bottom, 4)
+        .accessibilityElement(children: .combine)
+        .accessibilityAddTraits(.isHeader)
+    }
+}
+
+/// A day under "Upcoming events", quieter than a list heading and followed by a hairline, so the days
+/// read as parts of the list rather than lists of their own.
+struct PanelDayHeading: View {
+    let title: String
+    var subtitle: String?
+
+    var body: some View {
+        HStack(alignment: .center, spacing: 6) {
+            Text(title)
+                .font(.system(size: 11.5, weight: .medium))
+                .foregroundStyle(PanelColors.secondary)
+            if let subtitle {
+                Text(subtitle)
+                    .font(.system(size: 11.5))
+                    .foregroundStyle(PanelColors.tertiary)
+            }
+            Rectangle()
+                .fill(PanelColors.separator)
+                .frame(height: 1)
+                .padding(.leading, 2)
+                .accessibilityHidden(true)
+        }
+        .lineLimit(1)
+        .frame(minHeight: 16)
+        .padding(.horizontal, 8)
+        .padding(.top, 6)
+        .padding(.bottom, 3)
+        .accessibilityElement(children: .combine)
+        .accessibilityAddTraits(.isHeader)
     }
 }
 

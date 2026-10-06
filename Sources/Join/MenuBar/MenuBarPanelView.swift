@@ -77,8 +77,16 @@ struct MenuBarPanelView: View {
                 }
                 // Only the switch's thumb slides; the list snaps, so the window resizes in one step.
                 Group {
-                    ForEach(filter.sections) { section in
-                        PanelSectionView(section: section, perform: model.perform)
+                    if let now = filter.now {
+                        PanelSectionView(section: now, heading: .section, perform: model.perform)
+                    }
+                    if !filter.upcoming.isEmpty {
+                        PanelSectionHeading(title: PanelFilterState.upcomingTitle)
+                            .padding(.horizontal, 6)
+                            .padding(.top, 2)
+                        ForEach(filter.upcoming) { section in
+                            PanelSectionView(section: section, heading: filter.showsDayHeadings ? .day : .none, perform: model.perform)
+                        }
                     }
                 }
                 .transaction { $0.animation = nil }

@@ -18,7 +18,7 @@ public struct PanelContent: Equatable, Sendable {
 
     /// The list as the panel's Today | 7 Days switch shows it. The hero card never depends on it.
     public func filtered(by choice: PanelListFilter) -> PanelFilterState {
-        let today = sections.filter { $0.kind == .today }
+        let today = sections.filter { $0.kind != .later }
         let isTodayAvailable = today.contains { section in section.rows.contains { !$0.isMuted } }
         let effective: PanelListFilter = choice == .today && isTodayAvailable ? .today : .week
         return PanelFilterState(
@@ -49,6 +49,19 @@ public struct PanelFilterState: Equatable, Sendable {
     /// What the list shows: the stored choice, or the week while Today has nothing.
     public var effective: PanelListFilter
     public var sections: [PanelSection]
+
+    /// The heading over everything that hasn't started, under Now.
+    public static let upcomingTitle = "Upcoming events"
+
+    /// "Now" or "Also now": meetings in progress besides the card's.
+    public var now: PanelSection? { sections.first { $0.kind == .now } }
+
+    /// What goes under "Upcoming events": today's meetings yet to start, then each following day's.
+    public var upcoming: [PanelSection] { sections.filter { $0.kind != .now } }
+
+    /// 7 Days heads each day under "Upcoming events" (Today, Tomorrow, Wednesday…), as In Your Face does.
+    /// Today, or a list that is only today, needs no day heading.
+    public var showsDayHeadings: Bool { effective == .week && isShown }
 }
 
 /// Only one hero card is shown at a time.
@@ -106,6 +119,9 @@ public struct PanelCard: Equatable, Sendable {
 public struct PanelSection: Equatable, Identifiable, Sendable {
     /// Now and Today belong to today; each following day's section is later.
     public enum Kind: Equatable, Sendable {
+        /// Meetings in progress besides the card's ("Now", "Also now").
+        case now
+        /// Today's meetings yet to start.
         case today
         case later
     }
@@ -205,7 +221,7 @@ public enum PanelPresenter {
         if !ongoing.isEmpty {
             let title: String
             if case .now = hero { title = "Also now" } else { title = "Now" }
-            sections.append(PanelSection(id: "now", title: title, rows: ongoing.map(builder.row)))
+            sections.append(PanelSection(id: "now", title: title, rows: ongoing.map(builder.row), kind: .now))
         }
 
         let upcoming = listed.filter { $0.isUpcoming(at: now) }
