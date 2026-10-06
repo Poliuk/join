@@ -40,7 +40,8 @@ struct PanelSectionView: View {
     }
 }
 
-/// A list heading in the panel: "Now", "Also now", "Upcoming events".
+/// A list heading in the panel: "Now", "Also now", "Upcoming events". The top of the list's hierarchy:
+/// large and bold over small caps day labels (option B of the panel typography canvas, the user's pick).
 struct PanelSectionHeading: View {
     let title: String
     var subtitle: String?
@@ -48,26 +49,27 @@ struct PanelSectionHeading: View {
     var body: some View {
         HStack(alignment: .firstTextBaseline, spacing: 6) {
             Text(title)
-                .font(.system(size: 12, weight: .semibold))
-                .foregroundStyle(PanelColors.secondary)
+                .font(.system(size: 15, weight: .bold))
+                .tracking(-0.15)
+                .foregroundStyle(PanelColors.primary)
             if let subtitle {
                 Text(subtitle)
-                    .font(.system(size: 12))
-                    .foregroundStyle(PanelColors.tertiary)
+                    .font(.system(size: 13))
+                    .foregroundStyle(PanelColors.secondary)
             }
         }
         .lineLimit(1)
-        .frame(minHeight: 16)
+        .frame(minHeight: 20)
         .padding(.horizontal, 8)
-        .padding(.top, 10)
+        .padding(.top, 12)
         .padding(.bottom, 4)
         .accessibilityElement(children: .combine)
         .accessibilityAddTraits(.isHeader)
     }
 }
 
-/// A day under "Upcoming events", quieter than a list heading and followed by a hairline, so the days
-/// read as parts of the list rather than lists of their own.
+/// A day under "Upcoming events": a small caps label followed by a hairline, so the days read as parts
+/// of the list rather than lists of their own. The caps are display only; VoiceOver reads the words.
 struct PanelDayHeading: View {
     let title: String
     var subtitle: String?
@@ -75,11 +77,15 @@ struct PanelDayHeading: View {
     var body: some View {
         HStack(alignment: .center, spacing: 6) {
             Text(title)
-                .font(.system(size: 11.5, weight: .medium))
+                .font(.system(size: 10.5, weight: .semibold))
+                .tracking(0.7)
+                .textCase(.uppercase)
                 .foregroundStyle(PanelColors.secondary)
             if let subtitle {
                 Text(subtitle)
-                    .font(.system(size: 11.5))
+                    .font(.system(size: 10.5, weight: .medium))
+                    .tracking(0.7)
+                    .textCase(.uppercase)
                     .foregroundStyle(PanelColors.tertiary)
             }
             Rectangle()
@@ -91,8 +97,8 @@ struct PanelDayHeading: View {
         .lineLimit(1)
         .frame(minHeight: 16)
         .padding(.horizontal, 8)
-        .padding(.top, 6)
-        .padding(.bottom, 3)
+        .padding(.top, 8)
+        .padding(.bottom, 4)
         .accessibilityElement(children: .combine)
         .accessibilityAddTraits(.isHeader)
     }
@@ -110,6 +116,7 @@ struct PanelRowView: View {
         HStack(alignment: .center, spacing: 10) {
             VStack(alignment: .trailing, spacing: 0) {
                 Text(row.startTime)
+                    .fontWeight(row.isMuted ? .regular : .medium)
                     .foregroundStyle(row.isMuted ? PanelColors.tertiary : PanelColors.strong)
                     .frame(height: 16)
                 Text(row.endTime)
@@ -128,7 +135,7 @@ struct PanelRowView: View {
 
             VStack(alignment: .leading, spacing: 0) {
                 Text(meeting.title)
-                    .font(.system(size: 13.5, weight: row.isMuted ? .medium : .semibold))
+                    .font(.system(size: 13, weight: row.isMuted ? .medium : .semibold))
                     .foregroundStyle(row.isMuted ? PanelColors.tertiary : PanelColors.primary)
                     .lineLimit(1)
                     .truncationMode(.tail)

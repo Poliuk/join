@@ -128,7 +128,7 @@ private struct SegmentBody: View {
         let inset = PanelFilterToggle.inset
         let thumbShape = RoundedRectangle(cornerRadius: PanelFilterToggle.cornerRadius - inset, style: .continuous)
         configuration.label
-            .font(.system(size: 12, weight: .medium))
+            .font(.system(size: 12, weight: style.isSelected ? .semibold : .medium))
             .lineLimit(1)
             .foregroundStyle(labelColor)
             .opacity(configuration.isPressed && reacts ? 0.7 : 1)
