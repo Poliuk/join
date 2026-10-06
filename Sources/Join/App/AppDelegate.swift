@@ -53,6 +53,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 guard let preset = AlertAppearancePreset.allCases.first(where: { "\($0)" == argument }) else { return }
                 delegate.model.preferences.appearance = preset.appearance
             }),
+            ("panelFilter", { delegate, argument in
+                guard let filter = argument.flatMap(PanelListFilter.init(rawValue:)) else { return }
+                delegate.model.preferences.panelListFilter = filter
+            }),
+            ("panelFrost", { delegate, argument in
+                // An opacity from 0 to 1 to try on the real panel; anything else goes back to the palette's.
+                delegate.model.panelFrostOverride = argument.flatMap(Double.init).flatMap { (0...1).contains($0) ? $0 : nil }
+            }),
             ("appearance", { _, argument in
                 switch argument {
                 case "light": NSApp.appearance = NSAppearance(named: .aqua)

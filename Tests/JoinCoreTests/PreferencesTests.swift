@@ -136,4 +136,13 @@ final class PreferencesTests: XCTestCase {
         XCTAssertTrue(preferences.menuBarShowsNextEvent)
         XCTAssertFalse(preferences.menuBarShowsEventTitles)
     }
+
+    @MainActor
+    func testPanelListFilterDefaultsToTheWeekAndPersists() {
+        XCTAssertEqual(Preferences(defaults: defaults).panelListFilter, .week)
+        Preferences(defaults: defaults).panelListFilter = .today
+        XCTAssertEqual(Preferences(defaults: defaults).panelListFilter, .today)
+        defaults.set("everything", forKey: Preferences.Keys.panelListFilter)
+        XCTAssertEqual(Preferences(defaults: defaults).panelListFilter, .week, "an unknown value falls back to the default")
+    }
 }
