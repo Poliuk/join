@@ -8,6 +8,8 @@
 	<string>Join!</string>
 	<key>CFBundleExecutable</key>
 	<string>Join</string>
+	<key>CFBundleIconFile</key>
+	<string>AppIcon</string>
 	<key>CFBundleIdentifier</key>
 	<string>com.poliuk.join</string>
 	<key>CFBundleInfoDictionaryVersion</key>

@@ -109,7 +109,7 @@ Direct Google Calendar API integration (see Decision 1), saved custom themes, cu
 
 ## 9. Decisions
 
-All were settled on 2026-10-05.
+All were settled on 2026-10-05, except where a row gives a later date.
 
 | Decision | Choice | Notes |
 |---|---|---|
@@ -117,6 +117,7 @@ All were settled on 2026-10-05.
 | Minimum macOS | **14 Sonoma** | Modern EventKit permission API, `@Observable`, `SMAppService`. |
 | Distribution | **Unsigned** (ad-hoc signature pinned to the bundle id) | Built locally with `make run`; no Apple Developer membership needed. The calendar permission survives rebuilds. Notarization can be added later. |
 | Name | **Join!** | Bundle id `com.poliuk.join`, executable `Join`. |
+| App icon | **Amber tile, countdown ring, camera** | A white ring with three quarters of the time left around a dark video camera, on an amber tile. Picked from four variations on a countdown ring (2026-10-06). |
 | Out-of-office settings | **On the General pane** | The settings design put them on Calendars; the author chose General. |
 
 For the record, the alternative considered for the calendar source:

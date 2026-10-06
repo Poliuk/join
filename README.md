@@ -1,3 +1,5 @@
+<img src="docs/AppIcon.png" alt="Join! app icon" width="128" height="128">
+
 # Join!
 
 [![macOS 14+](https://img.shields.io/badge/macOS-14%2B-blue)](#requirements)
@@ -70,6 +72,7 @@ To take a break, click the bell in the menu bar panel and pick **Pause for 1 hou
 swift build          # debug build (Command Line Tools are enough)
 swift test           # unit tests (needs Xcode for XCTest)
 scripts/build-app.sh # assemble build/Join.app
+make icon            # redraw Resources/AppIcon.icns after changing scripts/make-icon.swift
 ```
 
 The package has two targets:

@@ -456,11 +456,15 @@ join/
 │       └── Support/         Observation helper, Color↔RGBA, SystemSounds, LaunchAtLogin,
 │                            WindowSnapshots
 ├── Tests/JoinCoreTests/     XCTest suites for everything in JoinCore
-├── Resources/Info.plist     LSUIElement, usage description, bundle metadata
-├── scripts/build-app.sh     Assembles build/Join.app and signs it (see §13)
-├── Makefile                 make app | run | test | clean
+├── Resources/
+│   ├── Info.plist           LSUIElement, usage description, bundle metadata
+│   └── AppIcon.icns         The app icon, drawn by scripts/make-icon.swift (see §13)
+├── scripts/
+│   ├── build-app.sh         Assembles build/Join.app and signs it (see §13)
+│   └── make-icon.swift      Draws the app icon into AppIcon.icns and docs/AppIcon.png
+├── Makefile                 make app | icon | run | test | clean
 ├── .github/workflows/ci.yml build + test + package on macos-14
-└── docs/                    This document and the product brief
+└── docs/                    This document, the product brief, and AppIcon.png for the README
 ```
 
 Bundle id `com.poliuk.join`, `LSUIElement = YES`.
@@ -532,7 +536,8 @@ Bundle id `com.poliuk.join`, `LSUIElement = YES`.
 
 ## 13. Build, CI, distribution
 
-- **Build:** `make app` runs `scripts/build-app.sh`: `swift build -c release`, copies the binary and `Info.plist` into `build/Join.app`, and ad-hoc signs it with an explicit designated requirement, `identifier "com.poliuk.join"`. A plain ad-hoc signature's requirement is the hash of that exact binary, so TCC treated every rebuild as a new app and asked for calendar access again. Pinning the requirement to the bundle identifier keeps the grant across rebuilds. The trade-off: any locally built binary that claims that identifier inherits the grant, which is acceptable for a locally built app and goes away with a real signing identity. `make run` builds and opens it.
+- **Build:** `make app` runs `scripts/build-app.sh`: `swift build -c release`, copies the binary, `Info.plist` and `AppIcon.icns` into `build/Join.app`, and ad-hoc signs it with an explicit designated requirement, `identifier "com.poliuk.join"`. A plain ad-hoc signature's requirement is the hash of that exact binary, so TCC treated every rebuild as a new app and asked for calendar access again. Pinning the requirement to the bundle identifier keeps the grant across rebuilds. The trade-off: any locally built binary that claims that identifier inherits the grant, which is acceptable for a locally built app and goes away with a real signing identity. `make run` builds and opens it.
+- **App icon:** an amber tile with a white countdown ring, three quarters left from twelve o'clock, around a dark camera. `scripts/make-icon.swift` draws it with Core Graphics on the macOS icon grid (a 1024-point canvas, an 824-point tile with 186-point corners, room for the shadow), renders every size of the iconset from the vectors rather than scaling one bitmap down (only the Retina files for 16 and 32 points: `iconutil` would store 1x files at those sizes in a legacy format that macOS 26 and later shrink onto a grey plate), and runs `iconutil` to write `Resources/AppIcon.icns`, plus `docs/AppIcon.png` for the README. `Info.plist` names it with `CFBundleIconFile`. The `.icns` is committed, so building needs neither the script nor `iconutil`; run `make icon` after changing the drawing. On macOS 26 and later the system masks the tile to its own icon shape and adds its glass edge; the icon fills the shape, so it isn't shrunk onto a grey plate. There are no dark or tinted variants: those need an Icon Composer `.icon` compiled by `actool`, which comes with Xcode. The app has no Dock icon, so the icon shows in places like Finder, Spotlight, Login Items, System Settings › Privacy & Security › Calendars and the system's calendar access alert.
 - **CI:** GitHub Actions on `macos-14`: `swift build`, `swift test`, `scripts/build-app.sh`, and the `.app` is uploaded as a workflow artifact.
 - **Distribution:** unsigned/un-notarized by decision. Users build locally or download the CI artifact and right-click → Open once. Notarization (Developer ID + `notarytool`) can be added to `release.yml` later without touching the app.
 - **Sandbox:** off. Sandboxing requires a real signing identity to be meaningful; nothing in the app needs it.
