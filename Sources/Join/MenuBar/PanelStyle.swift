@@ -20,9 +20,6 @@ enum PanelColors {
     static let badgeFill = Color(nsColor: rgb(0xF5A524))
     static let badgeText = Color(nsColor: gray(0x1D1D1F))
 
-    /// Laid over the window's blur material so the panel lands near the design's #242427 while staying translucent.
-    static let background = pair(light: rgb(0xF6F6F8).withAlphaComponent(0.6), dark: rgb(0x242427).withAlphaComponent(0.6))
-
     static let cardFill = fill(light: 0.04, dark: 0.05)
     static let cardBorder = fill(light: 0.07, dark: 0.07)
     static let rowButtonFill = fill(light: 0.06, dark: 0.08)

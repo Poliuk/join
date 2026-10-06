@@ -34,7 +34,6 @@ struct MenuBarPanelView: View {
         }
         .frame(width: MenuBarPanelWindow.width)
         .frame(maxHeight: .infinity, alignment: .top)
-        .background(PanelColors.background)
         .clipShape(RoundedRectangle(cornerRadius: MenuBarPanelWindow.cornerRadius, style: .continuous))
         .overlay(
             RoundedRectangle(cornerRadius: MenuBarPanelWindow.cornerRadius, style: .continuous)

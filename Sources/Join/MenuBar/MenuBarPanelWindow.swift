@@ -28,23 +28,36 @@ final class MenuBarPanelWindow: NSPanel {
         // Not drawn on a borderless window; VoiceOver and the window chooser announce it.
         title = "Join! meetings"
 
-        let background = NSVisualEffectView()
-        background.material = .popover
-        background.blendingMode = .behindWindow
-        background.state = .active
-        // The mask image shapes both the blur and the window shadow.
-        background.maskImage = Self.roundedMask(radius: Self.cornerRadius)
-
         let hosting = PanelHostingView(rootView: rootView)
         hosting.sizingOptions = []
-        hosting.frame = background.bounds
-        hosting.autoresizingMask = [.width, .height]
-        background.addSubview(hosting)
-        contentView = background
+        contentView = Self.makeBackground(around: hosting)
     }
 
     override var canBecomeKey: Bool { true }
     override var canBecomeMain: Bool { false }
+
+    /// The system menus' material, so the panel reads like one of them in light and dark mode:
+    /// Liquid Glass on macOS 26 and later, the menu blur before that. The glass view isn't in the
+    /// SDK this builds against, so it's looked up at runtime and set up through its public properties.
+    @MainActor
+    private static func makeBackground(around content: NSView) -> NSView {
+        if #available(macOS 26, *), let glassType = NSClassFromString("NSGlassEffectView") as? NSView.Type {
+            let glass = glassType.init(frame: NSRect(x: 0, y: 0, width: width, height: 200))
+            glass.setValue(Double(cornerRadius), forKey: "cornerRadius")
+            glass.setValue(content, forKey: "contentView")
+            return glass
+        }
+        let blur = NSVisualEffectView(frame: NSRect(x: 0, y: 0, width: width, height: 200))
+        blur.material = .menu
+        blur.blendingMode = .behindWindow
+        blur.state = .active
+        // The mask image shapes both the blur and the window shadow.
+        blur.maskImage = roundedMask(radius: cornerRadius)
+        content.frame = blur.bounds
+        content.autoresizingMask = [.width, .height]
+        blur.addSubview(content)
+        return blur
+    }
 
     private static func roundedMask(radius: CGFloat) -> NSImage {
         let edge = radius * 2 + 1
