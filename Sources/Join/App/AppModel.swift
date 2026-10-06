@@ -66,7 +66,8 @@ final class AppModel {
             now: now,
             pauseState: alertCoordinator.pauseState,
             showsNextEvent: preferences.menuBarShowsNextEvent,
-            showsTitles: preferences.menuBarShowsEventTitles
+            showsTitles: preferences.menuBarShowsEventTitles,
+            startingSoonWindow: preferences.startingSoonPill.window
         )
     }
 
@@ -75,7 +76,8 @@ final class AppModel {
             meetings: meetingStore.meetings,
             alertable: meetingStore.alertableMeetings,
             now: now,
-            showsOutOfOffice: preferences.showOutOfOfficeInList
+            showsOutOfOffice: preferences.showOutOfOfficeInList,
+            startingSoonWindow: preferences.startingSoonPill.window
         )
     }
 

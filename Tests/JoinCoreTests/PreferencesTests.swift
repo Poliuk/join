@@ -25,6 +25,15 @@ final class PreferencesTests: XCTestCase {
         XCTAssertFalse(preferences.alertForOutOfOffice)
         XCTAssertTrue(preferences.showOutOfOfficeInList)
         XCTAssertEqual(preferences.outOfOfficeKeywords, OutOfOfficeDetector.defaultKeywords)
+        XCTAssertEqual(preferences.startingSoonPill, .default)
+    }
+
+    func testStartingSoonPillPersists() {
+        let first = Preferences(defaults: defaults)
+        first.startingSoonPill = StartingSoonPill(minutes: 10, fill: RGBA(rgb: 0xFFD60A), text: .black)
+        XCTAssertEqual(Preferences(defaults: defaults).startingSoonPill, StartingSoonPill(minutes: 10, fill: RGBA(rgb: 0xFFD60A), text: .black))
+        defaults.set(Data("not json".utf8), forKey: Preferences.Keys.startingSoonPill)
+        XCTAssertEqual(Preferences(defaults: defaults).startingSoonPill, .default, "unreadable data falls back to the default")
     }
 
     func testValuesPersistAcrossInstances() {

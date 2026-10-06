@@ -221,4 +221,15 @@ final class PanelPresenterTests: XCTestCase {
         XCTAssertFalse(hidden.sections.flatMap(\.rows).contains { $0.meeting.isOutOfOffice })
         XCTAssertEqual(hidden.sections.flatMap(\.rows).count, shown.sections.flatMap(\.rows).count - 1)
     }
+
+    func testTheStartingSoonCardFollowsTheMenuBarPillsWindow() {
+        let now = F.date(6, 12, 52)
+        let usual = PanelPresenter.content(meetings: F.week, alertable: F.alertable, now: now, calendar: F.calendar, locale: F.us)
+        guard case .next = usual.hero else { return XCTFail("expected next, got \(usual.hero)") }
+        let wider = PanelPresenter.content(
+            meetings: F.week, alertable: F.alertable, now: now, startingSoonWindow: 10 * 60, calendar: F.calendar, locale: F.us
+        )
+        guard case .startingSoon(let card) = wider.hero else { return XCTFail("expected startingSoon, got \(wider.hero)") }
+        XCTAssertEqual(card.label, "Starts in 8 min")
+    }
 }

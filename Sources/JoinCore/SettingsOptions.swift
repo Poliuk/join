@@ -8,10 +8,6 @@ public enum SettingsOptions {
     public static let leadTimeMinutes: [Int] = [0, 1, 2, 3, 5, 10]
     public static let customLeadTimeRange: ClosedRange<Int> = 0...120
 
-    public static func isPresetLeadTime(_ leadTime: TimeInterval) -> Bool {
-        leadTimeMinutes.contains(wholeMinutes(leadTime))
-    }
-
     public static func leadTimeTitle(minutes: Int) -> String {
         switch minutes {
         case 0: return "When the event starts"
@@ -22,13 +18,10 @@ public enum SettingsOptions {
 
     // MARK: Snooze
 
-    public static let snoozeMinutes: [Int] = [1, 2, 3, 5, 10, 15, 30, 60]
-
-    /// The snooze list, plus `current` in order when it isn't one of the presets, so a value saved
-    /// by an earlier build still shows instead of a blank pop-up.
-    public static func snoozeChoices(including current: Int) -> [Int] {
-        merging(current, into: snoozeMinutes)
-    }
+    /// Preset snooze durations, in minutes. Anything else, including values saved by earlier builds
+    /// (15, 30, 60), shows as Custom.
+    public static let snoozeMinutes: [Int] = [1, 3, 5, 10]
+    public static let customSnoozeRange: ClosedRange<Int> = 1...120
 
     /// "1 minute", "5 minutes", "1 hour".
     public static func durationTitle(minutes: Int) -> String {
@@ -50,6 +43,27 @@ public enum SettingsOptions {
     /// What the alert's snooze row offers: both snooze durations, then snoozing until the event.
     public static func alertOffers(snoozeDurations: [TimeInterval]) -> [String] {
         snoozeDurations.map { shortDurationTitle(minutes: wholeMinutes($0)) } + [AlertCountdown.snoozeUntilStartLabel]
+    }
+
+    // MARK: Starting soon
+
+    /// How long before a meeting the menu bar pill appears, in minutes. Anything else shows as Custom,
+    /// within `StartingSoonPill.minuteRange`.
+    public static let startingSoonMinutes: [Int] = [1, 3, 5, 10]
+
+    /// "1 minute before", "5 minutes before".
+    public static func startingSoonTitle(minutes: Int) -> String {
+        minutes == 1 ? "1 minute before" : "\(minutes) minutes before"
+    }
+
+    /// After a custom number of minutes: "minute before", "minutes before".
+    public static func minutesBeforeUnit(_ minutes: Int) -> String {
+        minutes == 1 ? "minute before" : "minutes before"
+    }
+
+    /// After a custom duration: "minute", "minutes".
+    public static func minutesUnit(_ minutes: Int) -> String {
+        minutes == 1 ? "minute" : "minutes"
     }
 
     // MARK: Auto-close

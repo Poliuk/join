@@ -10,11 +10,13 @@ final class MenuBarPresenterTests: XCTestCase {
         pause: PauseState = .active,
         showsNextEvent: Bool = true,
         showsTitles: Bool = false,
+        startingSoonWindow: TimeInterval = MenuBarPresenter.startingSoonWindow,
         locale: Locale = F.us
     ) -> MenuBarStatus {
         var status = MenuBarPresenter.status(
             meetings: meetings, now: now, pauseState: pause,
             showsNextEvent: showsNextEvent, showsTitles: showsTitles,
+            startingSoonWindow: startingSoonWindow,
             calendar: F.calendar, locale: locale
         )
         status.text = F.squash(status.text)
@@ -195,5 +197,16 @@ final class MenuBarPresenterTests: XCTestCase {
         XCTAssertEqual(status([onTheHour], at: base).text, "Next in 2 h 00 min")
         let running = Meeting(id: "r", title: "Workshop", start: base.addingTimeInterval(-600), end: base.addingTimeInterval(3 * 3600 + 5 * 60))
         XCTAssertEqual(status([running], at: base).text, "3 h 05 min left")
+    }
+
+    func testTheStartingSoonWindowComesFromSettings() {
+        // 12:52 PM, the next meeting starts at 1:00 PM: 8 minutes away.
+        let now = F.date(6, 12, 52)
+        XCTAssertEqual(status(at: now).kind, .withinHour)
+        let wider = status(at: now, startingSoonWindow: 10 * 60)
+        XCTAssertEqual(wider.kind, .startingSoon)
+        XCTAssertEqual(wider.text, "Next in 8 min")
+        XCTAssertEqual(status(at: F.date(6, 12, 58), startingSoonWindow: 60).kind, .withinHour, "1 minute: not yet at 2 minutes")
+        XCTAssertEqual(status(at: F.date(6, 12, 59), startingSoonWindow: 60).kind, .startingSoon)
     }
 }

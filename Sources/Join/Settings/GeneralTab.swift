@@ -10,15 +10,7 @@ struct GeneralTab: View {
     /// approving Join! in System Settings clears the hint. Never read or written in a fixture run.
     @State private var launchAtLogin = false
     @State private var launchAtLoginError: String?
-    /// Whether "Custom…" is chosen; it stays chosen while the custom value happens to match a preset.
-    @State private var customLeadTime = false
-    /// What's typed in the custom lead-time field. Written to Preferences only on Return or when the
-    /// field loses focus: saving every keystroke would make "3" → "35" → "5" briefly mean 35 minutes
-    /// and fire alerts early.
-    @State private var leadMinutesDraft = Int(Preferences.defaultLeadTime) / 60
-    @FocusState private var leadFieldFocused: Bool
 
-    private static let customLeadTag = -1
     private static let neverTag = 0
 
     var body: some View {
@@ -46,20 +38,18 @@ struct GeneralTab: View {
             }
 
             SettingsSection(title: "Alert") {
-                SettingsRow(title: "Alert me", separator: false) {
-                    Picker("Alert me", selection: leadTimeSelection(preferences)) {
-                        ForEach(SettingsOptions.leadTimeMinutes, id: \.self) { minutes in
-                            Text(SettingsOptions.leadTimeTitle(minutes: minutes)).tag(minutes)
-                        }
-                        Divider()
-                        Text("Custom…").tag(Self.customLeadTag)
-                    }
-                    .labelsHidden()
-                    .fixedSize()
-                }
-                if showsCustomLeadTime(preferences) {
-                    customLeadTimeRow(preferences)
-                }
+                // Custom lead times save on Return or when the field loses focus, so editing
+                // "3" → "35" → "5" can't briefly mean 35 minutes and fire alerts early.
+                SettingsMinutesChoice(
+                    title: "Alert me",
+                    separator: false,
+                    presets: SettingsOptions.leadTimeMinutes,
+                    range: SettingsOptions.customLeadTimeRange,
+                    presetTitle: SettingsOptions.leadTimeTitle(minutes:),
+                    unit: SettingsOptions.minutesBeforeUnit,
+                    fieldLabel: "Minutes before the event",
+                    minutes: leadMinutes(preferences)
+                )
                 SettingsRow(title: "Show alert on") {
                     Picker("Show alert on", selection: $preferences.alertScreens) {
                         ForEach(AlertScreens.allCases, id: \.self) { choice in
@@ -104,12 +94,8 @@ struct GeneralTab: View {
 
             VStack(alignment: .leading, spacing: 8) {
                 SettingsSection(title: "Snooze & auto-close") {
-                    SettingsRow(title: "First snooze button", separator: false) {
-                        snoozePicker("First snooze button", preferences: preferences, index: 0)
-                    }
-                    SettingsRow(title: "Second snooze button") {
-                        snoozePicker("Second snooze button", preferences: preferences, index: 1)
-                    }
+                    snoozeChoice("First snooze button", preferences: preferences, index: 0)
+                    snoozeChoice("Second snooze button", preferences: preferences, index: 1)
                     SettingsRow(title: "Close alerts automatically") {
                         Picker("Close alerts automatically", selection: autoCloseSelection(preferences)) {
                             ForEach(autoCloseChoices(preferences), id: \.self) { minutes in
@@ -125,15 +111,7 @@ struct GeneralTab: View {
             }
         }
         .padding(SettingsMetrics.panePadding)
-        .onAppear {
-            refreshLaunchAtLogin()
-            leadMinutesDraft = Int(preferences.leadTime) / 60
-            customLeadTime = !SettingsOptions.isPresetLeadTime(preferences.leadTime)
-        }
-        .onChange(of: preferences.leadTime) { _, newValue in
-            leadMinutesDraft = Int(newValue) / 60
-            if !SettingsOptions.isPresetLeadTime(newValue) { customLeadTime = true }
-        }
+        .onAppear { refreshLaunchAtLogin() }
         .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
             refreshLaunchAtLogin()
         }
@@ -181,66 +159,10 @@ struct GeneralTab: View {
 
     // MARK: Lead time
 
-    private func showsCustomLeadTime(_ preferences: Preferences) -> Bool {
-        customLeadTime || !SettingsOptions.isPresetLeadTime(preferences.leadTime)
-    }
-
-    private func leadTimeSelection(_ preferences: Preferences) -> Binding<Int> {
-        Binding(
-            get: { showsCustomLeadTime(preferences) ? Self.customLeadTag : Int(preferences.leadTime) / 60 },
-            set: { selection in
-                if selection == Self.customLeadTag {
-                    leadMinutesDraft = Int(preferences.leadTime) / 60
-                    customLeadTime = true
-                    DispatchQueue.main.async { leadFieldFocused = true }
-                } else {
-                    // Set the draft first: the custom field's commit on disappear must not undo this.
-                    leadMinutesDraft = selection
-                    customLeadTime = false
-                    preferences.leadTime = TimeInterval(selection * 60)
-                }
-            }
-        )
-    }
-
-    private func customLeadTimeRow(_ preferences: Preferences) -> some View {
-        SettingsRow(title: "Custom time", tone: .secondary, indented: true) {
-            HStack(spacing: 6) {
-                TextField("Minutes before the event", value: $leadMinutesDraft, format: .number)
-                    .labelsHidden()
-                    .textFieldStyle(.roundedBorder)
-                    .multilineTextAlignment(.trailing)
-                    .frame(width: 52)
-                    .focused($leadFieldFocused)
-                    .onSubmit { commitLeadMinutes(preferences) }
-                    .onChange(of: leadFieldFocused) { _, focused in
-                        if !focused { commitLeadMinutes(preferences) }
-                    }
-                    .onDisappear { commitLeadMinutes(preferences) }
-                Stepper("Minutes before the event", value: leadMinutes(preferences), in: SettingsOptions.customLeadTimeRange)
-                    .labelsHidden()
-                Text(leadMinutesDraft == 1 ? "minute before" : "minutes before")
-                    .foregroundStyle(.secondary)
-            }
-        }
-    }
-
-    private func commitLeadMinutes(_ preferences: Preferences) {
-        let range = SettingsOptions.customLeadTimeRange
-        let minutes = min(max(leadMinutesDraft, range.lowerBound), range.upperBound)
-        leadMinutesDraft = minutes
-        if Int(preferences.leadTime) / 60 != minutes {
-            preferences.leadTime = TimeInterval(minutes * 60)
-        }
-    }
-
     private func leadMinutes(_ preferences: Preferences) -> Binding<Int> {
         Binding(
             get: { Int(preferences.leadTime) / 60 },
-            set: { minutes in
-                let range = SettingsOptions.customLeadTimeRange
-                preferences.leadTime = TimeInterval(min(max(minutes, range.lowerBound), range.upperBound) * 60)
-            }
+            set: { preferences.leadTime = TimeInterval($0 * 60) }
         )
     }
 
@@ -274,25 +196,23 @@ struct GeneralTab: View {
 
     // MARK: Snooze and auto-close
 
-    private func snoozePicker(_ title: String, preferences: Preferences, index: Int) -> some View {
-        let current = SettingsOptions.wholeMinutes(preferences.snoozeDurations[index])
-        return Picker(title, selection: snoozeMinutes(preferences, index: index)) {
-            ForEach(SettingsOptions.snoozeChoices(including: current), id: \.self) { minutes in
-                Text(SettingsOptions.durationTitle(minutes: minutes)).tag(minutes)
-            }
-        }
-        .labelsHidden()
-        .fixedSize()
-    }
-
-    private func snoozeMinutes(_ preferences: Preferences, index: Int) -> Binding<Int> {
-        Binding(
-            get: { SettingsOptions.wholeMinutes(preferences.snoozeDurations[index]) },
-            set: { minutes in
-                var durations = preferences.snoozeDurations
-                durations[index] = TimeInterval(minutes * 60)
-                preferences.snoozeDurations = durations
-            }
+    private func snoozeChoice(_ title: String, preferences: Preferences, index: Int) -> some View {
+        SettingsMinutesChoice(
+            title: title,
+            separator: index > 0,
+            presets: SettingsOptions.snoozeMinutes,
+            range: SettingsOptions.customSnoozeRange,
+            presetTitle: SettingsOptions.durationTitle(minutes:),
+            unit: SettingsOptions.minutesUnit,
+            fieldLabel: "\(title), minutes",
+            minutes: Binding(
+                get: { SettingsOptions.wholeMinutes(preferences.snoozeDurations[index]) },
+                set: { minutes in
+                    var durations = preferences.snoozeDurations
+                    durations[index] = TimeInterval(minutes * 60)
+                    preferences.snoozeDurations = durations
+                }
+            )
         )
     }
 

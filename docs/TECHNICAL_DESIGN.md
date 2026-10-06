@@ -105,7 +105,15 @@ final class Preferences {                  // @Observable, persisted in UserDefa
     var menuBarShowsEventTitles = false
     var alertForOutOfOffice = false        // see §9a
     var outOfOfficeKeywords: [String]
+    var showOutOfOfficeInList = true
     var appearance: AlertAppearance
+    var startingSoonPill: StartingSoonPill
+}
+
+struct StartingSoonPill: Codable, Hashable {  // saved as JSON; missing keys fall back to the default
+    var minutes = 5                   // 1...60; when the menu bar pill and the panel's starting-soon card appear
+    var fill: RGBA?                   // nil = the system accent color
+    var text: RGBA?                   // nil = Automatic: white unless the fill shown gives it < 3:1, then near-black
 }
 
 struct AlertAppearance: Codable, Hashable {   // saved as JSON with "version": 2
@@ -283,14 +291,14 @@ Presets (`AlertAppearancePreset`):
 
 `StatusItemController` owns an `NSStatusItem` and a `MenuBarPanelWindow`. SwiftUI's `MenuBarExtra` was used first and dropped: its window grows with its content but never shrinks, and it can't be closed programmatically. An `NSPopover` replaced it until the redesign, which called for a borderless panel with its own corners and material and no arrow. SwiftUI still requires one scene, so `JoinApp` declares a `MenuBarExtra` with `isInserted: .constant(false)`, which keeps SwiftUI's standard Edit menu (copy and paste in text fields) without adding UI.
 
-**Status item.** `MenuBarPresenter.status(...)` (JoinCore) returns a `MenuBarStatus`: a kind, optional text and an accessibility label. Its inputs are the alertable meetings (so out-of-office blocks count only when the user opted in), `now`, the `PauseState`, `menuBarShowsNextEvent` and `menuBarShowsEventTitles`. Precedence: paused > starting soon > in a meeting > within the hour > later.
+**Status item.** `MenuBarPresenter.status(...)` (JoinCore) returns a `MenuBarStatus`: a kind, optional text and an accessibility label. Its inputs are the alertable meetings (so out-of-office blocks count only when the user opted in), `now`, the `PauseState`, `menuBarShowsNextEvent`, `menuBarShowsEventTitles` and the starting-soon window (`startingSoonPill.window`, 5 minutes by default). Precedence: paused > starting soon > in a meeting > within the hour > later.
 
 | Kind | When | Drawn as |
 |---|---|---|
 | idle | nothing upcoming in the 7-day window | `calendar` symbol alone |
 | later | next meeting more than an hour away | `calendar` + a countdown later today ("Next in 11 h 40 min"), otherwise the day and time: "Tomorrow at 1:00 PM", "In 3 days at 9:10 AM" (calendar days). The user chose this over the design's "1:00 PM" / "Tomorrow 1:00 PM" / weekday. VoiceOver: "in 11 hours 40 minutes, at 1:00 PM", "tomorrow at 1:00 PM", "in 3 days, Thursday at 9:10 AM" |
 | withinHour | next meeting within the hour | `calendar` + "Next in 42 min" |
-| startingSoon | next meeting in 5 minutes or less | a pill filled with the system accent color: white `video.fill` icon + "Next in 4 min" |
+| startingSoon | next meeting within the starting-soon window (5 minutes unless changed in Settings › Appearance) | a filled pill (the system accent unless changed in Settings) with a `video.fill` icon + "Next in 4 min"; the label is white, or near-black when white is under 3:1 on the fill (the orange, yellow and green accents) |
 | inMeeting | in a meeting (the one that started most recently) | a 16 pt ring that drains from full to empty over the meeting + "40 min left" |
 | paused | reminders paused | `bell.slash` alone, never text |
 
@@ -299,7 +307,7 @@ Presets (`AlertAppearancePreset`):
 - Settings › General › **Menu bar** picks one of three (`MenuBarDisplay`, stored as `menuBarShowsNextEvent` and `menuBarShowsEventTitles`): **Icon only**, **Time until next event** (the default), or **Title and time until next event**. Without a title a countdown starts with "Next" ("Next in 42 min"); with one, the title takes its place, truncated to 24 characters: "Product Planning · in 4 min".
 - With **Icon only**, the item has no text but keeps its state icon (pill, ring, bell).
 - Plain states use template images, so the menu bar tints them. The pill is drawn in full color, and redrawn when the system colors change. Text uses a monospaced-digit font, and countdowns past an hour always show two-digit minutes ("11 h 05 min", "2 h 00 min left", `MenuBarPresenter.steadyDuration`), so the item keeps its width as the minutes tick instead of nudging every other menu bar item each hour. The panel keeps the shorter "2 h".
-- The button re-renders through observation tracking whenever `AppModel.menuBarStatus` changes. `AppModel.now` ticks on every :00 and :30 of the clock, so countdowns stay in step with meetings, which start on whole minutes.
+- The button re-renders through observation tracking whenever `AppModel.menuBarStatus` or the pill's settings (`Preferences.startingSoonPill`) change, and when the system colors change. `AppModel.now` ticks on every :00 and :30 of the clock, so countdowns stay in step with meetings, which start on whole minutes.
 - VoiceOver reads full words: "Join!: Product Planning starts in 4 minutes".
 
 **Panel window.** `MenuBarPanelWindow` is a borderless, non-activating `NSPanel` at `.statusBar` level, 368 pt wide, on all Spaces. Like the alert, it takes Esc and Return without pulling the user's app out of the foreground. Its background is the system menus' material, so the panel reads like a native menu in light and dark mode. On macOS 26 and later it's an `NSGlassEffectView` (Liquid Glass, 14 pt corners), looked up at runtime because the SDK the app builds against predates it, and set up only through its public `cornerRadius` and `contentView`. Before macOS 26 it's an `NSVisualEffectView` with the `.menu` material and a rounded mask image, which shapes both the blur and the window shadow. The glass sits in a layer-backed view clipped to the same continuous rounded rectangle: unclipped, the glass gave the window a square shadow, a dark outline with darkened corners around the rounded panel. Nothing is laid over the material, so the desktop's colors show through as they do in a menu. The SwiftUI view sits in an `NSHostingView` that accepts the first click.
@@ -308,12 +316,12 @@ Presets (`AlertAppearancePreset`):
 
 **Closing and keys.** The panel closes on Esc, ⌘W, a second click on the item, a click anywhere else (global and local event monitors), the app resigning active, another window becoming key (except while one of the panel's own menus is open), a Space change and a display change. It also closes before Join, Directions, Settings or Open System Settings open anything, and before any alert appears. ⌘, opens Settings and ⌘Q quits. Return runs the hero card's button when the hero is Starting soon or Now.
 
-**Panel content.** `PanelPresenter.content(meetings:alertable:now:showsOutOfOffice:)` (JoinCore) returns one hero card and a list of sections. The views draw them with `PanelColors`, light/dark pairs with translucent fills that sit on the material in either mode.
+**Panel content.** `PanelPresenter.content(meetings:alertable:now:showsOutOfOffice:startingSoonWindow:)` (JoinCore) returns one hero card and a list of sections. The views draw them with `PanelColors`, light/dark pairs with translucent fills that sit on the material in either mode.
 
 - **Header:** today's date ("Tuesday, 6 October", localized), a "Fixture" badge in fixture runs (§12), the bell button and the gear menu. The panel window's accessible name is "Join! meetings".
 - **Paused bar**, while paused: "Reminders paused until 11:50 AM", "… until tomorrow" or "Reminders paused", with **Resume**.
 - **Hero**, exactly one, chosen from the alertable meetings:
-  - **Starting soon**, when the next start is 5 minutes or less away: accent-tinted card, "Starts in 4 min", accent button. Wins over Now.
+  - **Starting soon**, when the next start is within the starting-soon window, the same as the menu bar pill's (5 minutes by default): accent-tinted card, "Starts in 4 min", accent button. Wins over Now.
   - **Now**, the meeting you are in: "Now · 40 min left", a progress bar in the calendar color, accent button.
   - **Next**, the next meeting later today: neutral card, "Next · in 2 h 15 min", neutral button.
   - **No more meetings today**, with "Next up tomorrow at 1:00 PM, in 15 h 30 min" (the countdown is dropped a day or more ahead) or "Nothing in the next 7 days".
@@ -338,7 +346,7 @@ Presets (`AlertAppearancePreset`):
 
 ## 8. Settings window
 
-Dependent settings (Repeat until the alert is closed, Custom time, Tint strength) are drawn as children of the row above: indented 30 pt, with their hairline starting at the indent and an elbow line running from under the parent's label to their own (`SettingsRow(indented:)`).
+Dependent settings (Repeat until the alert is closed, the Custom time rows, Tint strength) are drawn as children of the row above: indented 30 pt, with their hairline starting at the indent and an elbow line running from under the parent's label to their own (`SettingsRow(indented:)`).
 
 `SettingsWindowController` owns a plain AppKit window whose content view controller is an `NSTabViewController` with `tabStyle = .toolbar`: one toolbar item per pane, **General** (`gearshape`), **Calendars** (`calendar`) and **Appearance** (`circle.righthalf.filled`). SwiftUI's `Settings` scene can't be opened dependably from a menu-bar-only app. The window uses `toolbarStyle = .preference`, takes the selected pane's title, can be closed but not resized, and crossfades between panes. It opens from the gear menu, ⌘, in the panel, reopening the app (`applicationShouldHandleReopen`), or the `openSettings` script hook (§12), which can also pick the pane.
 
@@ -346,20 +354,21 @@ Dependent settings (Repeat until the alert is closed, Custom time, Tint strength
 
 **Focus.** Opening the window, switching panes and closing the window all clear the first responder. That stops AppKit from focusing the first text field on open, and commits a half-typed value the same way as when the field loses focus.
 
-**Components.** `SettingsComponents.swift` holds the shared building blocks, so the three panes look alike: `SettingsPalette` (window, box, separator, chip, field and connector colors as light/dark pairs), `SettingsMetrics` (pane width, padding, indent), `SettingsSection` (a heading over a box), `SettingsBox` (the rounded group), `SettingsRow` (label left, control right, a hairline above, secondary or disabled tone, and an optional indent for dependent rows, which insets the hairline and draws an elbow connector in the gutter), `SettingsSwitchRow`, `SettingsChip`, `SettingsFlowLayout` (a wrapping layout for tokens, where a subview tagged `SettingsFlowFill` takes the rest of its line) and `SettingsPaneScroll`. The pop-up choices and their labels come from `SettingsOptions` in JoinCore. All controls bind to `Preferences`.
+**Components.** `SettingsComponents.swift` holds the shared building blocks, so the three panes look alike: `SettingsPalette` (window, box, separator, chip, field and connector colors as light/dark pairs), `SettingsMetrics` (pane width, padding, indent), `SettingsSection` (a heading over a box), `SettingsBox` (the rounded group), `SettingsRow` (label left, control right, a hairline above, secondary or disabled tone, and an optional indent for dependent rows, which insets the hairline and draws an elbow connector in the gutter), `SettingsSwitchRow`, `SettingsChip`, `SettingsFlowLayout` (a wrapping layout for tokens, where a subview tagged `SettingsFlowFill` takes the rest of its line), `SettingsMinutesChoice` (a pop-up of preset minutes plus Custom…, which adds the indented Custom time row with a field that saves on Return or focus loss and a stepper; **Alert me**, both snooze buttons and the pill's **Appears** use it) and `SettingsPaneScroll`. The pop-up choices and their labels come from `SettingsOptions` in JoinCore. All controls bind to `Preferences`.
 
 - **General:**
   - Top box: **Open at login** (`SMAppService.mainApp.register()` / `.unregister()`; if macOS wants approval, a hint points to System Settings › General › Login Items; switch and hint are re-read whenever the app becomes active or Settings becomes key, so the hint clears after approval; in a fixture run the row is disabled, "Not available in fixture mode.", and never touches `SMAppService`), and **Menu bar** (Icon only, Time until next event, Title and time until next event), one pop-up in place of the design's two switches.
   - **Alert:** **Alert me**: When the event starts, 1, 2, 3, 5 or 10 minutes before, or Custom…. Custom shows an indented row with a minutes field and a stepper (0–120). The field saves on Return or when it loses focus, never mid-typing, so "3" → "35" → "5" can't briefly mean 35 minutes and fire alerts early. A stored lead time that isn't a preset opens as Custom. **Show alert on**: All screens, Main screen only, Screen with the pointer. **Sound**: a play button and a pop-up with None and the `/System/Library/Sounds` names. The indented **Repeat until the alert is closed** is disabled without a sound.
   - **Out of office** (§9a): **Alert for out-of-office events**, off by default; **Show out-of-office events in the list**, on by default (off leaves them out of the panel's lists); and **Title keywords** as removable tokens. Return or a comma adds a keyword, Delete in the empty field removes the last one, leaving the field adds what was typed, and duplicates are ignored regardless of case. **Restore Defaults** brings back the built-in list. The settings design put this section on Calendars; it lives on General by the user's choice.
-  - **Snooze & auto-close:** **First snooze button** and **Second snooze button** (1, 2, 3, 5, 10, 15, 30 or 60 minutes; a stored value outside that list stays selectable) and **Close alerts automatically** (Never, or after 5, 10, 15, 30 or 60 minutes). Under the box, "The alert offers" with chips that mirror the alert's snooze row: "1 min", "5 min", "At event start".
+  - **Snooze & auto-close:** **First snooze button** and **Second snooze button** (1, 3, 5 or 10 minutes, or Custom… with a 1–120 minute field, like **Alert me**; a value saved by an earlier build, such as 30 minutes, shows as Custom) and **Close alerts automatically** (Never, or after 5, 10, 15, 30 or 60 minutes). Under the box, "The alert offers" with chips that mirror the alert's snooze row: "1 min", "5 min", "At event start".
 - **Calendars:** a line saying alerts come from the checked calendars, with "N of M selected", and an orange warning when none are selected ("you won't get any alerts"). One group per account (`calendar.source.title`) with its own "N of M" and a **Select All** / **Deselect All** link when it has more than one calendar. Each calendar is a checkbox filled with the calendar's color; VoiceOver sees a standard checkbox. The first change turns the implicit "all calendars" (`nil`) into an explicit set. Footer: where to add a missing account and where the sync interval is set, an "Updated just now" / "Updated 5 minutes ago" label from `MeetingStore.lastRefreshed`, **Open Internet Accounts…** and **Refresh Calendars**, which re-reads EventKit. Without calendar access the pane shows a permission prompt instead.
 - **Appearance:**
   - A live preview at the top: the real `AlertContentView` at 52 % scale, with a sample meeting frozen at "Starts in 2:59", over a sample screen picked with **Preview on**: Wallpaper, Light app or Dark app. A window can't blur what is behind it inside itself, so the sample screen is drawn already blurred, and the palette's `material` is laid over it as a plain layer, then the tint and scrim as on the real alert. **Show Demo Alert** fires a real full-screen alert with a fake event.
   - **Style:** one card per preset (Dark, Light, High contrast, Midnight), drawn as a miniature. The matching preset is outlined; "Custom" shows when none matches.
   - **Alert:** **Backdrop** (Dark blur, Light blur; No blur only for an old saved theme), **Tint** (None, or Custom with a color well), **Tint strength** (a percent slider, while tinted) and **Text color** (Automatic, or Custom with a well). Contrast warnings for the event text appear under the box.
   - **Buttons:** a table with the columns Text, Fill and Fill opacity, and one row each for **Join** and **Dismiss & Snooze**. Each color is Automatic or Custom with a well. Contrast warnings for the button labels appear under the box.
-  - **Restore Defaults**, disabled while the appearance already equals the default.
+  - **Starting soon:** the menu bar pill. A preview row shows it as the menu bar will ("Starting in 5 min or less", the pill with "Next in 4 min", or the icon alone when the menu bar shows icons only). **Appears** picks how long before a meeting it replaces the countdown (1, 3, 5 or 10 minutes, or Custom… with a 1–60 minute field, like **Alert me**; 5 by default); the panel's starting-soon card follows the same setting. **Fill** is Accent color or Custom with a well, and **Text color** Automatic or Custom; switching to Custom starts from the color shown, so nothing changes until a new color is picked. Automatic text is white unless the fill shown, the accent or a custom color, gives white less than 3:1; then it's near-black. On macOS 27 that keeps white on the blue, purple, pink and red accents, and picks near-black on orange, yellow and green, where white is hard to read. The label is worked out when the pill is drawn, against the accent in that appearance. A contrast warning appears under the box, and is announced to VoiceOver, when custom colors leave the label below 3:1. That's lower than the alert's 4.5:1 by choice: white on the default blue accent is about 4:1, and the stock pill shouldn't be flagged.
+  - **Restore Defaults** resets both the alert's appearance and the pill, and is disabled while both already equal their defaults.
 
 **Persistence.** `Preferences` is an `@Observable` class whose stored properties read/write `UserDefaults` (theme encoded as JSON `Data`). No `@AppStorage` scattered across views; one owner. Values stored by older builds are migrated on load:
 
@@ -403,7 +412,7 @@ Adding a provider is one table row plus a test case. Opening uses `NSWorkspace.s
 | Meeting cancelled while alert showing | Store no longer contains it → coordinator closes the alert. |
 | Meeting moved | New `id`, old state discarded, new occurrence scheduled. |
 | Two meetings at the same time | One alert listing both. |
-| Next meeting starts while you're in one | In its last 5 minutes it takes over the menu bar item (pill) and the panel's hero card; the ongoing one moves to "Now". |
+| Next meeting starts while you're in one | Within the starting-soon window (5 minutes by default) it takes over the menu bar item (pill) and the panel's hero card; the ongoing one moves to "Now". |
 | Two meetings overlap | The later one is flagged in the panel ("Overlaps …"); both alert normally. |
 | Meeting runs past midnight | Time range reads "11:30 PM – 12:30 AM"; longer than a day, "Mon 9:00 AM – Wed 5:00 PM". `DateIntervalFormatter` alone prints full dates as soon as a range crosses midnight. |
 | Lead time changed in Settings | Re-plan; a meeting already `.dismissed` stays dismissed. |
@@ -428,8 +437,8 @@ join/
 │   │   Meeting, AlertState, AlertScheduler, AlertScreens, PauseState,
 │   │   MeetingLinkDetector, OutOfOfficeDetector, MeetingTimeFormatter,
 │   │   MenuBarPresenter, PanelPresenter, LocationFormatter, AlertCountdown,
-│   │   AlertAppearance (presets, palette, contrast), RGBA, SettingsOptions,
-│   │   Preferences
+│   │   AlertAppearance (presets, palette, contrast), StartingSoonPill (window,
+│   │   colors, contrast), RGBA, SettingsOptions, Preferences
 │   └── Join/                The app
 │       ├── App/             JoinApp (scenes), AppDelegate (script hooks), AppModel (wiring, clock)
 │       ├── Calendar/        CalendarService (protocol), EventKitCalendarService,

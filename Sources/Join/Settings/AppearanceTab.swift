@@ -7,6 +7,8 @@ struct AppearanceTab: View {
     @State private var previewBackdrop: AppearancePreviewBackdrop = .wallpaper
     /// The contrast warnings VoiceOver has been told about, or that were already shown.
     @State private var announcedWarnings: Set<AlertContrastWarning.Subject> = []
+    /// Whether the pill's contrast warning has been announced, or was already shown.
+    @State private var announcedPillWarning = false
 
     private enum Column {
         static let name: CGFloat = 132
@@ -41,15 +43,31 @@ struct AppearanceTab: View {
                 warnings { $0 != .text }
             }
 
+            VStack(alignment: .leading, spacing: 8) {
+                SettingsSection(title: "Starting soon") {
+                    startingSoonRows
+                }
+                if let warning = pill.contrastWarning(accent: accent) {
+                    AppearanceContrastWarning(message: warning)
+                }
+            }
+
             HStack {
                 Spacer()
-                Button("Restore Defaults") { model.preferences.resetAppearance() }
-                    .disabled(appearance.isDefault)
+                Button("Restore Defaults") {
+                    model.preferences.resetAppearance()
+                    model.preferences.startingSoonPill = .default
+                }
+                .disabled(appearance.isDefault && pill.isDefault)
             }
         }
         .padding(SettingsMetrics.panePadding)
-        .onAppear { announcedWarnings = Set(appearance.contrastWarnings.map(\.subject)) }
+        .onAppear {
+            announcedWarnings = Set(appearance.contrastWarnings.map(\.subject))
+            announcedPillWarning = pill.contrastWarning(accent: accent) != nil
+        }
         .task(id: appearance) { await announceNewWarnings() }
+        .task(id: pill) { await announcePillWarning() }
     }
 
     private var appearance: AlertAppearance { model.preferences.appearance }
@@ -241,6 +259,76 @@ struct AppearanceTab: View {
         }
     }
 
+    // MARK: Starting soon
+
+    private var pill: StartingSoonPill { model.preferences.startingSoonPill }
+
+    /// The system accent as the pill draws it now.
+    private var accent: RGBA { NSColor.controlAccentColor.rgba }
+
+    private func updatePill(_ change: (inout StartingSoonPill) -> Void) {
+        var updated = model.preferences.startingSoonPill
+        change(&updated)
+        model.preferences.startingSoonPill = updated
+    }
+
+    @ViewBuilder
+    private var startingSoonRows: some View {
+        StartingSoonPreview(pill: pill, showsText: model.preferences.menuBarShowsNextEvent)
+
+        SettingsMinutesChoice(
+            title: "Appears",
+            presets: SettingsOptions.startingSoonMinutes,
+            range: StartingSoonPill.minuteRange,
+            presetTitle: SettingsOptions.startingSoonTitle(minutes:),
+            unit: SettingsOptions.minutesBeforeUnit,
+            fieldLabel: "Minutes before the meeting the pill appears",
+            minutes: Binding(get: { pill.minutes }, set: { minutes in updatePill { $0.minutes = minutes } })
+        )
+
+        SettingsRow(title: "Fill") {
+            AppearanceColorChoice(
+                title: "Pill fill",
+                wellLabel: "Pill fill color",
+                offTitle: "Accent color",
+                wellFirst: true,
+                isCustom: Binding(
+                    get: { pill.fill != nil },
+                    set: { custom in updatePill { $0.setFillCustom(custom, accent: accent) } }
+                ),
+                color: pillColorBinding(get: { $0.fill }, set: { $0.fill = $1 })
+            )
+        }
+
+        SettingsRow(title: "Text color") {
+            AppearanceColorChoice(
+                title: "Pill text color",
+                wellLabel: "Pill text color",
+                offTitle: "Automatic",
+                wellFirst: true,
+                isCustom: Binding(
+                    get: { pill.text != nil },
+                    set: { custom in updatePill { $0.setTextCustom(custom, accent: accent) } }
+                ),
+                color: pillColorBinding(get: { $0.text }, set: { $0.text = $1 })
+            )
+        }
+    }
+
+    private func pillColorBinding(
+        get: @escaping (StartingSoonPill) -> RGBA?,
+        set: @escaping (inout StartingSoonPill, RGBA) -> Void
+    ) -> Binding<Color> {
+        Binding(
+            get: { Color(get(model.preferences.startingSoonPill) ?? .white) },
+            set: { color in
+                var rgba = RGBA(color)
+                rgba.alpha = 1
+                updatePill { set(&$0, rgba) }
+            }
+        )
+    }
+
     // MARK: Helpers
 
     /// Tells VoiceOver about warnings that appeared since the last announcement. Debounced, so
@@ -253,6 +341,16 @@ struct AppearanceTab: View {
         announcedWarnings = Set(warnings.map(\.subject))
         guard !new.isEmpty else { return }
         AccessibilityNotification.Announcement(new.map(\.message).joined(separator: " ")).post()
+    }
+
+    /// Like `announceNewWarnings`, for the pill's warning.
+    private func announcePillWarning() async {
+        try? await Task.sleep(for: .seconds(1))
+        guard !Task.isCancelled else { return }
+        let warning = pill.contrastWarning(accent: accent)
+        defer { announcedPillWarning = warning != nil }
+        guard let warning, !announcedPillWarning else { return }
+        AccessibilityNotification.Announcement(warning).post()
     }
 
     private func warnings(where include: @escaping (AlertContrastWarning.Subject) -> Bool) -> some View {
@@ -277,6 +375,39 @@ struct AppearanceTab: View {
                 update { set(&$0, rgba) }
             }
         )
+    }
+}
+
+/// The pill as the menu bar will draw it, on a strip like the menu bar, above its settings.
+private struct StartingSoonPreview: View {
+    let pill: StartingSoonPill
+    /// Icon only in the menu bar means a pill without text.
+    let showsText: Bool
+
+    var body: some View {
+        HStack(spacing: 16) {
+            VStack(alignment: .leading, spacing: 2) {
+                Text("Starting in \(pill.minutes) min or less")
+                Text("Replaces the countdown in the menu bar")
+                    .font(.system(size: 11))
+                    .foregroundStyle(.secondary)
+            }
+            Spacer(minLength: 0)
+            Image(nsImage: StatusItemImages.pill(text: showsText ? "Next in \(min(4, pill.minutes)) min" : nil, style: pill))
+                .padding(.horizontal, 10)
+                .padding(.vertical, 5)
+                .background(
+                    RoundedRectangle(cornerRadius: 8, style: .continuous)
+                        .fill(Color(light: RGBA(rgb: 0xE4E4E9), dark: RGBA(rgb: 0x1E1E21)))
+                )
+                .overlay(
+                    RoundedRectangle(cornerRadius: 8, style: .continuous)
+                        .strokeBorder(SettingsPalette.boxBorder, lineWidth: 1)
+                )
+                .accessibilityLabel("Preview of the starting-soon pill")
+        }
+        .padding(.vertical, 8)
+        .frame(minHeight: 48)
     }
 }
 

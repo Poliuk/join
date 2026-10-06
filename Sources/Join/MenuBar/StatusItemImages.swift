@@ -1,7 +1,8 @@
 import AppKit
+import JoinCore
 
 /// Images for the menu bar item. Plain states use template images so the menu bar tints them;
-/// the "starting soon" pill is drawn in full color with the system accent.
+/// the "starting soon" pill is drawn in full color, the system accent unless Settings changes it.
 @MainActor
 enum StatusItemImages {
     static let iconConfiguration = NSImage.SymbolConfiguration(pointSize: 14, weight: .regular)
@@ -45,16 +46,16 @@ enum StatusItemImages {
         return image
     }
 
-    /// The accent-filled "starting soon" pill: a video icon and, optionally, the countdown in white.
-    static func pill(text: String?) -> NSImage {
+    /// The "starting soon" pill: a video icon and, optionally, the countdown, in `label` on `fill`.
+    static func pill(text: String?, fill: NSColor, label: NSColor) -> NSImage {
         let height = max(16, NSStatusBar.system.thickness - 2)
         let icon = NSImage(systemSymbolName: "video.fill", accessibilityDescription: nil)?
             .withSymbolConfiguration(
                 NSImage.SymbolConfiguration(pointSize: 12, weight: .semibold)
-                    .applying(NSImage.SymbolConfiguration(paletteColors: [.white]))
+                    .applying(NSImage.SymbolConfiguration(paletteColors: [label]))
             )
         let iconSize = icon?.size ?? .zero
-        let title = text.map { NSAttributedString(string: $0, attributes: [.font: pillFont, .foregroundColor: NSColor.white]) }
+        let title = text.map { NSAttributedString(string: $0, attributes: [.font: pillFont, .foregroundColor: label]) }
         let titleWidth = ceil(title?.size().width ?? 0)
         let leading: CGFloat = 8
         let trailing: CGFloat = title == nil ? 8 : 9
@@ -62,7 +63,7 @@ enum StatusItemImages {
         let width = ceil(leading + iconSize.width + (title == nil ? 0 : gap + titleWidth) + trailing)
 
         let image = NSImage(size: NSSize(width: width, height: height), flipped: false) { rect in
-            NSColor.controlAccentColor.setFill()
+            fill.setFill()
             NSBezierPath(roundedRect: rect, xRadius: 5, yRadius: 5).fill()
             icon?.draw(in: NSRect(
                 x: leading,
@@ -79,5 +80,16 @@ enum StatusItemImages {
         }
         image.isTemplate = false
         return image
+    }
+
+    /// The pill in the colors `pill` asks for, with the system accent for its automatic fill. The
+    /// label is worked out when the pill is drawn, against the accent as drawn in that appearance.
+    static func pill(text: String?, style pill: StartingSoonPill) -> NSImage {
+        let label = NSColor(name: nil) { appearance in
+            var accent = RGBA.white
+            appearance.performAsCurrentDrawingAppearance { accent = NSColor.controlAccentColor.rgba }
+            return NSColor(pill.resolvedText(accent: accent))
+        }
+        return self.pill(text: text, fill: pill.fill.map(NSColor.init) ?? .controlAccentColor, label: label)
     }
 }

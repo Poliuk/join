@@ -263,3 +263,122 @@ struct SettingsPaneScroll<Content: View>: View {
         .onPreferenceChange(SettingsContentHeightKey.self, perform: onContentHeightChange)
     }
 }
+
+/// A row with a pop-up of preset minutes and "Custom…". Custom adds an indented row with a minutes
+/// field and a stepper, and the pop-up keeps showing Custom while the custom value happens to match
+/// a preset. The field saves only on Return or when it loses focus: saving every keystroke would let
+/// "3" → "35" → "5" briefly mean 35 minutes.
+struct SettingsMinutesChoice: View {
+    let title: String
+    var separator = true
+    let presets: [Int]
+    let range: ClosedRange<Int>
+    /// The pop-up item for a preset: "5 minutes before", "5 minutes".
+    let presetTitle: (Int) -> String
+    /// After the field: "minutes before", "minutes".
+    let unit: (Int) -> String
+    /// What VoiceOver calls the field and the stepper.
+    let fieldLabel: String
+    @Binding var minutes: Int
+
+    @State private var customChosen = false
+    @State private var draft = 0
+    /// The value this control last wrote, to tell its own edits from outside ones (Restore Defaults).
+    @State private var ownWrite: Int?
+    @FocusState private var fieldFocused: Bool
+
+    /// Minutes are never negative, so -1 can't be a preset.
+    private static let customTag = -1
+
+    var body: some View {
+        SettingsRow(title: title, separator: separator) {
+            Picker(title, selection: selection) {
+                ForEach(presets, id: \.self) { minutes in
+                    Text(presetTitle(minutes)).tag(minutes)
+                }
+                Divider()
+                Text("Custom…").tag(Self.customTag)
+            }
+            .labelsHidden()
+            .fixedSize()
+        }
+        .onAppear {
+            draft = minutes
+            customChosen = !presets.contains(minutes)
+        }
+        .onChange(of: minutes) { _, newValue in
+            // Draft first, so the custom row's commit as it disappears writes nothing.
+            draft = newValue
+            if newValue == ownWrite {
+                ownWrite = nil
+                if !presets.contains(newValue) { customChosen = true }
+            } else {
+                // Changed from outside: show it the way it would show on opening the pane.
+                customChosen = !presets.contains(newValue)
+            }
+        }
+        if showsCustom {
+            SettingsRow(title: "Custom time", tone: .secondary, indented: true) {
+                HStack(spacing: 6) {
+                    TextField(fieldLabel, value: $draft, format: .number)
+                        .labelsHidden()
+                        .textFieldStyle(.roundedBorder)
+                        .multilineTextAlignment(.trailing)
+                        .frame(width: 52)
+                        .focused($fieldFocused)
+                        .onSubmit(commit)
+                        .onChange(of: fieldFocused) { _, focused in
+                            if !focused { commit() }
+                        }
+                        .onDisappear(perform: commit)
+                    Stepper(fieldLabel, value: stepped, in: range)
+                        .labelsHidden()
+                    Text(unit(draft))
+                        .foregroundStyle(.secondary)
+                }
+            }
+        }
+    }
+
+    private var showsCustom: Bool {
+        customChosen || !presets.contains(minutes)
+    }
+
+    private var selection: Binding<Int> {
+        Binding(
+            get: { showsCustom ? Self.customTag : minutes },
+            set: { choice in
+                if choice == Self.customTag {
+                    draft = minutes
+                    customChosen = true
+                    DispatchQueue.main.async { fieldFocused = true }
+                } else {
+                    // Set the draft first: the custom field's commit on disappear must not undo this.
+                    draft = choice
+                    customChosen = false
+                    write(choice)
+                }
+            }
+        )
+    }
+
+    private var stepped: Binding<Int> {
+        Binding(get: { minutes }, set: { write(clamped($0)) })
+    }
+
+    private func commit() {
+        let value = clamped(draft)
+        draft = value
+        write(value)
+    }
+
+    private func write(_ value: Int) {
+        guard value != minutes else { return }
+        ownWrite = value
+        minutes = value
+    }
+
+    private func clamped(_ value: Int) -> Int {
+        min(max(value, range.lowerBound), range.upperBound)
+    }
+}

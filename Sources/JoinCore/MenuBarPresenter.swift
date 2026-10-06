@@ -12,7 +12,8 @@ public struct MenuBarStatus: Equatable, Sendable {
         case later
         /// The next meeting starts within the hour: "Next in 42 min".
         case withinHour
-        /// A meeting starts in five minutes or less: drawn as an accent-filled pill.
+        /// A meeting starts within the starting-soon window (5 minutes unless changed in Settings):
+        /// drawn as a filled pill.
         case startingSoon
         /// In a meeting: a ring that drains as it runs; `remaining` goes from 1 at the start to 0 at the end.
         case inMeeting(remaining: Double)
@@ -32,6 +33,7 @@ public struct MenuBarStatus: Equatable, Sendable {
 
 /// Pure presentation logic for the menu bar item and the shared wording of the menu bar panel.
 public enum MenuBarPresenter {
+    /// The default starting-soon window; Settings › Appearance can change it.
     public static let startingSoonWindow: TimeInterval = 5 * 60
     public static let withinHourWindow: TimeInterval = 60 * 60
     public static let maxTitleLength = 24
@@ -44,6 +46,7 @@ public enum MenuBarPresenter {
         pauseState: PauseState,
         showsNextEvent: Bool,
         showsTitles: Bool,
+        startingSoonWindow: TimeInterval = startingSoonWindow,
         calendar: Calendar = .current,
         locale: Locale = .current
     ) -> MenuBarStatus {

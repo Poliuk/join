@@ -25,6 +25,7 @@ public final class Preferences {
         public static let legacySkipOutOfOffice = "skipOutOfOffice"
         public static let outOfOfficeKeywords = "outOfOfficeKeywords"
         public static let showOutOfOfficeInList = "showOutOfOfficeInList"
+        public static let startingSoonPill = "startingSoonPill"
     }
 
     public static let defaultLeadTime: TimeInterval = 3 * 60
@@ -47,6 +48,7 @@ public final class Preferences {
     @ObservationIgnored private var _alertForOutOfOffice: Bool
     @ObservationIgnored private var _outOfOfficeKeywords: [String]
     @ObservationIgnored private var _showOutOfOfficeInList: Bool
+    @ObservationIgnored private var _startingSoonPill: StartingSoonPill
 
     public init(defaults: UserDefaults = .standard) {
         self.defaults = defaults
@@ -78,6 +80,8 @@ public final class Preferences {
         }
         _outOfOfficeKeywords = defaults.array(forKey: Keys.outOfOfficeKeywords) as? [String] ?? OutOfOfficeDetector.defaultKeywords
         _showOutOfOfficeInList = defaults.object(forKey: Keys.showOutOfOfficeInList) as? Bool ?? true
+        _startingSoonPill = defaults.data(forKey: Keys.startingSoonPill)
+            .flatMap { try? JSONDecoder().decode(StartingSoonPill.self, from: $0) } ?? .default
     }
 
     /// Seconds before the meeting start at which the alert fires, always a whole number of minutes.
@@ -237,6 +241,17 @@ public final class Preferences {
             withMutation(keyPath: \.showOutOfOfficeInList) {
                 _showOutOfOfficeInList = newValue
                 defaults.set(newValue, forKey: Keys.showOutOfOfficeInList)
+            }
+        }
+    }
+
+    /// When the menu bar's starting-soon pill appears, and its colors.
+    public var startingSoonPill: StartingSoonPill {
+        get { access(keyPath: \.startingSoonPill); return _startingSoonPill }
+        set {
+            withMutation(keyPath: \.startingSoonPill) {
+                _startingSoonPill = newValue
+                defaults.set(try? JSONEncoder().encode(newValue), forKey: Keys.startingSoonPill)
             }
         }
     }

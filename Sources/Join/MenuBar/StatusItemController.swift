@@ -51,7 +51,10 @@ final class StatusItemController: NSObject, NSWindowDelegate {
         context.showPauseMenu = { [weak self] anchor in self?.popUp(self?.makePauseMenu(), below: anchor) }
         context.showAppMenu = { [weak self] anchor in self?.popUp(self?.makeAppMenu(), below: anchor) }
 
-        observeChanges(of: { [model] in _ = model.menuBarStatus }) { [weak self] in
+        observeChanges(of: { [model] in
+            _ = model.menuBarStatus
+            _ = model.preferences.startingSoonPill
+        }) { [weak self] in
             self?.updateButton()
         }
         observe(NotificationCenter.default, NSColor.systemColorsDidChangeNotification) { $0.updateButton() }
@@ -128,7 +131,7 @@ final class StatusItemController: NSObject, NSWindowDelegate {
         let status = model.menuBarStatus
         switch status.kind {
         case .startingSoon:
-            button.image = StatusItemImages.pill(text: status.text)
+            button.image = StatusItemImages.pill(text: status.text, style: model.preferences.startingSoonPill)
             button.title = ""
         case .paused:
             button.image = StatusItemImages.symbol("bell.slash")

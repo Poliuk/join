@@ -23,7 +23,7 @@ public enum PanelHero: Equatable, Sendable {
     case nothingToday(detail: String)
     /// A neutral card for the next meeting later today.
     case next(PanelCard)
-    /// An accent card for a meeting starting in five minutes or less.
+    /// An accent card for a meeting about to start (within the menu bar pill's window).
     case startingSoon(PanelCard)
     /// The meeting you are in, with its progress.
     case now(PanelCard)
@@ -121,11 +121,14 @@ public enum PanelPresenter {
     ///   - meetings: everything in the store, out-of-office blocks included; they fill the lists.
     ///   - alertable: the meetings that may alert; only these drive the hero card.
     ///   - showsOutOfOffice: false leaves out-of-office blocks out of the lists.
+    ///   - startingSoonWindow: how soon before its start the next meeting gets the starting-soon card,
+    ///     the same window as the menu bar pill.
     public static func content(
         meetings: [Meeting],
         alertable: [Meeting],
         now: Date,
         showsOutOfOffice: Bool = true,
+        startingSoonWindow: TimeInterval = MenuBarPresenter.startingSoonWindow,
         calendar: Calendar = .current,
         locale: Locale = .current
     ) -> PanelContent {
@@ -134,7 +137,7 @@ public enum PanelPresenter {
         let current = MenuBarPresenter.currentMeeting(in: alertable, now: now)
 
         let hero: PanelHero
-        if let next, next.start.timeIntervalSince(now) <= MenuBarPresenter.startingSoonWindow {
+        if let next, next.start.timeIntervalSince(now) <= startingSoonWindow {
             hero = .startingSoon(builder.card(for: next, label: "Starts in \(MenuBarPresenter.duration(next.start.timeIntervalSince(now)))"))
         } else if let current {
             let left = MenuBarPresenter.duration(current.end.timeIntervalSince(now))

@@ -10,18 +10,18 @@ final class SettingsOptionsTests: XCTestCase {
         XCTAssertEqual(SettingsOptions.customLeadTimeRange, 0...120)
     }
 
-    func testLeadTimeOutsideTheListIsCustom() {
-        XCTAssertTrue(SettingsOptions.isPresetLeadTime(0))
-        XCTAssertTrue(SettingsOptions.isPresetLeadTime(180))
-        XCTAssertTrue(SettingsOptions.isPresetLeadTime(600))
-        XCTAssertFalse(SettingsOptions.isPresetLeadTime(7 * 60))
-        XCTAssertFalse(SettingsOptions.isPresetLeadTime(120 * 60))
+    func testSnoozePresetsAndCustomRange() {
+        XCTAssertEqual(SettingsOptions.snoozeMinutes, [1, 3, 5, 10])
+        XCTAssertEqual(SettingsOptions.customSnoozeRange, 1...120)
+        let defaults = Preferences.defaultSnoozeDurations.map(SettingsOptions.wholeMinutes)
+        XCTAssertTrue(defaults.allSatisfy(SettingsOptions.snoozeMinutes.contains), "the default snoozes are presets")
     }
 
-    func testSnoozeChoicesKeepAStoredValueThatIsNotInTheList() {
-        XCTAssertEqual(SettingsOptions.snoozeChoices(including: 5), [1, 2, 3, 5, 10, 15, 30, 60])
-        XCTAssertEqual(SettingsOptions.snoozeChoices(including: 7), [1, 2, 3, 5, 7, 10, 15, 30, 60])
-        XCTAssertEqual(SettingsOptions.snoozeChoices(including: 45), [1, 2, 3, 5, 10, 15, 30, 45, 60])
+    func testCustomMinuteUnits() {
+        XCTAssertEqual(SettingsOptions.minutesBeforeUnit(1), "minute before")
+        XCTAssertEqual(SettingsOptions.minutesBeforeUnit(7), "minutes before")
+        XCTAssertEqual(SettingsOptions.minutesUnit(1), "minute")
+        XCTAssertEqual(SettingsOptions.minutesUnit(45), "minutes")
     }
 
     func testDurationTitles() {
@@ -118,5 +118,13 @@ final class SettingsOptionsTests: XCTestCase {
         let pasted = KeywordList.splittingDraft("holiday, ooo, sick, lea", into: start)
         XCTAssertEqual(pasted.keywords, ["OOO", "holiday", "sick"])
         XCTAssertEqual(pasted.draft, "lea")
+    }
+
+    func testStartingSoonPresets() {
+        XCTAssertEqual(SettingsOptions.startingSoonMinutes, [1, 3, 5, 10])
+        XCTAssertTrue(SettingsOptions.startingSoonMinutes.contains(StartingSoonPill.default.minutes), "the default is a preset")
+        XCTAssertTrue(SettingsOptions.startingSoonMinutes.allSatisfy(StartingSoonPill.minuteRange.contains))
+        XCTAssertEqual(SettingsOptions.startingSoonTitle(minutes: 1), "1 minute before")
+        XCTAssertEqual(SettingsOptions.startingSoonTitle(minutes: 5), "5 minutes before")
     }
 }
