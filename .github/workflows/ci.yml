@@ -7,7 +7,7 @@ on:
 
 jobs:
   build-and-test:
-    runs-on: macos-14
+    runs-on: macos-15
     steps:
       - uses: actions/checkout@v4
       - name: Swift version
@@ -16,9 +16,13 @@ jobs:
         run: swift build
       - name: Test
         run: swift test
+      # Universal, like releases, so a release tag can't be the first time the Intel build runs.
       - name: Package app
-        run: scripts/build-app.sh
+        run: ARCHS="arm64 x86_64" scripts/build-app.sh
+      # Zipped with ditto: the artifact upload would drop the executable bit and the bundle folder.
+      - name: Zip
+        run: ditto -c -k --keepParent build/Join.app build/Join.zip
       - uses: actions/upload-artifact@v4
         with:
           name: Join.app
-          path: build/Join.app
+          path: build/Join.zip

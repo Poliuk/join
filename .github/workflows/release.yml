@@ -1,0 +1,53 @@
+name: Release
+
+# Only a version tag publishes a build; pushes to main just run CI. scripts/release.sh makes the
+# tag. See docs/RELEASING.md.
+on:
+  push:
+    tags: ['v*.*.*']
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Check the tag
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          BUNDLE_VERSION="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' Resources/Info.plist)"
+          if [ "$VERSION" != "$BUNDLE_VERSION" ]; then
+            echo "::error::$GITHUB_REF_NAME doesn't match Info.plist ($BUNDLE_VERSION). Make releases with scripts/release.sh."
+            exit 1
+          fi
+          if ! git merge-base --is-ancestor HEAD origin/main; then
+            echo "::error::$GITHUB_REF_NAME isn't on main."
+            exit 1
+          fi
+          echo "VERSION=$VERSION" >> "$GITHUB_ENV"
+      - name: Swift version
+        run: swift --version
+      - name: Test
+        run: swift test
+      - name: Package app
+        run: ARCHS="arm64 x86_64" scripts/build-app.sh
+      - name: Zip
+        run: ditto -c -k --keepParent build/Join.app build/Join.zip
+      # GitHub's generated notes only list merged pull requests, so the commits since the previous
+      # release go first.
+      - name: Publish
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          PREVIOUS="$(git describe --tags --abbrev=0 --match 'v*.*.*' HEAD^ 2>/dev/null || true)"
+          if [ -n "$PREVIOUS" ]; then
+            NOTES="$(git log --no-merges --format='- %s' "$PREVIOUS..HEAD" | grep -v '^- Release [0-9]' || true)"
+          else
+            NOTES="The first release of Join!"
+          fi
+          gh release create "$GITHUB_REF_NAME" build/Join.zip --verify-tag --title "Join! $VERSION" \
+            --notes "$NOTES" --generate-notes

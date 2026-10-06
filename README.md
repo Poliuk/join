@@ -32,7 +32,18 @@ Join! reads your calendars on your Mac through Apple's EventKit and keeps everyt
 
 ## Install
 
-There are no prebuilt releases yet; build it from source:
+Download **[Join.zip](https://github.com/Poliuk/join/releases/latest/download/Join.zip)** from the [latest release](https://github.com/Poliuk/join/releases/latest), open it, and move **Join.app** to your Applications folder. It runs on Apple silicon and Intel Macs. The app lives in the menu bar only; there is no Dock icon. Opening the app again while it runs opens Settings.
+
+Join! is signed ad hoc but not notarized by Apple, so the first time you open a downloaded copy, macOS stops it ("Apple could not verify “Join” is free of malware…"):
+
+1. Click **Done**.
+2. Open **System Settings › Privacy & Security**, scroll down to **Security** and click **Open Anyway** next to "“Join” was blocked…". Confirm.
+
+On macOS 14 Sonoma you can instead right-click Join.app and choose **Open**. You do this once for each version you download.
+
+To update, quit Join!, download the latest release and replace the app in Applications. macOS keeps the calendar permission: the signature is pinned to the bundle identifier, not to one build.
+
+### Build from source
 
 ```sh
 git clone https://github.com/poliuk/join.git
@@ -40,11 +51,7 @@ cd join
 make run
 ```
 
-This builds `build/Join.app` and opens it. Move it to `/Applications` to keep it. The app lives in the menu bar only; there is no Dock icon. To build without launching, `make app`. Opening the app again while it runs opens Settings.
-
-The app is ad-hoc signed, not notarized. Because you built it locally, Gatekeeper won't complain. If you copy a build to another Mac, right-click the app → Open the first time.
-
-The signature is pinned to the bundle identifier, so macOS remembers the calendar permission across rebuilds.
+This builds `build/Join.app` for your Mac and opens it. Move it to `/Applications` to keep it. To build without launching, `make app`. A copy you built yourself opens without the Gatekeeper step, and the calendar permission survives rebuilds too.
 
 ## First launch
 
@@ -90,9 +97,13 @@ Fixture runs keep their settings in a separate defaults domain, never schedule a
 
 The [product brief](docs/PRODUCT_BRIEF.md) and the [technical design](docs/TECHNICAL_DESIGN.md) explain what the app does and how it's built.
 
+### Releases
+
+Commits to main never publish a release; pushing a version tag does. `make release VERSION=1.1.0` sets the version, tags `v1.1.0` on main and, after asking, pushes. GitHub Actions then runs the tests, builds a universal Join.app and attaches `Join.zip` to a new release. [Releasing](docs/RELEASING.md) covers the branch model, version numbers and what to do when a release fails.
+
 ## Contributing
 
-Issues and pull requests are welcome. Keep `JoinCore` free of UI and EventKit code, add tests there for new logic, and update the docs in `docs/` when behavior changes.
+Issues and pull requests are welcome. Work on a branch and open a pull request against `main`; CI builds and tests it. Keep `JoinCore` free of UI and EventKit code, add tests there for new logic, and update the docs in `docs/` when behavior changes.
 
 ## License
 

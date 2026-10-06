@@ -115,7 +115,8 @@ All were settled on 2026-10-05, except where a row gives a later date.
 |---|---|---|
 | Calendar source | **EventKit** via the Mac's own accounts | Google accounts are added in System Settings › Internet Accounts. The direct Google Calendar API remains a P2 option behind the same `CalendarService` protocol. |
 | Minimum macOS | **14 Sonoma** | Modern EventKit permission API, `@Observable`, `SMAppService`. |
-| Distribution | **Unsigned** (ad-hoc signature pinned to the bundle id) | Built locally with `make run`; no Apple Developer membership needed. The calendar permission survives rebuilds. Notarization can be added later. |
+| Distribution | **Unsigned** (ad-hoc signature pinned to the bundle id) | Downloaded from GitHub Releases (`Join.zip`, a universal app) or built locally with `make run`; no Apple Developer membership needed. The calendar permission survives rebuilds and updates. Notarization can be added later. |
+| Releases | **Tag-based** (2026-10-06) | Commits to main only run CI; pushing a `vX.Y.Z` tag on main publishes a release. Semantic versioning, starting at 1.0.0. See [RELEASING.md](RELEASING.md). |
 | Name | **Join!** | Bundle id `com.poliuk.join`, executable `Join`. |
 | App icon | **Amber tile, countdown ring, camera** | A white ring with three quarters of the time left around a dark video camera, on an amber tile. Picked from four variations on a countdown ring (2026-10-06). |
 | Out-of-office settings | **On the General pane** | The settings design put them on Calendars; the author chose General. |
@@ -140,6 +141,6 @@ One developer, working incrementally. Estimates are for a first usable build, no
 | M1 | Calendar access + calendar picker + menu bar panel listing ongoing/upcoming | 1–2 d |
 | M2 | Alert scheduler + full-screen alert window with countdown, dismiss, snooze | 2 d |
 | M3 | Settings window: General + Appearance with live preview and demo alert | 2 d |
-| M4 | Join-link detection, sound, launch at login, sleep/wake hardening, notarized release | 1–2 d |
+| M4 | Join-link detection, sound, launch at login, sleep/wake hardening, release builds on GitHub | 1–2 d |
 
 Roughly 1.5 to 2 weeks of part-time work to a shareable v1.

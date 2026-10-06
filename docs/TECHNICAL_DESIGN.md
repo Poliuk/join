@@ -461,10 +461,13 @@ join/
 │   └── AppIcon.icns         The app icon, drawn by scripts/make-icon.swift (see §13)
 ├── scripts/
 │   ├── build-app.sh         Assembles build/Join.app and signs it (see §13)
-│   └── make-icon.swift      Draws the app icon into AppIcon.icns and docs/AppIcon.png
-├── Makefile                 make app | icon | run | test | clean
-├── .github/workflows/ci.yml build + test + package on macos-14
-└── docs/                    This document, the product brief, and AppIcon.png for the README
+│   ├── make-icon.swift      Draws the app icon into AppIcon.icns and docs/AppIcon.png
+│   └── release.sh           Sets the version, tags vX.Y.Z on main and pushes (see §13)
+├── Makefile                 make app | icon | release | run | test | clean
+├── .github/workflows/
+│   ├── ci.yml               build + test + universal package on macos-15, every push to main and PR
+│   └── release.yml          on a vX.Y.Z tag: test, universal build, GitHub Release with Join.zip
+└── docs/                    This document, the product brief, RELEASING.md, and AppIcon.png for the README
 ```
 
 Bundle id `com.poliuk.join`, `LSUIElement = YES`.
@@ -478,7 +481,7 @@ Bundle id `com.poliuk.join`, `LSUIElement = YES`.
   - `AlertAppearance`: `RGBA` hex, compositing and contrast; JSON round-trip; legacy JSON migration; presets and preset matching; automatic colors; contrast warnings; switching between Automatic and Custom.
   - `Preferences` round-trip through an isolated `UserDefaults` suite, plus each migration in §8. `SettingsOptions`: pop-up choices, the "Updated" label, calendar selection, keyword tokens.
   - `MenuBarFixtures` holds the week drawn in the menu bar design (Monday 5 – Thursday 8 October 2026) in UTC, with `en_US` and `en_GB` locales, so the presenter tests check the design's exact strings and don't depend on the machine's time zone.
-- `swift test` needs XCTest, which ships with Xcode, not with the Command Line Tools. CI runs the suite on every push. Locally without Xcode the suite can't run; `swift build` still works.
+- `swift test` needs XCTest, which ships with Xcode, not with the Command Line Tools. CI runs the suite on every push to main and every pull request. Locally without Xcode the suite can't run; `swift build` still works.
 - **Fixture calendars.** The `JOIN_FIXTURE` environment variable swaps EventKit for `FixtureCalendarService`, so the menu bar and Settings can be checked in a known state:
 
   ```sh
@@ -536,10 +539,11 @@ Bundle id `com.poliuk.join`, `LSUIElement = YES`.
 
 ## 13. Build, CI, distribution
 
-- **Build:** `make app` runs `scripts/build-app.sh`: `swift build -c release`, copies the binary, `Info.plist` and `AppIcon.icns` into `build/Join.app`, and ad-hoc signs it with an explicit designated requirement, `identifier "com.poliuk.join"`. A plain ad-hoc signature's requirement is the hash of that exact binary, so TCC treated every rebuild as a new app and asked for calendar access again. Pinning the requirement to the bundle identifier keeps the grant across rebuilds. The trade-off: any locally built binary that claims that identifier inherits the grant, which is acceptable for a locally built app and goes away with a real signing identity. `make run` builds and opens it.
+- **Build:** `make app` runs `scripts/build-app.sh`: `swift build -c release` once per architecture in `ARCHS` (this Mac's by default; releases pass `arm64 x86_64`), joins the binaries with `lipo` (with `--disable-build-manifest-caching`, because SwiftPM 5.10 shares one cached manifest between architectures and fails the next build that reuses it), copies it, `Info.plist` and `AppIcon.icns` into `build/Join.app`, and ad-hoc signs it with an explicit designated requirement, `identifier "com.poliuk.join"`. A plain ad-hoc signature's requirement is the hash of that exact binary, so TCC treated every rebuild as a new app and asked for calendar access again. Pinning the requirement to the bundle identifier keeps the grant across rebuilds. The trade-off: any locally built binary that claims that identifier inherits the grant, which is acceptable for a locally built app and goes away with a real signing identity. `make run` builds and opens it.
 - **App icon:** an amber tile with a white countdown ring, three quarters left from twelve o'clock, around a dark camera. `scripts/make-icon.swift` draws it with Core Graphics on the macOS icon grid (a 1024-point canvas, an 824-point tile with 186-point corners, room for the shadow), renders every size of the iconset from the vectors rather than scaling one bitmap down (only the Retina files for 16 and 32 points: `iconutil` would store 1x files at those sizes in a legacy format that macOS 26 and later shrink onto a grey plate), and runs `iconutil` to write `Resources/AppIcon.icns`, plus `docs/AppIcon.png` for the README. `Info.plist` names it with `CFBundleIconFile`. The `.icns` is committed, so building needs neither the script nor `iconutil`; run `make icon` after changing the drawing. On macOS 26 and later the system masks the tile to its own icon shape and adds its glass edge; the icon fills the shape, so it isn't shrunk onto a grey plate. There are no dark or tinted variants: those need an Icon Composer `.icon` compiled by `actool`, which comes with Xcode. The app has no Dock icon, so the icon shows in places like Finder, Spotlight, Login Items, System Settings › Privacy & Security › Calendars and the system's calendar access alert.
-- **CI:** GitHub Actions on `macos-14`: `swift build`, `swift test`, `scripts/build-app.sh`, and the `.app` is uploaded as a workflow artifact.
-- **Distribution:** unsigned/un-notarized by decision. Users build locally or download the CI artifact and right-click → Open once. Notarization (Developer ID + `notarytool`) can be added to `release.yml` later without touching the app.
+- **CI:** GitHub Actions on `macos-15` (its default Xcode; `swift-tools-version:5.10` keeps the Swift 5 language mode), on every push to main and every pull request: `swift build`, `swift test`, a universal `scripts/build-app.sh` like a release's, and the app, zipped with `ditto` because artifact uploads drop the executable bit, is kept as a workflow artifact. CI never publishes anything. `macos-14` was dropped because GitHub retires that image on 2 November 2026.
+- **Releases:** pushing a tag `vMAJOR.MINOR.PATCH` runs `release.yml` on `macos-15`. It checks that the tag matches `CFBundleShortVersionString` and is on main, runs `swift test`, builds a universal app (`ARCHS="arm64 x86_64"`), zips it with `ditto -c -k --keepParent` (which keeps the signature valid), and creates the GitHub Release with `gh release create --verify-tag --generate-notes`, attaching `Join.zip`. GitHub's generated notes only list merged pull requests, so the workflow puts the commit subjects since the previous tag above them (without the "Release x.y.z" commits). The asset keeps that name in every release, so `releases/latest/download/Join.zip` always gets the newest build. `scripts/release.sh` (`make release VERSION=x.y.z`) makes the tag: it requires a clean, up-to-date main and a version newer than the last tag, writes the version into both `CFBundleShortVersionString` and `CFBundleVersion`, commits "Release x.y.z" if that changed anything, makes an annotated tag, and pushes main and the tag atomically after asking. The branch model and recovery steps are in [RELEASING.md](RELEASING.md).
+- **Distribution:** ad-hoc signed, not notarized, by decision. Gatekeeper blocks the first launch of each downloaded version until the user clicks Open Anyway in System Settings › Privacy & Security (on macOS 14, right-click › Open also works); a locally built copy isn't quarantined and opens directly. TCC keeps the calendar grant across versions because every build, local or CI, has the same designated requirement. Notarization (Developer ID + `notarytool` before the zip) can be added to `release.yml` later without touching the app.
 - **Sandbox:** off. Sandboxing requires a real signing identity to be meaningful; nothing in the app needs it.
 - **Auto-update:** not in v1. Sparkle 2 if wanted later.
 
@@ -555,7 +559,7 @@ Bundle id `com.poliuk.join`, `LSUIElement = YES`.
 | Custom alert colors that are hard to read | Alert misread or ignored | Automatic colors by default, contrast warnings under 4.5:1, Join fill never below 40 %, presets, Restore Defaults. |
 | A pause left on by mistake | No alerts for the rest of the day, or at all | The menu bar item shows the crossed-out bell and the panel shows a paused bar with Resume; timed pauses end on their own. |
 | Script hooks accept notifications from any local process | Another program could pause reminders, dismiss an alert or open Settings | They only do what a click could do, and nothing leaves the Mac. They can be limited to debug builds if that ever matters. |
-| No Apple Developer membership | Gatekeeper friction for users | Ship unsigned first; document right-click → Open; sign later. |
+| No Apple Developer membership | Gatekeeper friction for users | Ship ad-hoc signed; document Open Anyway in System Settings › Privacy & Security (right-click › Open on macOS 14); notarize later. |
 | EventKit doesn't expose structured conference data | Join link missed for exotic providers | Regex table + generic `https://` fallback from location; easy community contributions. |
 | `.screenSaver` window level fights with macOS lock screen / actual screen saver | Alert hidden behind lock screen | Acceptable: if the screen is locked the user isn't there. The alert remains until dismissed. |
 
