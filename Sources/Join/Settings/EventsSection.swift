@@ -1,10 +1,11 @@
 import SwiftUI
 import JoinCore
 
-/// The out-of-office switch and title keywords. On the General pane by the user's choice;
-/// the settings design drew it on Calendars.
+/// What Join! does with events nobody else is on and with out-of-office events, a pop-up for each,
+/// then the keywords that make an event out of office. One section, as the user picked from the
+/// settings design's options; 1.1 had a switch here and a separate Out of office section with two.
 @MainActor
-struct OutOfOfficeSection: View {
+struct EventsSection: View {
     @Environment(AppModel.self) private var model
     /// Held here so Restore Defaults can drop a half-typed keyword before the field commits it.
     @State private var keywordDraft = ""
@@ -12,13 +13,18 @@ struct OutOfOfficeSection: View {
     var body: some View {
         @Bindable var preferences = model.preferences
 
-        SettingsSection(title: "Out of office") {
-            SettingsSwitchRow(title: "Alert for out-of-office events", isOn: $preferences.alertForOutOfOffice, separator: false)
-            SettingsSwitchRow(title: "Show out-of-office events in the list", isOn: $preferences.showOutOfOfficeInList)
+        SettingsSection(title: SettingsOptions.eventsSectionTitle) {
+            visibilityRow(SettingsOptions.eventsWithoutParticipantsTitle, selection: $preferences.eventsWithoutParticipants, separator: false)
+            Text(SettingsOptions.eventsWithoutParticipantsNote)
+                .font(.subheadline)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+                .padding(.bottom, 8)
+            visibilityRow(SettingsOptions.outOfOfficeEventsTitle, selection: $preferences.outOfOfficeEvents)
             SettingsSeparator()
             VStack(alignment: .leading, spacing: 8) {
                 HStack(spacing: 12) {
-                    Text("Title keywords")
+                    Text(SettingsOptions.outOfOfficeKeywordsTitle)
                     Spacer(minLength: 0)
                     Button("Restore Defaults") {
                         keywordDraft = ""
@@ -29,13 +35,26 @@ struct OutOfOfficeSection: View {
                     .disabled(preferences.outOfOfficeKeywords == OutOfOfficeDetector.defaultKeywords)
                 }
                 KeywordTokenField(keywords: $preferences.outOfOfficeKeywords, draft: $keywordDraft)
-                Text("An event counts as out of office when its title contains any of these words. It only alerts when the first option is on, and shows dimmed in the menu bar list when the second is on. Press Return to add a keyword.")
+                Text(SettingsOptions.eventsFootnote)
                     .font(.subheadline)
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
             }
             .padding(.top, 8)
             .padding(.bottom, 12)
+        }
+    }
+
+    /// Show and alert, Show in the list only or Exclude, for one kind of event.
+    private func visibilityRow(_ title: String, selection: Binding<EventVisibility>, separator: Bool = true) -> some View {
+        SettingsRow(title: title, separator: separator) {
+            Picker(title, selection: selection) {
+                ForEach(EventVisibility.allCases, id: \.self) { choice in
+                    Text(choice.title).tag(choice)
+                }
+            }
+            .labelsHidden()
+            .fixedSize()
         }
     }
 }

@@ -139,7 +139,7 @@ struct AlertContentView: View {
             .padding(.top, 40)
 
             if session.isDemo {
-                Text("This is a demo alert. Press Esc to close it.")
+                Text("This is a demo full-screen alert. Press Esc to close it.")
                     .font(.system(size: 13))
                     .opacity(0.6)
                     .padding(.top, 24)

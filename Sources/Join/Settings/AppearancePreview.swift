@@ -49,7 +49,7 @@ struct AppearancePreview: View {
         .overlay(shape.strokeBorder(Color(nsColor: .separatorColor), lineWidth: 0.5))
         .allowsHitTesting(false)
         .accessibilityElement(children: .ignore)
-        .accessibilityLabel("Live preview of the alert")
+        .accessibilityLabel("Live preview of the full-screen alert")
     }
 
     private var session: AlertSession {

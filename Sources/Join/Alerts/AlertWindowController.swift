@@ -182,17 +182,14 @@ final class AlertWindow: NSPanel {
 }
 
 extension AlertWindowController {
+    /// `AlertScreens` picks by index: `NSScreen.screens` starts with the screen that has the menu bar,
+    /// the main display. `NSScreen.main` would be the screen with the key window, which can be a
+    /// secondary one, say while Join!'s Settings window sits there.
     static func targetScreens(for choice: AlertScreens) -> [NSScreen] {
-        switch choice {
-        case .all:
-            return NSScreen.screens
-        case .main:
-            return [NSScreen.main ?? NSScreen.screens.first].compactMap { $0 }
-        case .pointer:
-            let pointer = NSEvent.mouseLocation
-            let screen = NSScreen.screens.first { NSMouseInRect(pointer, $0.frame, false) } ?? NSScreen.main
-            return [screen].compactMap { $0 }
-        }
+        let screens = NSScreen.screens
+        let pointer = NSEvent.mouseLocation
+        let pointerIndex = screens.firstIndex { NSMouseInRect(pointer, $0.frame, false) }
+        return choice.targetIndices(screenCount: screens.count, pointerScreenIndex: pointerIndex).map { screens[$0] }
     }
 }
 

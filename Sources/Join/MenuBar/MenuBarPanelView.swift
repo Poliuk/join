@@ -223,7 +223,7 @@ private struct PanelHeader: View {
                 // Paused, the bell is a pressed toggle that resumes; otherwise it opens the pause menu.
                 HeaderButton(
                     symbol: model.isPaused ? "bell.slash" : "bell",
-                    label: model.isPaused ? "Resume reminders" : "Pause reminders",
+                    label: model.isPaused ? "Resume full-screen alerts" : "Pause full-screen alerts",
                     isOn: model.isPaused,
                     kind: model.isPaused ? .action(model.resume) : .menu(context.showPauseMenu)
                 )
@@ -266,7 +266,7 @@ private struct HeaderButton: View {
 
     let symbol: String
     let label: String
-    /// Drawn pressed and reported as selected, like the bell while reminders are paused.
+    /// Drawn pressed and reported as selected, like the bell while full-screen alerts are paused.
     var isOn = false
     let kind: Kind
 
@@ -355,10 +355,13 @@ private struct PausedBar: View {
                 .font(.system(size: 12))
                 .foregroundStyle(PanelColors.secondary)
                 .frame(width: 14, height: 14)
+            // "Full-screen alerts paused until 12:50 PM" runs about 6 pt past the room beside Resume, so
+            // the longest messages shrink a little rather than lose the time.
             Text(message)
                 .font(.system(size: 12.5).monospacedDigit())
                 .foregroundStyle(PanelColors.strong)
                 .lineLimit(1)
+                .minimumScaleFactor(0.9)
                 .frame(maxWidth: .infinity, alignment: .leading)
             Button(action: resume) {
                 Text("Resume")

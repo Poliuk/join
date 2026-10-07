@@ -15,16 +15,16 @@ final class PreferencesTests: XCTestCase {
     func testDefaults() {
         let preferences = Preferences(defaults: defaults)
         XCTAssertEqual(preferences.leadTime, 180)
+        XCTAssertTrue(preferences.fullScreenAlertsEnabled)
         XCTAssertEqual(preferences.snoozeDurations, [60, 300])
         XCTAssertEqual(preferences.alertScreens, .all)
         XCTAssertEqual(preferences.menuBarDisplay, .time)
         XCTAssertTrue(preferences.autoCloseEnabled)
         XCTAssertNil(preferences.soundName)
         XCTAssertNil(preferences.enabledCalendarIDs)
-        XCTAssertTrue(preferences.showsEventsWithoutParticipants)
+        XCTAssertEqual(preferences.eventsWithoutParticipants, .showAndAlert)
         XCTAssertEqual(preferences.appearance, .default)
-        XCTAssertFalse(preferences.alertForOutOfOffice)
-        XCTAssertTrue(preferences.showOutOfOfficeInList)
+        XCTAssertEqual(preferences.outOfOfficeEvents, .listOnly)
         XCTAssertEqual(preferences.outOfOfficeKeywords, OutOfOfficeDetector.defaultKeywords)
         XCTAssertEqual(preferences.startingSoonPill, .default)
         XCTAssertTrue(preferences.checksForUpdates)
@@ -40,16 +40,18 @@ final class PreferencesTests: XCTestCase {
         first.leadTime = 300
         first.soundName = "Glass"
         first.appearance.blurMode = .none
-        first.alertForOutOfOffice = true
-        first.showOutOfOfficeInList = false
+        first.fullScreenAlertsEnabled = false
+        first.eventsWithoutParticipants = .listOnly
+        first.outOfOfficeEvents = .exclude
         first.startingSoonPill = pill
 
         let second = Preferences(defaults: defaults)
         XCTAssertEqual(second.leadTime, 300)
         XCTAssertEqual(second.soundName, "Glass")
         XCTAssertEqual(second.appearance.blurMode, .none)
-        XCTAssertTrue(second.alertForOutOfOffice)
-        XCTAssertFalse(second.showOutOfOfficeInList)
+        XCTAssertFalse(second.fullScreenAlertsEnabled)
+        XCTAssertEqual(second.eventsWithoutParticipants, .listOnly)
+        XCTAssertEqual(second.outOfOfficeEvents, .exclude)
         XCTAssertEqual(second.startingSoonPill, pill)
     }
 
@@ -71,17 +73,119 @@ final class PreferencesTests: XCTestCase {
     }
 
     @MainActor
-    func testShowsEventsWithoutParticipantsDefaultsOnAndPersists() {
-        XCTAssertNil(defaults.object(forKey: Preferences.Keys.showsEventsWithoutParticipants), "nothing is stored until it changes")
-        XCTAssertTrue(Preferences(defaults: defaults).showsEventsWithoutParticipants)
-
-        Preferences(defaults: defaults).showsEventsWithoutParticipants = false
-        XCTAssertEqual(defaults.object(forKey: "showsEventsWithoutParticipants") as? Bool, false)
+    func testEventsChoicesAreStoredAsRawValues() {
         let preferences = Preferences(defaults: defaults)
-        XCTAssertFalse(preferences.showsEventsWithoutParticipants)
+        XCTAssertNil(defaults.object(forKey: Preferences.Keys.eventsWithoutParticipants), "nothing is stored until it changes")
+        XCTAssertNil(defaults.object(forKey: Preferences.Keys.outOfOfficeEvents), "nothing is stored until it changes")
 
-        preferences.showsEventsWithoutParticipants = true
-        XCTAssertTrue(Preferences(defaults: defaults).showsEventsWithoutParticipants)
+        preferences.eventsWithoutParticipants = .exclude
+        preferences.outOfOfficeEvents = .showAndAlert
+        XCTAssertEqual(defaults.string(forKey: "eventsWithoutParticipants"), "exclude")
+        XCTAssertEqual(defaults.string(forKey: "outOfOfficeEvents"), "showAndAlert")
+        XCTAssertEqual(Preferences(defaults: defaults).eventsWithoutParticipants, .exclude)
+        XCTAssertEqual(Preferences(defaults: defaults).outOfOfficeEvents, .showAndAlert)
+    }
+
+    @MainActor
+    func testLegacyEventsWithoutParticipantsSwitchIsMigrated() {
+        defaults.set(true, forKey: Preferences.Keys.legacyShowsEventsWithoutParticipants)
+        XCTAssertEqual(Preferences(defaults: defaults).eventsWithoutParticipants, .showAndAlert)
+        defaults.set(false, forKey: Preferences.Keys.legacyShowsEventsWithoutParticipants)
+        XCTAssertEqual(Preferences(defaults: defaults).eventsWithoutParticipants, .exclude)
+        XCTAssertNotNil(defaults.object(forKey: Preferences.Keys.legacyShowsEventsWithoutParticipants), "reading doesn't remove it")
+
+        let preferences = Preferences(defaults: defaults)
+        preferences.eventsWithoutParticipants = .listOnly
+        XCTAssertNil(defaults.object(forKey: Preferences.Keys.legacyShowsEventsWithoutParticipants), "a choice replaces the switch")
+        XCTAssertEqual(Preferences(defaults: defaults).eventsWithoutParticipants, .listOnly)
+    }
+
+    @MainActor
+    func testLegacyOutOfOfficeSwitchesAreMigrated() {
+        // (alert, list) → choice; alerting wins, so an upgrade keeps every alert the user had.
+        let cases: [(Bool, Bool, EventVisibility)] = [
+            (true, true, .showAndAlert),
+            (false, true, .listOnly),
+            (false, false, .exclude),
+            (true, false, .showAndAlert),
+        ]
+        for (alerts, listed, expected) in cases {
+            defaults.removePersistentDomain(forName: suite)
+            defaults.set(alerts, forKey: Preferences.Keys.legacyAlertForOutOfOffice)
+            defaults.set(listed, forKey: Preferences.Keys.legacyShowOutOfOfficeInList)
+            XCTAssertEqual(Preferences(defaults: defaults).outOfOfficeEvents, expected, "alert \(alerts), list \(listed)")
+        }
+
+        // Only one of the switches stored: the other is at its 1.1 default (alert off, list on).
+        defaults.removePersistentDomain(forName: suite)
+        defaults.set(true, forKey: Preferences.Keys.legacyAlertForOutOfOffice)
+        XCTAssertEqual(Preferences(defaults: defaults).outOfOfficeEvents, .showAndAlert)
+        defaults.removePersistentDomain(forName: suite)
+        defaults.set(false, forKey: Preferences.Keys.legacyShowOutOfOfficeInList)
+        XCTAssertEqual(Preferences(defaults: defaults).outOfOfficeEvents, .exclude)
+    }
+
+    @MainActor
+    func testLegacySkipOutOfOfficeIsMigrated() {
+        defaults.set(false, forKey: Preferences.Keys.legacySkipOutOfOffice)
+        XCTAssertEqual(Preferences(defaults: defaults).outOfOfficeEvents, .showAndAlert)
+
+        defaults.removePersistentDomain(forName: suite)
+        defaults.set(true, forKey: Preferences.Keys.legacySkipOutOfOffice)
+        XCTAssertEqual(Preferences(defaults: defaults).outOfOfficeEvents, .listOnly)
+        defaults.set(false, forKey: Preferences.Keys.legacyShowOutOfOfficeInList)
+        XCTAssertEqual(Preferences(defaults: defaults).outOfOfficeEvents, .exclude)
+
+        defaults.set(true, forKey: Preferences.Keys.legacyAlertForOutOfOffice)
+        XCTAssertEqual(Preferences(defaults: defaults).outOfOfficeEvents, .showAndAlert, "the 1.1 switch wins over the older key")
+    }
+
+    @MainActor
+    func testAStoredChoiceWinsOverTheLegacySwitchesAndRemovesThem() {
+        defaults.set(false, forKey: Preferences.Keys.legacyShowsEventsWithoutParticipants)
+        defaults.set(true, forKey: Preferences.Keys.legacyAlertForOutOfOffice)
+        defaults.set(true, forKey: Preferences.Keys.legacySkipOutOfOffice)
+        defaults.set(false, forKey: Preferences.Keys.legacyShowOutOfOfficeInList)
+        defaults.set("listOnly", forKey: Preferences.Keys.eventsWithoutParticipants)
+        defaults.set("listOnly", forKey: Preferences.Keys.outOfOfficeEvents)
+        let preferences = Preferences(defaults: defaults)
+        XCTAssertEqual(preferences.eventsWithoutParticipants, .listOnly)
+        XCTAssertEqual(preferences.outOfOfficeEvents, .listOnly)
+
+        preferences.outOfOfficeEvents = .exclude
+        XCTAssertNil(defaults.object(forKey: Preferences.Keys.legacyAlertForOutOfOffice))
+        XCTAssertNil(defaults.object(forKey: Preferences.Keys.legacyShowOutOfOfficeInList))
+        XCTAssertNil(defaults.object(forKey: Preferences.Keys.legacySkipOutOfOffice))
+        XCTAssertNotNil(defaults.object(forKey: Preferences.Keys.legacyShowsEventsWithoutParticipants), "each choice clears only its own")
+    }
+
+    @MainActor
+    func testAnUnknownStoredChoiceFallsBackToTheLegacySwitchesOrTheDefault() {
+        defaults.set("hide", forKey: Preferences.Keys.eventsWithoutParticipants)
+        defaults.set("hide", forKey: Preferences.Keys.outOfOfficeEvents)
+        XCTAssertEqual(Preferences(defaults: defaults).eventsWithoutParticipants, .showAndAlert)
+        XCTAssertEqual(Preferences(defaults: defaults).outOfOfficeEvents, .listOnly)
+
+        defaults.set(false, forKey: Preferences.Keys.legacyShowsEventsWithoutParticipants)
+        defaults.set(true, forKey: Preferences.Keys.legacyAlertForOutOfOffice)
+        XCTAssertEqual(Preferences(defaults: defaults).eventsWithoutParticipants, .exclude)
+        XCTAssertEqual(Preferences(defaults: defaults).outOfOfficeEvents, .showAndAlert)
+    }
+
+    @MainActor
+    func testNeverKeepsTheLeadTimeForWhenAlertsComeBack() {
+        let preferences = Preferences(defaults: defaults)
+        XCTAssertNil(defaults.object(forKey: Preferences.Keys.fullScreenAlertsEnabled), "nothing is stored until it changes")
+        preferences.leadTime = 300
+        preferences.fullScreenAlertsEnabled = false
+        XCTAssertEqual(defaults.object(forKey: "fullScreenAlertsEnabled") as? Bool, false)
+
+        let reopened = Preferences(defaults: defaults)
+        XCTAssertFalse(reopened.fullScreenAlertsEnabled)
+        XCTAssertEqual(reopened.leadTime, 300)
+
+        reopened.fullScreenAlertsEnabled = true
+        XCTAssertTrue(Preferences(defaults: defaults).fullScreenAlertsEnabled)
     }
 
     @MainActor
@@ -119,16 +223,6 @@ final class PreferencesTests: XCTestCase {
     }
 
     @MainActor
-    func testLegacySkipOutOfOfficeIsMigrated() {
-        defaults.set(false, forKey: Preferences.Keys.legacySkipOutOfOffice)
-        XCTAssertTrue(Preferences(defaults: defaults).alertForOutOfOffice)
-
-        defaults.removePersistentDomain(forName: suite)
-        defaults.set(true, forKey: Preferences.Keys.legacySkipOutOfOffice)
-        XCTAssertFalse(Preferences(defaults: defaults).alertForOutOfOffice)
-    }
-
-    @MainActor
     func testLegacyShowOnAllScreensIsMigrated() {
         defaults.set(false, forKey: Preferences.Keys.legacyShowOnAllScreens)
         XCTAssertEqual(Preferences(defaults: defaults).alertScreens, .main)
@@ -137,6 +231,17 @@ final class PreferencesTests: XCTestCase {
         preferences.alertScreens = .pointer
         XCTAssertEqual(Preferences(defaults: defaults).alertScreens, .pointer)
         XCTAssertNil(defaults.object(forKey: Preferences.Keys.legacyShowOnAllScreens))
+    }
+
+    @MainActor
+    func testAlertScreensPersistEveryChoice() {
+        for choice in AlertScreens.allCases {
+            Preferences(defaults: defaults).alertScreens = choice
+            XCTAssertEqual(defaults.string(forKey: Preferences.Keys.alertScreens), choice.rawValue)
+            XCTAssertEqual(Preferences(defaults: defaults).alertScreens, choice)
+        }
+        defaults.set("main", forKey: Preferences.Keys.alertScreens)
+        XCTAssertEqual(Preferences(defaults: defaults).alertScreens, .main, "a value stored before 1.2.0")
     }
 
     @MainActor

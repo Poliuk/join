@@ -13,7 +13,8 @@ final class MeetingStore {
     static let lookAhead: TimeInterval = 7 * 24 * 60 * 60
     static let safetyNetInterval: TimeInterval = 15 * 60
 
-    /// The events from the checked calendars, without those with no participants while Settings hides them.
+    /// The events from the checked calendars that Join! shows: those whose Settings › General › Events
+    /// choice is Exclude are left out (`MeetingFilter.visible`).
     private(set) var meetings: [Meeting] = []
     private(set) var calendars: [CalendarInfo] = []
     private(set) var authorization: CalendarAuthorization = .notDetermined
@@ -74,18 +75,28 @@ final class MeetingStore {
             calendarIDs: preferences.enabledCalendarIDs
         )
         lastRefreshed = now
-        let visible = MeetingFilter.visible(fetched, showsEventsWithoutParticipants: preferences.showsEventsWithoutParticipants)
-        meetings = visible.map { meeting in
+        let detected = fetched.map { meeting in
             var resolved = meeting
             resolved.joinURL = MeetingLinkDetector.joinURL(in: meeting)
             resolved.isOutOfOffice = OutOfOfficeDetector.isOutOfOffice(title: meeting.title, keywords: preferences.outOfOfficeKeywords)
             return resolved
         }
+        // After the detectors: the out-of-office choice needs `isOutOfOffice`.
+        meetings = MeetingFilter.visible(
+            detected,
+            eventsWithoutParticipants: preferences.eventsWithoutParticipants,
+            outOfOfficeEvents: preferences.outOfOfficeEvents
+        )
     }
 
-    /// The meetings that may produce alerts and drive the menu bar title.
+    /// The meetings that may produce full-screen alerts, drive the menu bar title and take the panel's card:
+    /// those whose Events choice is Show and alert. Reads both choices, so observers follow them too.
     var alertableMeetings: [Meeting] {
-        MeetingFilter.alertable(meetings, alertForOutOfOffice: preferences.alertForOutOfOffice)
+        MeetingFilter.alertable(
+            meetings,
+            eventsWithoutParticipants: preferences.eventsWithoutParticipants,
+            outOfOfficeEvents: preferences.outOfOfficeEvents
+        )
     }
 
     var calendarsBySource: [(source: String, calendars: [CalendarInfo])] {

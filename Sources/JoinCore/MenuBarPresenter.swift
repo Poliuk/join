@@ -5,7 +5,7 @@ public struct MenuBarStatus: Equatable, Sendable {
     public enum Kind: Equatable, Sendable {
         /// Nothing upcoming: the calendar icon alone.
         case idle
-        /// Reminders paused: the crossed-out bell, never any text.
+        /// Full-screen alerts paused: the crossed-out bell, never any text.
         case paused
         /// The next meeting is more than an hour away: "Next in 11 h 40 min" later today,
         /// "Tomorrow at 1:00 PM", "In 3 days at 9:10 AM" (a title, when shown, replaces "Next").
@@ -40,7 +40,8 @@ public enum MenuBarPresenter {
 
     /// Precedence: paused > starting soon > in a meeting > within the hour > later, among the meetings
     /// in `focus`: a Maybe or unanswered meeting in progress steps aside for one you're attending inside it.
-    /// `meetings` are the alertable ones: out-of-office blocks never drive the menu bar unless the user opted in.
+    /// `meetings` are the alertable ones (`MeetingFilter.alertable`): an event whose Settings choice is Show in
+    /// the list only never drives the menu bar.
     public static func status(
         meetings: [Meeting],
         now: Date,
@@ -52,7 +53,7 @@ public enum MenuBarPresenter {
         locale: Locale = .current
     ) -> MenuBarStatus {
         if pauseState.isPaused(at: now) {
-            return MenuBarStatus(kind: .paused, text: nil, accessibilityLabel: "Join!: reminders paused")
+            return MenuBarStatus(kind: .paused, text: nil, accessibilityLabel: "Join!: full-screen alerts paused")
         }
         let meetings = focus(meetings, now: now)
 
@@ -180,7 +181,8 @@ public enum MenuBarPresenter {
         return minutes % 60 == 0 ? hours : "\(hours) \(unit(minutes % 60, "minute"))"
     }
 
-    /// "Reminders paused until 11:50 AM", "Reminders paused until tomorrow", "Reminders paused", or nil.
+    /// "Full-screen alerts paused until 11:50 AM", "Full-screen alerts paused until tomorrow", "Full-screen
+    /// alerts paused", or nil.
     public static func pausedMessage(
         _ state: PauseState,
         now: Date,
@@ -191,11 +193,11 @@ public enum MenuBarPresenter {
         case .active:
             return nil
         case .indefinitely:
-            return "Reminders paused"
+            return "Full-screen alerts paused"
         case .until(let end):
             let startOfTomorrow = calendar.date(byAdding: .day, value: 1, to: calendar.startOfDay(for: now))
-            if end == startOfTomorrow { return "Reminders paused until tomorrow" }
-            return "Reminders paused until \(shortTime(end, calendar: calendar, locale: locale))"
+            if end == startOfTomorrow { return "Full-screen alerts paused until tomorrow" }
+            return "Full-screen alerts paused until \(shortTime(end, calendar: calendar, locale: locale))"
         }
     }
 

@@ -91,7 +91,7 @@ final class EventKitCalendarService: CalendarService {
 
     /// Someone other than you is on the event: an attendee who isn't you, or an organizer who isn't you.
     /// A booked room or resource isn't someone. Focus time, reminders and holds you make for yourself
-    /// have nobody else, like most holiday and subscribed calendar blocks; Settings can hide such events.
+    /// have nobody else, like most holiday and subscribed calendar blocks; Settings has a choice for them.
     private static func hasParticipants(_ event: EKEvent) -> Bool {
         let someoneElse = event.attendees?.contains { attendee in
             !attendee.isCurrentUser && attendee.participantType != .room && attendee.participantType != .resource

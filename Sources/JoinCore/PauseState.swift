@@ -1,6 +1,6 @@
 import Foundation
 
-/// Whether alerts are paused, and until when.
+/// Whether full-screen alerts are paused, and until when.
 public enum PauseState: Codable, Hashable, Sendable {
     case active
     case until(Date)

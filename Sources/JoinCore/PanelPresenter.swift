@@ -176,17 +176,16 @@ public struct PanelRow: Equatable, Identifiable, Sendable {
 /// Builds the menu bar panel's content from the meetings and the current time.
 public enum PanelPresenter {
     /// - Parameters:
-    ///   - meetings: everything in the store, out-of-office blocks included; they fill the lists.
-    ///   - alertable: the meetings that may alert; only these drive the hero card, picked the way the
-    ///     menu bar picks (`MenuBarPresenter.focus`).
-    ///   - showsOutOfOffice: false leaves out-of-office blocks out of the lists.
+    ///   - meetings: the visible meetings (`MeetingFilter.visible`), out-of-office blocks included; they
+    ///     fill the lists.
+    ///   - alertable: the meetings that may alert (`MeetingFilter.alertable`); only these drive the hero
+    ///     card, picked the way the menu bar picks (`MenuBarPresenter.focus`).
     ///   - startingSoonWindow: how soon before its start the next meeting gets the starting-soon card,
     ///     the same window as the menu bar pill.
     public static func content(
         meetings: [Meeting],
         alertable: [Meeting],
         now: Date,
-        showsOutOfOffice: Bool = true,
         startingSoonWindow: TimeInterval = MenuBarPresenter.startingSoonWindow,
         calendar: Calendar = .current,
         locale: Locale = .current
@@ -209,9 +208,7 @@ public enum PanelPresenter {
             hero = .nothingToday(detail: builder.nextUpDetail(next))
         }
 
-        let listed = builder.sorted.filter { meeting in
-            !meeting.hasEnded(at: now) && (showsOutOfOffice || !meeting.isOutOfOffice)
-        }
+        let listed = builder.sorted.filter { !$0.hasEnded(at: now) }
         var sections: [PanelSection] = []
 
         // The meeting you are in has the card, so Now lists the others. Meetings yet to start are all

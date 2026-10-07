@@ -66,12 +66,17 @@ final class AppModel {
 
         observeChanges(of: { [preferences] in
             _ = preferences.enabledCalendarIDs
-            _ = preferences.showsEventsWithoutParticipants
+            _ = preferences.eventsWithoutParticipants
+            _ = preferences.outOfOfficeEvents
             _ = preferences.outOfOfficeKeywords
         }) { [weak self] in
             self?.meetingStore.refresh()
         }
-        observeChanges(of: { [preferences] in _ = preferences.leadTime }) { [weak self] in
+        // Never (alerts off) cancels pending alerts but leaves one already on screen; a time brings them back.
+        observeChanges(of: { [preferences] in
+            _ = preferences.leadTime
+            _ = preferences.fullScreenAlertsEnabled
+        }) { [weak self] in
             self?.alertCoordinator.replan()
         }
         observeChanges(of: { [meetingStore] in _ = meetingStore.meetings }) { [weak self] in
@@ -99,7 +104,6 @@ final class AppModel {
             meetings: meetingStore.meetings,
             alertable: meetingStore.alertableMeetings,
             now: now,
-            showsOutOfOffice: preferences.showOutOfOfficeInList,
             startingSoonWindow: preferences.startingSoonPill.window
         )
     }

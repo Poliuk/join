@@ -51,7 +51,7 @@ public enum AlertCountdown {
         "Snooze \(SettingsOptions.durationTitle(minutes: wholeMinutes(duration)))"
     }
 
-    /// The button that snoozes until the meeting starts; Settings' "The alert offers" chips use it too.
+    /// The button that snoozes until the meeting starts; Settings' "The full-screen alert offers" chips use it too.
     public static let snoozeUntilStartLabel = "At event start"
 
     /// VoiceOver keeps the time the button itself leaves out.

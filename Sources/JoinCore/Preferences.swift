@@ -8,6 +8,7 @@ import Observation
 public final class Preferences {
     public enum Keys {
         public static let leadTime = "leadTime"
+        public static let fullScreenAlertsEnabled = "fullScreenAlertsEnabled"
         public static let snoozeDurations = "snoozeDurations"
         public static let alertScreens = "alertScreens"
         /// Earlier builds stored a Bool here; true maps to `.all`, false to `.main`.
@@ -18,14 +19,19 @@ public final class Preferences {
         public static let soundName = "soundName"
         public static let soundRepeats = "soundRepeats"
         public static let enabledCalendarIDs = "enabledCalendarIDs"
-        public static let showsEventsWithoutParticipants = "showsEventsWithoutParticipants"
+        public static let eventsWithoutParticipants = "eventsWithoutParticipants"
+        /// 1.1 stored a switch here; true maps to `.showAndAlert`, false to `.exclude`.
+        public static let legacyShowsEventsWithoutParticipants = "showsEventsWithoutParticipants"
         public static let menuBarShowsNextEvent = "menuBarShowsNextEvent"
         public static let appearance = "appearance"
-        public static let alertForOutOfOffice = "alertForOutOfOffice"
-        /// Earlier builds stored the inverse of `alertForOutOfOffice` under this key.
+        public static let outOfOfficeEvents = "outOfOfficeEvents"
+        /// 1.0 and 1.1 stored two switches for out-of-office events, read into `outOfOfficeEvents` until it
+        /// is set: whether they alert, and whether the panel lists them.
+        public static let legacyAlertForOutOfOffice = "alertForOutOfOffice"
+        public static let legacyShowOutOfOfficeInList = "showOutOfOfficeInList"
+        /// Builds before 1.0 stored the inverse of `legacyAlertForOutOfOffice` under this key.
         public static let legacySkipOutOfOffice = "skipOutOfOffice"
         public static let outOfOfficeKeywords = "outOfOfficeKeywords"
-        public static let showOutOfOfficeInList = "showOutOfOfficeInList"
         public static let startingSoonPill = "startingSoonPill"
         public static let panelListFilter = "panelListFilter"
         public static let checksForUpdates = "checksForUpdates"
@@ -41,6 +47,7 @@ public final class Preferences {
     private let defaults: UserDefaults
 
     @ObservationIgnored private var _leadTime: TimeInterval
+    @ObservationIgnored private var _fullScreenAlertsEnabled: Bool
     @ObservationIgnored private var _snoozeDurations: [TimeInterval]
     @ObservationIgnored private var _alertScreens: AlertScreens
     @ObservationIgnored private var _menuBarShowsEventTitles: Bool
@@ -49,12 +56,11 @@ public final class Preferences {
     @ObservationIgnored private var _soundName: String?
     @ObservationIgnored private var _soundRepeats: Bool
     @ObservationIgnored private var _enabledCalendarIDs: Set<String>?
-    @ObservationIgnored private var _showsEventsWithoutParticipants: Bool
+    @ObservationIgnored private var _eventsWithoutParticipants: EventVisibility
     @ObservationIgnored private var _menuBarShowsNextEvent: Bool
     @ObservationIgnored private var _appearance: AlertAppearance
-    @ObservationIgnored private var _alertForOutOfOffice: Bool
+    @ObservationIgnored private var _outOfOfficeEvents: EventVisibility
     @ObservationIgnored private var _outOfOfficeKeywords: [String]
-    @ObservationIgnored private var _showOutOfOfficeInList: Bool
     @ObservationIgnored private var _startingSoonPill: StartingSoonPill
     @ObservationIgnored private var _panelListFilter: PanelListFilter
     @ObservationIgnored private var _checksForUpdates: Bool
@@ -65,6 +71,7 @@ public final class Preferences {
     public init(defaults: UserDefaults = .standard) {
         self.defaults = defaults
         _leadTime = Self.wholeMinutes(defaults.object(forKey: Keys.leadTime) as? TimeInterval ?? Self.defaultLeadTime)
+        _fullScreenAlertsEnabled = defaults.object(forKey: Keys.fullScreenAlertsEnabled) as? Bool ?? true
         let storedSnooze = defaults.array(forKey: Keys.snoozeDurations) as? [TimeInterval]
         _snoozeDurations = (storedSnooze?.count == 2 ? storedSnooze : nil) ?? Self.defaultSnoozeDurations
         if let raw = defaults.string(forKey: Keys.alertScreens), let stored = AlertScreens(rawValue: raw) {
@@ -80,19 +87,14 @@ public final class Preferences {
         _soundName = defaults.string(forKey: Keys.soundName)
         _soundRepeats = defaults.object(forKey: Keys.soundRepeats) as? Bool ?? false
         _enabledCalendarIDs = (defaults.array(forKey: Keys.enabledCalendarIDs) as? [String]).map(Set.init)
-        _showsEventsWithoutParticipants = defaults.object(forKey: Keys.showsEventsWithoutParticipants) as? Bool ?? true
+        _eventsWithoutParticipants = defaults.string(forKey: Keys.eventsWithoutParticipants).flatMap(EventVisibility.init(rawValue:))
+            ?? Self.legacyEventsWithoutParticipants(in: defaults)
         _menuBarShowsNextEvent = defaults.object(forKey: Keys.menuBarShowsNextEvent) as? Bool ?? true
         _appearance = defaults.data(forKey: Keys.appearance)
             .flatMap { try? JSONDecoder().decode(AlertAppearance.self, from: $0) } ?? .default
-        if let stored = defaults.object(forKey: Keys.alertForOutOfOffice) as? Bool {
-            _alertForOutOfOffice = stored
-        } else if let legacySkip = defaults.object(forKey: Keys.legacySkipOutOfOffice) as? Bool {
-            _alertForOutOfOffice = !legacySkip
-        } else {
-            _alertForOutOfOffice = false
-        }
+        _outOfOfficeEvents = defaults.string(forKey: Keys.outOfOfficeEvents).flatMap(EventVisibility.init(rawValue:))
+            ?? Self.legacyOutOfOfficeEvents(in: defaults)
         _outOfOfficeKeywords = defaults.array(forKey: Keys.outOfOfficeKeywords) as? [String] ?? OutOfOfficeDetector.defaultKeywords
-        _showOutOfOfficeInList = defaults.object(forKey: Keys.showOutOfOfficeInList) as? Bool ?? true
         _startingSoonPill = defaults.data(forKey: Keys.startingSoonPill)
             .flatMap { try? JSONDecoder().decode(StartingSoonPill.self, from: $0) } ?? .default
         _panelListFilter = defaults.string(forKey: Keys.panelListFilter).flatMap(PanelListFilter.init(rawValue:)) ?? .week
@@ -103,7 +105,29 @@ public final class Preferences {
             .flatMap { try? JSONDecoder().decode(UnsupportedUpdate.self, from: $0) }
     }
 
-    /// Seconds before the meeting start at which the alert fires, always a whole number of minutes.
+    /// 1.1's switch, on by default: on showed these events like any other, off left them out.
+    private static func legacyEventsWithoutParticipants(in defaults: UserDefaults) -> EventVisibility {
+        let shown = defaults.object(forKey: Keys.legacyShowsEventsWithoutParticipants) as? Bool ?? true
+        return shown ? .showAndAlert : .exclude
+    }
+
+    /// The two switches of 1.0 and 1.1, alert off and list on by default. Alert on keeps the events alerting
+    /// whatever the list switch said; with both off they were out of sight, so they're excluded.
+    private static func legacyOutOfOfficeEvents(in defaults: UserDefaults) -> EventVisibility {
+        let alerts: Bool
+        if let stored = defaults.object(forKey: Keys.legacyAlertForOutOfOffice) as? Bool {
+            alerts = stored
+        } else if let skip = defaults.object(forKey: Keys.legacySkipOutOfOffice) as? Bool {
+            alerts = !skip
+        } else {
+            alerts = false
+        }
+        if alerts { return .showAndAlert }
+        let listed = defaults.object(forKey: Keys.legacyShowOutOfOfficeInList) as? Bool ?? true
+        return listed ? .listOnly : .exclude
+    }
+
+    /// Seconds before the meeting start at which the full-screen alert fires, always a whole number of minutes.
     public var leadTime: TimeInterval {
         get { access(keyPath: \.leadTime); return _leadTime }
         set {
@@ -116,6 +140,18 @@ public final class Preferences {
 
     private static func wholeMinutes(_ seconds: TimeInterval) -> TimeInterval {
         max(0, (seconds / 60).rounded()) * 60
+    }
+
+    /// False when Alert me is set to Never: no full-screen alert is scheduled or shown, while the menu bar
+    /// item, its pill and the panel carry on. `leadTime` keeps the last time chosen. On by default.
+    public var fullScreenAlertsEnabled: Bool {
+        get { access(keyPath: \.fullScreenAlertsEnabled); return _fullScreenAlertsEnabled }
+        set {
+            withMutation(keyPath: \.fullScreenAlertsEnabled) {
+                _fullScreenAlertsEnabled = newValue
+                defaults.set(newValue, forKey: Keys.fullScreenAlertsEnabled)
+            }
+        }
     }
 
     /// Exactly two entries, in seconds.
@@ -209,14 +245,15 @@ public final class Preferences {
         }
     }
 
-    /// Whether events nobody else is on (focus time, reminders you add for yourself) appear at all. On by
-    /// default; when off, they're left out of the panel, the menu bar and alerts, like an unchecked calendar.
-    public var showsEventsWithoutParticipants: Bool {
-        get { access(keyPath: \.showsEventsWithoutParticipants); return _showsEventsWithoutParticipants }
+    /// What Join! does with events nobody else is on (focus time, reminders you add for yourself).
+    /// Show and alert by default, like any other event.
+    public var eventsWithoutParticipants: EventVisibility {
+        get { access(keyPath: \.eventsWithoutParticipants); return _eventsWithoutParticipants }
         set {
-            withMutation(keyPath: \.showsEventsWithoutParticipants) {
-                _showsEventsWithoutParticipants = newValue
-                defaults.set(newValue, forKey: Keys.showsEventsWithoutParticipants)
+            withMutation(keyPath: \.eventsWithoutParticipants) {
+                _eventsWithoutParticipants = newValue
+                defaults.set(newValue.rawValue, forKey: Keys.eventsWithoutParticipants)
+                defaults.removeObject(forKey: Keys.legacyShowsEventsWithoutParticipants)
             }
         }
     }
@@ -241,15 +278,16 @@ public final class Preferences {
         }
     }
 
-    /// When off (the default), events that look like out-of-office blocks never alert and are left
-    /// out of the menu bar item. They still appear, dimmed, in the panel's lists unless
-    /// `showOutOfOfficeInList` is off.
-    public var alertForOutOfOffice: Bool {
-        get { access(keyPath: \.alertForOutOfOffice); return _alertForOutOfOffice }
+    /// What Join! does with events whose titles match `outOfOfficeKeywords`. Show in the list only by
+    /// default: striped and muted in the panel's lists, never alerting or driving the menu bar item.
+    public var outOfOfficeEvents: EventVisibility {
+        get { access(keyPath: \.outOfOfficeEvents); return _outOfOfficeEvents }
         set {
-            withMutation(keyPath: \.alertForOutOfOffice) {
-                _alertForOutOfOffice = newValue
-                defaults.set(newValue, forKey: Keys.alertForOutOfOffice)
+            withMutation(keyPath: \.outOfOfficeEvents) {
+                _outOfOfficeEvents = newValue
+                defaults.set(newValue.rawValue, forKey: Keys.outOfOfficeEvents)
+                defaults.removeObject(forKey: Keys.legacyAlertForOutOfOffice)
+                defaults.removeObject(forKey: Keys.legacyShowOutOfOfficeInList)
                 defaults.removeObject(forKey: Keys.legacySkipOutOfOffice)
             }
         }
@@ -261,17 +299,6 @@ public final class Preferences {
             withMutation(keyPath: \.outOfOfficeKeywords) {
                 _outOfOfficeKeywords = newValue
                 defaults.set(newValue, forKey: Keys.outOfOfficeKeywords)
-            }
-        }
-    }
-
-    /// Whether out-of-office events appear (striped and muted) in the menu bar panel's lists. On by default.
-    public var showOutOfOfficeInList: Bool {
-        get { access(keyPath: \.showOutOfOfficeInList); return _showOutOfOfficeInList }
-        set {
-            withMutation(keyPath: \.showOutOfOfficeInList) {
-                _showOutOfOfficeInList = newValue
-                defaults.set(newValue, forKey: Keys.showOutOfOfficeInList)
             }
         }
     }

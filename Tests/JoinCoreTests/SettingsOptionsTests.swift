@@ -3,11 +3,28 @@ import XCTest
 
 final class SettingsOptionsTests: XCTestCase {
     func testLeadTimePresetsAreWholeMinutesWithoutSeconds() {
-        XCTAssertEqual(SettingsOptions.leadTimeMinutes, [0, 1, 2, 3, 5, 10])
-        XCTAssertEqual(SettingsOptions.leadTimeTitle(minutes: 0), "When the event starts")
-        XCTAssertEqual(SettingsOptions.leadTimeTitle(minutes: 1), "1 minute before")
-        XCTAssertEqual(SettingsOptions.leadTimeTitle(minutes: 5), "5 minutes before")
+        XCTAssertEqual(SettingsOptions.leadTimeMinutes, [0, 1, 3, 5])
+        XCTAssertEqual(SettingsOptions.leadTimeMinutes.map(SettingsOptions.leadTimeTitle(minutes:)), [
+            "When the event starts", "1 minute before", "3 minutes before", "5 minutes before",
+        ])
         XCTAssertEqual(SettingsOptions.customLeadTimeRange, 0...120)
+    }
+
+    @MainActor
+    func testTheDefaultLeadTimeIsAPresetAndEarlierPresetsShowAsCustom() {
+        XCTAssertTrue(SettingsOptions.leadTimeMinutes.contains(SettingsOptions.wholeMinutes(Preferences.defaultLeadTime)))
+        for minutes in [2, 10] {
+            XCTAssertFalse(SettingsOptions.leadTimeMinutes.contains(minutes), "\(minutes) shows as Custom…")
+            XCTAssertTrue(SettingsOptions.customLeadTimeRange.contains(minutes), "\(minutes) fits the custom field")
+        }
+    }
+
+    func testAlertMeNeverTitle() {
+        XCTAssertEqual(SettingsOptions.leadTimeNeverTitle, "Never")
+    }
+
+    func testFullScreenAlertSectionTitle() {
+        XCTAssertEqual(SettingsOptions.fullScreenAlertSectionTitle, "Full-screen alert")
     }
 
     @MainActor
@@ -118,13 +135,20 @@ final class SettingsOptionsTests: XCTestCase {
         XCTAssertEqual(CalendarSelection.setting(["work"], enabled: true, in: [], allCalendarIDs: all), ["work"])
     }
 
-    func testEventsWithoutParticipantsCopy() {
+    func testEventsSectionCopy() {
         XCTAssertEqual(SettingsOptions.eventsSectionTitle, "Events")
-        XCTAssertEqual(SettingsOptions.eventsWithoutParticipantsTitle, "Show events with no participants")
+        XCTAssertEqual(SettingsOptions.eventsWithoutParticipantsTitle, "Events with no participants")
         XCTAssertEqual(
             SettingsOptions.eventsWithoutParticipantsNote,
-            "Events nobody else is invited to, like focus time or reminders you add for yourself. When this is off, Join! leaves them out of the menu bar and its panel, and doesn't alert for them."
+            "Events nobody else is invited to, like focus time or reminders you add for yourself."
         )
+        XCTAssertEqual(SettingsOptions.outOfOfficeEventsTitle, "Out-of-office events")
+        XCTAssertEqual(SettingsOptions.outOfOfficeKeywordsTitle, "Out-of-office keywords")
+        XCTAssertEqual(
+            SettingsOptions.eventsFootnote,
+            "An event counts as out of office when its title contains any of these words. Press Return to add one. Only Show and alert lets an event alert, take the menu bar or sit at the top of the panel. When an event is both kinds, the choice that shows less wins."
+        )
+        XCTAssertTrue(SettingsOptions.eventsFootnote.contains(EventVisibility.showAndAlert.title), "names the choice as the pop-up does")
     }
 
     func testAddingKeywordsTrimsAndSkipsDuplicates() {

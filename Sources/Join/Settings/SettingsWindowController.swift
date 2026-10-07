@@ -57,7 +57,7 @@ final class SettingsWindowController: NSObject, NSWindowDelegate {
         window.delegate = self
         window.identifier = .settingsWindow
         window.title = tabs.windowTitle
-        tabs.fitWindowToSelectedPane(animate: false)
+        tabs.fitWindowToSelectedPane()
         window.center()
         self.tabs = tabs
         self.window = window
@@ -80,12 +80,13 @@ private final class SettingsTabViewController: NSTabViewController {
         isFixture = model.isFixture
         super.init(nibName: nil, bundle: nil)
         tabStyle = .toolbar
-        transitionOptions = [.crossfade, .allowUserInteraction]
+        // Panes switch instantly: no crossfade, and the window takes the new height in one step.
+        transitionOptions = []
         for pane in panes {
             let controller = SettingsPaneController(pane: pane, model: model)
             controller.onContentHeightChange = { [weak self, weak controller] in
                 guard let self, let controller, controller === self.selectedPaneController else { return }
-                self.fitWindowToSelectedPane(animate: false)
+                self.fitWindowToSelectedPane()
             }
             let item = NSTabViewItem(viewController: controller)
             item.label = pane.title
@@ -130,11 +131,12 @@ private final class SettingsTabViewController: NSTabViewController {
         super.tabView(tabView, didSelect: tabViewItem)
         title = windowTitle
         view.window?.title = windowTitle
-        fitWindowToSelectedPane(animate: true)
+        fitWindowToSelectedPane()
     }
 
-    /// Keeps the window's top edge in place, and the whole window on its screen.
-    func fitWindowToSelectedPane(animate: Bool) {
+    /// Keeps the window's top edge in place, and the whole window on its screen. Never animated, on a
+    /// tab switch or when rows come and go inside a pane.
+    func fitWindowToSelectedPane() {
         guard let window = view.window, let pane = selectedPaneController else { return }
         pane.view.layoutSubtreeIfNeeded()
         guard let contentHeight = pane.contentHeight, contentHeight > 0 else { return }
@@ -157,7 +159,7 @@ private final class SettingsTabViewController: NSTabViewController {
             frame.origin.y = min(visible.minY, visible.maxY - frame.height)
         }
         guard frame != window.frame else { return }
-        window.setFrame(frame, display: true, animate: animate && window.isVisible)
+        window.setFrame(frame, display: true)
     }
 }
 

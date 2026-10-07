@@ -5,10 +5,10 @@ final class PanelPresenterTests: XCTestCase {
     typealias F = MenuBarFixtures
 
     private func content(at now: Date, meetings: [Meeting] = F.week, alertable: [Meeting]? = nil,
-                         showsOutOfOffice: Bool = true, startingSoonWindow: TimeInterval = MenuBarPresenter.startingSoonWindow,
+                         startingSoonWindow: TimeInterval = MenuBarPresenter.startingSoonWindow,
                          locale: Locale = F.us) -> PanelContent {
         PanelPresenter.content(meetings: meetings, alertable: alertable ?? meetings.filter { !$0.isOutOfOffice }, now: now,
-                               showsOutOfOffice: showsOutOfOffice, startingSoonWindow: startingSoonWindow, calendar: F.calendar, locale: locale)
+                               startingSoonWindow: startingSoonWindow, calendar: F.calendar, locale: locale)
     }
 
     private func titles(_ content: PanelContent) -> [String] {
@@ -225,10 +225,24 @@ final class PanelPresenterTests: XCTestCase {
         XCTAssertEqual(result.sections.map(ids), [["early", "rev"]])
     }
 
-    func testOutOfOfficeRowsCanBeLeftOutOfTheList() {
-        let shown = content(at: F.date(5, 21, 30)).sections.flatMap(ids)
+    // The Events choices reach the panel through the meetings it's given: excluded ones aren't listed,
+    // and only Show and alert ones can take the card.
+    func testTheListAndTheCardFollowTheEventsChoices() {
+        func panel(_ outOfOffice: EventVisibility, at now: Date) -> PanelContent {
+            content(
+                at: now,
+                meetings: MeetingFilter.visible(F.week, eventsWithoutParticipants: .showAndAlert, outOfOfficeEvents: outOfOffice),
+                alertable: MeetingFilter.alertable(F.week, eventsWithoutParticipants: .showAndAlert, outOfOfficeEvents: outOfOffice)
+            )
+        }
+        let shown = panel(.listOnly, at: F.date(5, 21, 30)).sections.flatMap(ids)
         XCTAssertTrue(shown.contains(F.outOfOffice.id))
-        XCTAssertEqual(content(at: F.date(5, 21, 30), showsOutOfOffice: false).sections.flatMap(ids), shown.filter { $0 != F.outOfOffice.id })
+        XCTAssertEqual(panel(.showAndAlert, at: F.date(5, 21, 30)).sections.flatMap(ids), shown)
+        XCTAssertEqual(panel(.exclude, at: F.date(5, 21, 30)).sections.flatMap(ids), shown.filter { $0 != F.outOfOffice.id })
+
+        // 12:28 PM, two minutes before the out-of-office block: it takes the card only with Show and alert.
+        XCTAssertNotEqual(panel(.listOnly, at: F.date(6, 12, 28)).hero.card?.meeting.id, F.outOfOffice.id)
+        XCTAssertEqual(panel(.showAndAlert, at: F.date(6, 12, 28)).hero.card?.meeting.id, F.outOfOffice.id)
     }
 
     func testTheStartingSoonCardFollowsTheMenuBarPillsWindow() {

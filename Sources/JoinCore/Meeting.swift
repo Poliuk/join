@@ -24,10 +24,10 @@ public struct Meeting: Identifiable, Hashable, Sendable, Codable {
     public var url: URL?
     public var myStatus: ParticipationStatus
     /// Someone other than you is on the event: an attendee who isn't you, or an organizer who isn't you.
-    /// False for focus blocks and reminders you add for yourself, which Settings can hide.
+    /// False for focus blocks and reminders you add for yourself, which Settings has a choice for.
     public var hasParticipants: Bool
     public var joinURL: URL?
-    /// Set by the detector; such events can be excluded from alerts in Settings.
+    /// Set by the detector; Settings has a choice for such events.
     public var isOutOfOffice: Bool
 
     public init(
@@ -84,16 +84,40 @@ public enum MeetingFilter {
         return myStatus != .declined
     }
 
-    /// The meetings Join! uses anywhere: the panel, the menu bar and alerts. With the switch off, events
-    /// nobody else is on are left out, like the events of an unchecked calendar, whether or not they look
-    /// out of office. Keeps the order.
-    public static func visible(_ meetings: [Meeting], showsEventsWithoutParticipants: Bool) -> [Meeting] {
-        showsEventsWithoutParticipants ? meetings : meetings.filter(\.hasParticipants)
+    /// The Settings › General › Events choice that applies to `meeting`: the one for its kind, the one that
+    /// shows less when it is both kinds, and `.showAndAlert` for any other event. Needs `isOutOfOffice` set.
+    public static func visibility(
+        of meeting: Meeting,
+        eventsWithoutParticipants: EventVisibility,
+        outOfOfficeEvents: EventVisibility
+    ) -> EventVisibility {
+        var choice = EventVisibility.showAndAlert
+        if !meeting.hasParticipants { choice = min(choice, eventsWithoutParticipants) }
+        if meeting.isOutOfOffice { choice = min(choice, outOfOfficeEvents) }
+        return choice
     }
 
-    /// The visible meetings that may alert and drive the menu bar: out-of-office ones only when Settings
-    /// says so. Takes the output of `visible`, so a hidden event never comes back here.
-    public static func alertable(_ visibleMeetings: [Meeting], alertForOutOfOffice: Bool) -> [Meeting] {
-        alertForOutOfOffice ? visibleMeetings : visibleMeetings.filter { !$0.isOutOfOffice }
+    /// The meetings the panel lists, and the only ones Join! uses anywhere: excluded ones are left out,
+    /// like the events of an unchecked calendar. Keeps the order.
+    public static func visible(
+        _ meetings: [Meeting],
+        eventsWithoutParticipants: EventVisibility,
+        outOfOfficeEvents: EventVisibility
+    ) -> [Meeting] {
+        meetings.filter {
+            visibility(of: $0, eventsWithoutParticipants: eventsWithoutParticipants, outOfOfficeEvents: outOfOfficeEvents).isListed
+        }
+    }
+
+    /// The meetings that may alert, drive the menu bar item and take the panel's card: those whose choice
+    /// is Show and alert, always a subset of `visible`. Keeps the order.
+    public static func alertable(
+        _ meetings: [Meeting],
+        eventsWithoutParticipants: EventVisibility,
+        outOfOfficeEvents: EventVisibility
+    ) -> [Meeting] {
+        meetings.filter {
+            visibility(of: $0, eventsWithoutParticipants: eventsWithoutParticipants, outOfOfficeEvents: outOfOfficeEvents).alerts
+        }
     }
 }

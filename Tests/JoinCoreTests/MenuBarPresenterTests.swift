@@ -90,7 +90,7 @@ final class MenuBarPresenterTests: XCTestCase {
         let paused = status(at: F.date(6, 15, 56), pause: .until(F.date(6, 16, 56)))
         XCTAssertEqual(paused.kind, .paused)
         XCTAssertNil(paused.text)
-        XCTAssertEqual(paused.accessibilityLabel, "Join!: reminders paused")
+        XCTAssertEqual(paused.accessibilityLabel, "Join!: full-screen alerts paused")
         XCTAssertEqual(status(at: F.date(6, 16, 20), pause: .indefinitely).kind, .paused)
         XCTAssertEqual(status(at: F.date(6, 15, 56), pause: .until(F.date(6, 15, 50))).kind, .startingSoon)
     }
@@ -154,9 +154,9 @@ final class MenuBarPresenterTests: XCTestCase {
         }
         XCTAssertNil(message(.active))
         XCTAssertNil(message(.until(F.date(6, 10, 49))))
-        XCTAssertEqual(message(.until(F.date(6, 11, 50))), "Reminders paused until 11:50 AM")
-        XCTAssertEqual(message(.until(F.date(7, 0))), "Reminders paused until tomorrow")
-        XCTAssertEqual(message(.indefinitely), "Reminders paused")
+        XCTAssertEqual(message(.until(F.date(6, 11, 50))), "Full-screen alerts paused until 11:50 AM")
+        XCTAssertEqual(message(.until(F.date(7, 0))), "Full-screen alerts paused until tomorrow")
+        XCTAssertEqual(message(.indefinitely), "Full-screen alerts paused")
     }
 
     func testHeaderDate() {

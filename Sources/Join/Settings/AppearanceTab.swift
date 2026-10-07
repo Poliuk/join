@@ -28,7 +28,7 @@ struct AppearanceTab: View {
             }
 
             VStack(alignment: .leading, spacing: 8) {
-                SettingsSection(title: "Alert") {
+                SettingsSection(title: SettingsOptions.fullScreenAlertSectionTitle) {
                     alertRows
                 }
                 warnings { $0 == .text }
@@ -103,7 +103,7 @@ struct AppearanceTab: View {
                     .fixedSize()
                 }
                 Spacer()
-                Button("Show Demo Alert") { model.alertCoordinator.showDemoAlert() }
+                Button("Show Demo") { model.alertCoordinator.showDemoAlert() }
                     .disabled(model.alertCoordinator.isAlerting)
             }
         }

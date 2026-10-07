@@ -37,9 +37,10 @@ struct GeneralTab: View {
                 }
             }
 
-            SettingsSection(title: "Alert") {
+            SettingsSection(title: SettingsOptions.fullScreenAlertSectionTitle) {
                 // Custom lead times save on Return or when the field loses focus, so editing
-                // "3" → "35" → "5" can't briefly mean 35 minutes and fire alerts early.
+                // "3" → "35" → "5" can't briefly mean 35 minutes and fire alerts early. Never leaves the
+                // rows below in view, by the user's choice.
                 SettingsMinutesChoice(
                     title: "Alert me",
                     separator: false,
@@ -48,10 +49,11 @@ struct GeneralTab: View {
                     presetTitle: SettingsOptions.leadTimeTitle(minutes:),
                     unit: SettingsOptions.minutesBeforeUnit,
                     fieldLabel: "Minutes before the event",
-                    minutes: leadMinutes(preferences)
+                    minutes: leadMinutes(preferences),
+                    never: (SettingsOptions.leadTimeNeverTitle, alertsOff(preferences))
                 )
-                SettingsRow(title: "Show alert on") {
-                    Picker("Show alert on", selection: $preferences.alertScreens) {
+                SettingsRow(title: "Show on") {
+                    Picker("Show on", selection: $preferences.alertScreens) {
                         ForEach(AlertScreens.allCases, id: \.self) { choice in
                             Text(choice.displayName).tag(choice)
                         }
@@ -68,8 +70,8 @@ struct GeneralTab: View {
                                 .font(.system(size: 9))
                                 .frame(width: 12)
                         }
-                        .help("Play alert sound")
-                        .accessibilityLabel("Play alert sound")
+                        .help("Play the sound")
+                        .accessibilityLabel("Play the sound")
                         .disabled(preferences.soundName == nil)
                         Picker("Sound", selection: soundSelection(preferences)) {
                             Text("None").tag("")
@@ -85,20 +87,18 @@ struct GeneralTab: View {
                 // Only while a sound is chosen. Hiding it keeps the stored choice, so picking a
                 // sound again brings the switch back as it was.
                 if preferences.soundName != nil {
-                    SettingsSwitchRow(title: "Repeat until the alert is closed", isOn: $preferences.soundRepeats, indented: true)
+                    SettingsSwitchRow(title: "Repeat until it's closed", isOn: $preferences.soundRepeats, indented: true)
                 }
             }
 
-            eventsSection
-
-            OutOfOfficeSection()
+            EventsSection()
 
             VStack(alignment: .leading, spacing: 8) {
                 SettingsSection(title: "Snooze & auto-close") {
                     snoozeChoice("First snooze button", preferences: preferences, index: 0)
                     snoozeChoice("Second snooze button", preferences: preferences, index: 1)
-                    SettingsRow(title: "Close alerts automatically") {
-                        Picker("Close alerts automatically", selection: autoCloseSelection(preferences)) {
+                    SettingsRow(title: "Close full-screen alerts automatically") {
+                        Picker("Close full-screen alerts automatically", selection: autoCloseSelection(preferences)) {
                             ForEach(autoCloseChoices(preferences), id: \.self) { minutes in
                                 Text(SettingsOptions.autoCloseTitle(minutes: minutes == Self.neverTag ? nil : minutes))
                                     .tag(minutes)
@@ -174,25 +174,12 @@ struct GeneralTab: View {
         )
     }
 
-    // MARK: Events
-
-    /// The switch for events nobody else is on, decided per event rather than per calendar.
-    /// Between Alert and Out of office by the user's choice; 1.1.0 had it under the calendar list.
-    private var eventsSection: some View {
-        @Bindable var preferences = model.preferences
-
-        return SettingsSection(title: SettingsOptions.eventsSectionTitle) {
-            SettingsSwitchRow(
-                title: SettingsOptions.eventsWithoutParticipantsTitle,
-                isOn: $preferences.showsEventsWithoutParticipants,
-                separator: false
-            )
-            Text(SettingsOptions.eventsWithoutParticipantsNote)
-                .font(.subheadline)
-                .foregroundStyle(.secondary)
-                .fixedSize(horizontal: false, vertical: true)
-                .padding(.bottom, 8)
-        }
+    /// True while Alert me is set to Never.
+    private func alertsOff(_ preferences: Preferences) -> Binding<Bool> {
+        Binding(
+            get: { !preferences.fullScreenAlertsEnabled },
+            set: { preferences.fullScreenAlertsEnabled = !$0 }
+        )
     }
 
     // MARK: Menu bar and sound
@@ -318,7 +305,7 @@ struct GeneralTab: View {
 
     private func alertOffers(_ preferences: Preferences) -> some View {
         HStack(spacing: 6) {
-            Text("The alert offers")
+            Text("The full-screen alert offers")
                 .font(.subheadline)
                 .foregroundStyle(.secondary)
                 .padding(.trailing, 2)

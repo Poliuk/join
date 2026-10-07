@@ -38,7 +38,7 @@ struct CalendarsTab: View {
                 }
             }
             if !allIDs.isEmpty && selected == 0 {
-                Label("No calendars selected: you won't get any alerts.", systemImage: "exclamationmark.triangle.fill")
+                Label("No calendars selected: you won't get any full-screen alerts.", systemImage: "exclamationmark.triangle.fill")
                     .font(.callout.weight(.semibold))
                     .foregroundStyle(.orange)
             }

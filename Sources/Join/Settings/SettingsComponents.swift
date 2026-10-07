@@ -1,5 +1,6 @@
 import AppKit
 import SwiftUI
+import JoinCore
 
 /// The Settings window's colors, as light and dark pairs.
 enum SettingsPalette {
@@ -158,7 +159,7 @@ struct SettingsSwitchRow: View {
     }
 }
 
-/// A small rounded label, as in "The alert offers 1 min · 5 min".
+/// A small rounded label, as in "The full-screen alert offers 1 min · 5 min".
 struct SettingsChip: View {
     let text: String
 
@@ -266,10 +267,11 @@ struct SettingsPaneScroll<Content: View>: View {
     }
 }
 
-/// A row with a pop-up of preset minutes and "Custom…". Custom adds an indented row with a minutes
-/// field and a stepper, and the pop-up keeps showing Custom while the custom value happens to match
-/// a preset. The field saves only on Return or when it loses focus: saving every keystroke would let
-/// "3" → "35" → "5" briefly mean 35 minutes.
+/// A row with a pop-up of preset minutes, optionally "Never", and "Custom…". Custom adds an indented
+/// row with a minutes field and a stepper, and the pop-up keeps showing Custom while the custom value
+/// happens to match a preset. The field saves only on Return or when it loses focus: saving every
+/// keystroke would let "3" → "35" → "5" briefly mean 35 minutes. What the pop-up shows and what each
+/// choice changes is `MinutesChoice`, in JoinCore.
 struct SettingsMinutesChoice: View {
     let title: String
     var separator = true
@@ -282,6 +284,9 @@ struct SettingsMinutesChoice: View {
     /// What VoiceOver calls the field and the stepper.
     let fieldLabel: String
     @Binding var minutes: Int
+    /// Alert me only: the item after the presets, and whether it is chosen. `minutes` keeps the last
+    /// time meanwhile. A preset or Custom… turns it off at once, Custom… with the kept time in its field.
+    var never: (title: String, isChosen: Binding<Bool>)? = nil
 
     @State private var customChosen = false
     @State private var draft = 0
@@ -289,35 +294,31 @@ struct SettingsMinutesChoice: View {
     @State private var ownWrite: Int?
     @FocusState private var fieldFocused: Bool
 
-    /// Minutes are never negative, so -1 can't be a preset.
-    private static let customTag = -1
-
     var body: some View {
         SettingsRow(title: title, separator: separator) {
             Picker(title, selection: selection) {
                 ForEach(presets, id: \.self) { minutes in
-                    Text(presetTitle(minutes)).tag(minutes)
+                    Text(presetTitle(minutes)).tag(MinutesChoice.Item.preset(minutes))
+                }
+                if let never {
+                    Text(never.title).tag(MinutesChoice.Item.never)
                 }
                 Divider()
-                Text("Custom…").tag(Self.customTag)
+                Text("Custom…").tag(MinutesChoice.Item.custom)
             }
             .labelsHidden()
             .fixedSize()
         }
         .onAppear {
             draft = minutes
-            customChosen = !presets.contains(minutes)
+            customChosen = rule.opensAsCustom(minutes: minutes, neverChosen: isNever)
         }
         .onChange(of: minutes) { _, newValue in
             // Draft first, so the custom row's commit as it disappears writes nothing.
             draft = newValue
-            if newValue == ownWrite {
-                ownWrite = nil
-                if !presets.contains(newValue) { customChosen = true }
-            } else {
-                // Changed from outside: show it the way it would show on opening the pane.
-                customChosen = !presets.contains(newValue)
-            }
+            let savedHere = newValue == ownWrite
+            if savedHere { ownWrite = nil }
+            customChosen = rule.customPicked(afterChangeTo: newValue, neverChosen: isNever, customPicked: customChosen, savedHere: savedHere)
         }
         if showsCustom {
             SettingsRow(title: "Custom time", tone: .secondary, indented: true) {
@@ -342,36 +343,53 @@ struct SettingsMinutesChoice: View {
         }
     }
 
-    private var showsCustom: Bool {
-        customChosen || !presets.contains(minutes)
+    private var rule: MinutesChoice {
+        MinutesChoice(presets: presets, offersNever: never != nil)
     }
 
-    private var selection: Binding<Int> {
+    private var isNever: Bool {
+        never?.isChosen.wrappedValue ?? false
+    }
+
+    private var showsCustom: Bool {
+        rule.showsCustomRow(minutes: minutes, neverChosen: isNever, customPicked: customChosen)
+    }
+
+    private var selection: Binding<MinutesChoice.Item> {
         Binding(
-            get: { showsCustom ? Self.customTag : minutes },
-            set: { choice in
-                if choice == Self.customTag {
-                    draft = minutes
-                    customChosen = true
-                    DispatchQueue.main.async { fieldFocused = true }
-                } else {
-                    // Set the draft first: the custom field's commit on disappear must not undo this.
-                    draft = choice
-                    customChosen = false
-                    write(choice)
-                }
+            get: { rule.selection(minutes: minutes, neverChosen: isNever, customPicked: customChosen) },
+            set: { item in
+                let pick = rule.picking(item)
+                // Set the draft first: the custom field's commit as it disappears must find nothing to
+                // save, so it can't undo a preset or end Never.
+                draft = pick.minutes ?? minutes
+                customChosen = pick.customPicked
+                if let value = pick.minutes { write(value) }
+                // After the time, so alerts come back with it rather than with the one before.
+                if let neverChosen = pick.neverChosen { setNever(neverChosen) }
+                if item == .custom { DispatchQueue.main.async { fieldFocused = true } }
             }
         )
     }
 
     private var stepped: Binding<Int> {
-        Binding(get: { minutes }, set: { write(clamped($0)) })
+        Binding(get: { minutes }, set: { saveCustom(clamped($0)) })
     }
 
     private func commit() {
         let value = clamped(draft)
         draft = value
+        saveCustom(value)
+    }
+
+    /// A value from the custom row. Picking Custom… already left Never, so this only saves the time.
+    private func saveCustom(_ value: Int) {
         write(value)
+    }
+
+    private func setNever(_ chosen: Bool) {
+        guard let never, never.isChosen.wrappedValue != chosen else { return }
+        never.isChosen.wrappedValue = chosen
     }
 
     private func write(_ value: Int) {

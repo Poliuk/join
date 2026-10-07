@@ -93,17 +93,20 @@ final class AlertCoordinator {
             defaults.removeObject(forKey: Self.pauseKey)
         }
 
-        // One alert at a time: whatever is due next waits until the current one is closed.
+        // One alert at a time: whatever is due next waits until the current one is closed. Switching
+        // to Never while one is up leaves it there.
         guard activeMeetings.isEmpty else {
             cancelFireTimer()
             return
         }
 
+        // Alert me set to Never plans nothing, like a pause: snoozed alerts wait too. The menu bar and
+        // the panel don't read it, so they carry on.
         let plan = AlertScheduler.nextPlan(
             meetings: store.alertableMeetings,
             states: states.mapValues(\.state),
             leadTime: preferences.leadTime,
-            isPaused: pauseState.isPaused(at: now),
+            isPaused: pauseState.isPaused(at: now) || !preferences.fullScreenAlertsEnabled,
             now: now
         )
 
