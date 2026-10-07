@@ -108,12 +108,14 @@ public enum SettingsOptions {
         isFixture ? pane + " (fixture)" : pane
     }
 
-    // MARK: Calendars
+    // MARK: Events
 
-    /// The switch under the calendar list, and the note below it.
+    /// The General pane's Events section: its switch, and the note below it.
     public static let eventsSectionTitle = "Events"
     public static let eventsWithoutParticipantsTitle = "Show events with no participants"
     public static let eventsWithoutParticipantsNote = "Events nobody else is invited to, like focus time or reminders you add for yourself. When this is off, Join! leaves them out of the menu bar and its panel, and doesn't alert for them."
+
+    // MARK: Calendars
 
     /// "Updated just now", "Updated 5 minutes ago", …
     public static func updatedLabel(lastRefreshed: Date, now: Date) -> String {

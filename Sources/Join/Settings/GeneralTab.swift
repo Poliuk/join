@@ -82,13 +82,14 @@ struct GeneralTab: View {
                         .fixedSize()
                     }
                 }
-                SettingsSwitchRow(
-                    title: "Repeat until the alert is closed",
-                    isOn: soundRepeats(preferences),
-                    indented: true,
-                    enabled: preferences.soundName != nil
-                )
+                // Only while a sound is chosen. Hiding it keeps the stored choice, so picking a
+                // sound again brings the switch back as it was.
+                if preferences.soundName != nil {
+                    SettingsSwitchRow(title: "Repeat until the alert is closed", isOn: $preferences.soundRepeats, indented: true)
+                }
             }
+
+            eventsSection
 
             OutOfOfficeSection()
 
@@ -173,15 +174,28 @@ struct GeneralTab: View {
         )
     }
 
-    // MARK: Menu bar and sound
+    // MARK: Events
 
-    /// Dependent switches read as off while the setting they depend on is off.
-    private func soundRepeats(_ preferences: Preferences) -> Binding<Bool> {
-        Binding(
-            get: { preferences.soundName != nil && preferences.soundRepeats },
-            set: { preferences.soundRepeats = $0 }
-        )
+    /// The switch for events nobody else is on, decided per event rather than per calendar.
+    /// Between Alert and Out of office by the user's choice; 1.1.0 had it under the calendar list.
+    private var eventsSection: some View {
+        @Bindable var preferences = model.preferences
+
+        return SettingsSection(title: SettingsOptions.eventsSectionTitle) {
+            SettingsSwitchRow(
+                title: SettingsOptions.eventsWithoutParticipantsTitle,
+                isOn: $preferences.showsEventsWithoutParticipants,
+                separator: false
+            )
+            Text(SettingsOptions.eventsWithoutParticipantsNote)
+                .font(.subheadline)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+                .padding(.bottom, 8)
+        }
     }
+
+    // MARK: Menu bar and sound
 
     private func soundSelection(_ preferences: Preferences) -> Binding<String> {
         Binding(

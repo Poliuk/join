@@ -81,7 +81,7 @@ This builds `build/Join.app` for your Mac and opens it. Move it to `/Application
 ## First launch
 
 1. macOS asks for calendar access. Approve it. If you miss the prompt, grant it in System Settings › Privacy & Security › Calendars.
-2. Click the menu bar item → the gear → **Settings** → **Calendars** and untick the calendars you don't want alerts for (holidays, birthdays). To leave out events nobody else is invited to, such as focus time, turn off **Show events with no participants** below the list.
+2. Click the menu bar item → the gear → **Settings** → **Calendars** and untick the calendars you don't want alerts for (holidays, birthdays). To leave out events nobody else is invited to, such as focus time, turn off **Show events with no participants** under **General** › **Events**.
 3. The default alert fires 3 minutes before each meeting. Change it under **General** › **Alert me**.
 
 ### Google Calendar
@@ -92,7 +92,7 @@ Join! reads calendars through macOS, so your Google account needs to be added in
 
 Every event in the enabled calendars, except all-day events, cancelled events, events you declined, and out-of-office events. Tentative invitations do alert. In the menu bar and the panel's top card, though, a meeting you're attending (accepted, or your own) comes before a Maybe or unanswered one it overlaps: during a long Maybe block, the menu bar counts down to the call you accepted inside it from an hour before, shows that call while it runs, and goes back to the block afterwards. Out-of-office events are recognised by title ("Out of office", "Fuera de la oficina", "OOO", …). They show striped in the menu bar panel but don't alert; turn on **Settings › General › Out of office › Alert for out-of-office events** to be alerted for them too, turn off **Show out-of-office events in the list** to leave them out of the panel's lists, or edit the keywords there.
 
-Events with no participants, the ones nobody else is invited to (focus time, reminders and holds you add for yourself), alert like any other by default. Turn off **Settings › Calendars › Show events with no participants** to leave them out everywhere: they don't alert and don't show in the menu bar or its panel, as if their calendar were unticked. That goes for out-of-office events with no participants too, whatever the out-of-office options say.
+Events with no participants, the ones nobody else is invited to (focus time, reminders and holds you add for yourself), alert like any other by default. Turn off **Settings › General › Events › Show events with no participants** to leave them out everywhere: they don't alert and don't show in the menu bar or its panel, as if their calendar were unticked. That goes for out-of-office events with no participants too, whatever the out-of-office options say.
 
 On the alert, **Return** joins the call and **Esc** dismisses. Keys are ignored for the first moment after the alert appears, so a keystroke you were already typing elsewhere can't dismiss it by accident.
 

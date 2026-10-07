@@ -7,7 +7,7 @@ import JoinCore
 /// Scenarios follow the menu bar design's week: nothing (no more meetings today), later (next
 /// meeting later today), busy (one starts in 4 min while another runs), meeting (in a meeting),
 /// maybe (a long Maybe block runs while a call you accepted starts in 47 min). Tomorrow's out-of-office
-/// block and Focus time the day after have no participants, for the Calendars pane's switch that hides them.
+/// block and Focus time the day after have no participants, for the General pane's switch that hides them.
 @MainActor
 final class FixtureCalendarService: CalendarService {
     static let environmentKey = "JOIN_FIXTURE"

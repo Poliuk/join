@@ -10,7 +10,6 @@ struct CalendarsTab: View {
         VStack(alignment: .leading, spacing: 18) {
             if model.meetingStore.authorization == .authorized {
                 calendarList
-                eventsBox
                 footer
             } else {
                 permissionPrompt
@@ -103,24 +102,6 @@ struct CalendarsTab: View {
                     .frame(minHeight: 36)
                 }
             }
-        }
-    }
-
-    /// The switch for events nobody else is on, decided per event rather than per calendar.
-    private var eventsBox: some View {
-        @Bindable var preferences = model.preferences
-
-        return SettingsSection(title: SettingsOptions.eventsSectionTitle) {
-            SettingsSwitchRow(
-                title: SettingsOptions.eventsWithoutParticipantsTitle,
-                isOn: $preferences.showsEventsWithoutParticipants,
-                separator: false
-            )
-            Text(SettingsOptions.eventsWithoutParticipantsNote)
-                .font(.subheadline)
-                .foregroundStyle(.secondary)
-                .fixedSize(horizontal: false, vertical: true)
-                .padding(.bottom, 8)
         }
     }
 
