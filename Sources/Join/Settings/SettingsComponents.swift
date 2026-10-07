@@ -72,7 +72,8 @@ struct SettingsSeparator: View {
 
 /// Label on the left, control on the right, with a hairline above unless it opens its box.
 /// An indented row depends on the row above it, and is left out, not dimmed, while that row is
-/// off: no sound, no tint, a preset rather than Custom….
+/// off: no sound, no tint, a preset rather than Custom…. The disabled tone is for rows beside a
+/// setting that turns them off, as Show on and Sound are while Alert me is Never.
 struct SettingsRow<Control: View>: View {
     enum Tone {
         case primary

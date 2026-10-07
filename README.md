@@ -32,7 +32,7 @@ Works with any calendar your Mac knows about (Google, iCloud, Exchange, Outlook,
   <img src="docs/screenshots/panel-dark.jpg" alt="The same menu bar panel in dark mode" width="49%">
 </p>
 <p align="center">
-  <img src="docs/screenshots/settings.jpg" alt="The Appearance settings: a live preview of the full-screen alert, the four style presets, and its backdrop, tint and text color" width="60%">
+  <img src="docs/screenshots/settings.jpg" alt="The Appearance settings: a live preview of the full-screen alert, the four style presets, and its backdrop, tint, text and button colors" width="60%">
 </p>
 <p align="center"><sub>Screenshots show sample meetings, not a real calendar.</sub></p>
 
@@ -111,7 +111,7 @@ If a meeting starts while its full-screen alert is due (the Mac was asleep, the 
 
 To take a break, click the bell in the menu bar panel and pick **Pause for 1 hour**, **Pause until tomorrow** or **Pause until I resume**. While full-screen alerts are paused, the menu bar shows a crossed-out bell and the panel says until when, with **Resume**. The pause survives a relaunch.
 
-To turn full-screen alerts off altogether, set **Alert me** to **Never** under **Settings › General › Full-screen alert**. The menu bar item, its starting-soon pill and the panel keep working, and **Show Demo** still shows one. Pick a time again to turn them back on.
+To turn full-screen alerts off altogether, set **Alert me** to **Never** under **Settings › General › Full-screen alert**. The menu bar item, its starting-soon pill and the panel keep working, and **Show Demo** still shows one. **Show on** and **Sound** stay as they were, dimmed until you pick a time again to turn alerts back on.
 
 ## Development
 

@@ -15,11 +15,6 @@ struct EventsSection: View {
 
         SettingsSection(title: SettingsOptions.eventsSectionTitle) {
             visibilityRow(SettingsOptions.eventsWithoutParticipantsTitle, selection: $preferences.eventsWithoutParticipants, separator: false)
-            Text(SettingsOptions.eventsWithoutParticipantsNote)
-                .font(.subheadline)
-                .foregroundStyle(.secondary)
-                .fixedSize(horizontal: false, vertical: true)
-                .padding(.bottom, 8)
             visibilityRow(SettingsOptions.outOfOfficeEventsTitle, selection: $preferences.outOfOfficeEvents)
             SettingsSeparator()
             VStack(alignment: .leading, spacing: 8) {

@@ -15,6 +15,9 @@ struct AppearanceTab: View {
         static let color: CGFloat = 160
     }
 
+    /// The auto-close pop-up's tag for Never.
+    private static let neverTag = 0
+
     var body: some View {
         VStack(alignment: .leading, spacing: 22) {
             preview
@@ -27,20 +30,35 @@ struct AppearanceTab: View {
                 }
             }
 
+            // The alert's look and its buttons share one box, the buttons table after Text color; the
+            // contrast warnings for both sit under it.
             VStack(alignment: .leading, spacing: 8) {
                 SettingsSection(title: SettingsOptions.fullScreenAlertSectionTitle) {
                     alertRows
-                }
-                warnings { $0 == .text }
-            }
-
-            VStack(alignment: .leading, spacing: 8) {
-                SettingsSection(title: "Buttons") {
+                    SettingsSeparator()
                     buttonsHeader
                     buttonRow(.join)
                     buttonRow(.dismissAndSnooze)
                 }
-                warnings { $0 != .text }
+                warnings
+            }
+
+            VStack(alignment: .leading, spacing: 8) {
+                SettingsSection(title: "Snooze & auto-close") {
+                    snoozeChoice("First snooze button", index: 0)
+                    snoozeChoice("Second snooze button", index: 1)
+                    SettingsRow(title: "Close full-screen alerts automatically") {
+                        Picker("Close full-screen alerts automatically", selection: autoCloseSelection) {
+                            ForEach(autoCloseChoices, id: \.self) { minutes in
+                                Text(SettingsOptions.autoCloseTitle(minutes: minutes == Self.neverTag ? nil : minutes))
+                                    .tag(minutes)
+                            }
+                        }
+                        .labelsHidden()
+                        .fixedSize()
+                    }
+                }
+                alertOffers
             }
 
             VStack(alignment: .leading, spacing: 8) {
@@ -52,13 +70,16 @@ struct AppearanceTab: View {
                 }
             }
 
+            // At the bottom of the pane, so it resets everything on it: the alert's look, the snooze
+            // buttons, auto-close and the pill.
             HStack {
                 Spacer()
                 Button("Restore Defaults") {
-                    model.preferences.resetAppearance()
-                    model.preferences.startingSoonPill = .default
+                    // End any edit first, so a half-typed snooze minute can't be saved over the reset later.
+                    NSApp.keyWindow?.makeFirstResponder(nil)
+                    model.preferences.resetAppearancePane()
                 }
-                .disabled(appearance.isDefault && pill.isDefault)
+                    .disabled(model.preferences.appearancePaneIsDefault)
             }
         }
         .padding(SettingsMetrics.panePadding)
@@ -197,6 +218,7 @@ struct AppearanceTab: View {
 
     // MARK: Buttons
 
+    /// The column titles over the Join and Dismiss & Snooze rows, in the Full-screen alert box.
     private var buttonsHeader: some View {
         HStack(spacing: 12) {
             Color.clear.frame(width: Column.name, height: 1)
@@ -257,6 +279,68 @@ struct AppearanceTab: View {
                 range: kind.fillOpacityRange
             )
         }
+    }
+
+    // MARK: Snooze and auto-close
+
+    private func snoozeChoice(_ title: String, index: Int) -> some View {
+        let preferences = model.preferences
+        return SettingsMinutesChoice(
+            title: title,
+            separator: index > 0,
+            presets: SettingsOptions.snoozeMinutes,
+            range: SettingsOptions.customSnoozeRange,
+            presetTitle: SettingsOptions.durationTitle(minutes:),
+            unit: SettingsOptions.minutesUnit,
+            fieldLabel: "\(title), minutes",
+            minutes: Binding(
+                get: { SettingsOptions.wholeMinutes(preferences.snoozeDurations[index]) },
+                set: { minutes in
+                    var durations = preferences.snoozeDurations
+                    durations[index] = TimeInterval(minutes * 60)
+                    preferences.snoozeDurations = durations
+                }
+            )
+        )
+    }
+
+    private var autoCloseChoices: [Int] {
+        let preferences = model.preferences
+        let current = SettingsOptions.autoCloseSelection(enabled: preferences.autoCloseEnabled, after: preferences.autoCloseAfter)
+        return [Self.neverTag] + SettingsOptions.autoCloseChoices(including: current)
+    }
+
+    private var autoCloseSelection: Binding<Int> {
+        let preferences = model.preferences
+        return Binding(
+            get: {
+                SettingsOptions.autoCloseSelection(enabled: preferences.autoCloseEnabled, after: preferences.autoCloseAfter)
+                    ?? Self.neverTag
+            },
+            set: { minutes in
+                if minutes == Self.neverTag {
+                    preferences.autoCloseEnabled = false
+                } else {
+                    preferences.autoCloseAfter = TimeInterval(minutes * 60)
+                    preferences.autoCloseEnabled = true
+                }
+            }
+        )
+    }
+
+    /// "The full-screen alert offers" and the snooze row's labels, as chips under the box.
+    private var alertOffers: some View {
+        HStack(spacing: 6) {
+            Text("The full-screen alert offers")
+                .font(.subheadline)
+                .foregroundStyle(.secondary)
+                .padding(.trailing, 2)
+            ForEach(Array(SettingsOptions.alertOffers(snoozeDurations: model.preferences.snoozeDurations).enumerated()), id: \.offset) { _, label in
+                SettingsChip(text: label)
+            }
+        }
+        .padding(.horizontal, 2)
+        .accessibilityElement(children: .combine)
     }
 
     // MARK: Starting soon
@@ -353,10 +437,10 @@ struct AppearanceTab: View {
         AccessibilityNotification.Announcement(warning).post()
     }
 
-    private func warnings(where include: @escaping (AlertContrastWarning.Subject) -> Bool) -> some View {
-        let shown = appearance.contrastWarnings.filter { include($0.subject) }
-        return VStack(alignment: .leading, spacing: 6) {
-            ForEach(shown) { warning in
+    /// The event text's warning, then the buttons'.
+    private var warnings: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            ForEach(appearance.contrastWarnings) { warning in
                 AppearanceContrastWarning(message: warning.message)
             }
         }
@@ -416,7 +500,7 @@ private struct AppearanceColorChoice: View {
     let title: String
     let wellLabel: String
     let offTitle: String
-    /// The Alert rows put the well before the pop-up; the Buttons table after it.
+    /// The alert's rows put the well before the pop-up; the buttons table after it.
     let wellFirst: Bool
     @Binding var isCustom: Bool
     @Binding var color: Color

@@ -4,7 +4,7 @@ import Foundation
 public enum SettingsOptions {
     // MARK: Full-screen alert
 
-    /// The General pane's section for the full-screen alert, and its title on the Appearance pane.
+    /// The General pane's section for the full-screen alert, and the Appearance pane's for its look and buttons.
     public static let fullScreenAlertSectionTitle = "Full-screen alert"
 
     /// Preset lead times, in minutes. Anything else, including 2 and 10 from earlier builds, shows as
@@ -119,10 +119,9 @@ public enum SettingsOptions {
     // MARK: Events
 
     /// The General pane's Events section: a pop-up of `EventVisibility` choices for each kind of event,
-    /// a note under the first, then the out-of-office keywords and the footnote under them.
+    /// then the out-of-office keywords and the footnote under them.
     public static let eventsSectionTitle = "Events"
     public static let eventsWithoutParticipantsTitle = "Events with no participants"
-    public static let eventsWithoutParticipantsNote = "Events nobody else is invited to, like focus time or reminders you add for yourself."
     public static let outOfOfficeEventsTitle = "Out-of-office events"
     public static let outOfOfficeKeywordsTitle = "Out-of-office keywords"
     public static let eventsFootnote = "An event counts as out of office when its title contains any of these words. Press Return to add one. Only Show and alert lets an event alert, take the menu bar or sit at the top of the panel. When an event is both kinds, the choice that shows less wins."

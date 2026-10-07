@@ -393,4 +393,25 @@ public final class Preferences {
     public func resetAppearance() {
         appearance = .default
     }
+
+    /// Whether everything the Appearance pane sets is at its default: the full-screen alert's look,
+    /// both snooze durations, auto-close and the starting-soon pill. That pane's Restore Defaults is
+    /// disabled while this holds.
+    public var appearancePaneIsDefault: Bool {
+        appearance.isDefault
+            && snoozeDurations == Self.defaultSnoozeDurations
+            && autoCloseEnabled
+            && autoCloseAfter == Self.defaultAutoCloseAfter
+            && startingSoonPill.isDefault
+    }
+
+    /// The Appearance pane's Restore Defaults: puts back everything `appearancePaneIsDefault` checks,
+    /// and nothing the other panes set.
+    public func resetAppearancePane() {
+        resetAppearance()
+        snoozeDurations = Self.defaultSnoozeDurations
+        autoCloseEnabled = true
+        autoCloseAfter = Self.defaultAutoCloseAfter
+        startingSoonPill = .default
+    }
 }

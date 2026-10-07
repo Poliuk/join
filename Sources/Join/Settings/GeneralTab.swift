@@ -11,8 +11,6 @@ struct GeneralTab: View {
     @State private var launchAtLogin = false
     @State private var launchAtLoginError: String?
 
-    private static let neverTag = 0
-
     var body: some View {
         @Bindable var preferences = model.preferences
 
@@ -40,7 +38,9 @@ struct GeneralTab: View {
             SettingsSection(title: SettingsOptions.fullScreenAlertSectionTitle) {
                 // Custom lead times save on Return or when the field loses focus, so editing
                 // "3" → "35" → "5" can't briefly mean 35 minutes and fire alerts early. Never leaves the
-                // rows below in view, by the user's choice.
+                // rows below in view but dims and disables them, by the user's choice; their values stay
+                // as they were, and picking a time brings them back.
+                let alertsOn = preferences.fullScreenAlertsEnabled
                 SettingsMinutesChoice(
                     title: "Alert me",
                     separator: false,
@@ -52,7 +52,7 @@ struct GeneralTab: View {
                     minutes: leadMinutes(preferences),
                     never: (SettingsOptions.leadTimeNeverTitle, alertsOff(preferences))
                 )
-                SettingsRow(title: "Show on") {
+                SettingsRow(title: "Show on", tone: alertsOn ? .primary : .disabled) {
                     Picker("Show on", selection: $preferences.alertScreens) {
                         ForEach(AlertScreens.allCases, id: \.self) { choice in
                             Text(choice.displayName).tag(choice)
@@ -60,8 +60,9 @@ struct GeneralTab: View {
                     }
                     .labelsHidden()
                     .fixedSize()
+                    .disabled(!alertsOn)
                 }
-                SettingsRow(title: "Sound") {
+                SettingsRow(title: "Sound", tone: alertsOn ? .primary : .disabled) {
                     HStack(spacing: 8) {
                         Button {
                             playSound(preferences.soundName)
@@ -83,33 +84,16 @@ struct GeneralTab: View {
                         .labelsHidden()
                         .fixedSize()
                     }
+                    .disabled(!alertsOn)
                 }
                 // Only while a sound is chosen. Hiding it keeps the stored choice, so picking a
                 // sound again brings the switch back as it was.
                 if preferences.soundName != nil {
-                    SettingsSwitchRow(title: "Repeat until it's closed", isOn: $preferences.soundRepeats, indented: true)
+                    SettingsSwitchRow(title: "Repeat until it's closed", isOn: $preferences.soundRepeats, indented: true, enabled: alertsOn)
                 }
             }
 
             EventsSection()
-
-            VStack(alignment: .leading, spacing: 8) {
-                SettingsSection(title: "Snooze & auto-close") {
-                    snoozeChoice("First snooze button", preferences: preferences, index: 0)
-                    snoozeChoice("Second snooze button", preferences: preferences, index: 1)
-                    SettingsRow(title: "Close full-screen alerts automatically") {
-                        Picker("Close full-screen alerts automatically", selection: autoCloseSelection(preferences)) {
-                            ForEach(autoCloseChoices(preferences), id: \.self) { minutes in
-                                Text(SettingsOptions.autoCloseTitle(minutes: minutes == Self.neverTag ? nil : minutes))
-                                    .tag(minutes)
-                            }
-                        }
-                        .labelsHidden()
-                        .fixedSize()
-                    }
-                }
-                alertOffers(preferences)
-            }
 
             SettingsSection(title: UpdateCopy.sectionTitle) {
                 SettingsSwitchRow(title: UpdateCopy.automaticChecksTitle, isOn: $preferences.checksForUpdates, separator: false)
@@ -202,50 +186,6 @@ struct GeneralTab: View {
         sound.play()
     }
 
-    // MARK: Snooze and auto-close
-
-    private func snoozeChoice(_ title: String, preferences: Preferences, index: Int) -> some View {
-        SettingsMinutesChoice(
-            title: title,
-            separator: index > 0,
-            presets: SettingsOptions.snoozeMinutes,
-            range: SettingsOptions.customSnoozeRange,
-            presetTitle: SettingsOptions.durationTitle(minutes:),
-            unit: SettingsOptions.minutesUnit,
-            fieldLabel: "\(title), minutes",
-            minutes: Binding(
-                get: { SettingsOptions.wholeMinutes(preferences.snoozeDurations[index]) },
-                set: { minutes in
-                    var durations = preferences.snoozeDurations
-                    durations[index] = TimeInterval(minutes * 60)
-                    preferences.snoozeDurations = durations
-                }
-            )
-        )
-    }
-
-    private func autoCloseChoices(_ preferences: Preferences) -> [Int] {
-        let current = SettingsOptions.autoCloseSelection(enabled: preferences.autoCloseEnabled, after: preferences.autoCloseAfter)
-        return [Self.neverTag] + SettingsOptions.autoCloseChoices(including: current)
-    }
-
-    private func autoCloseSelection(_ preferences: Preferences) -> Binding<Int> {
-        Binding(
-            get: {
-                SettingsOptions.autoCloseSelection(enabled: preferences.autoCloseEnabled, after: preferences.autoCloseAfter)
-                    ?? Self.neverTag
-            },
-            set: { minutes in
-                if minutes == Self.neverTag {
-                    preferences.autoCloseEnabled = false
-                } else {
-                    preferences.autoCloseAfter = TimeInterval(minutes * 60)
-                    preferences.autoCloseEnabled = true
-                }
-            }
-        )
-    }
-
     // MARK: Updates
 
     /// "Join! 1.0.0 · Checked 5 minutes ago" or the update on offer, then how an install is going, with
@@ -301,19 +241,5 @@ struct GeneralTab: View {
                 .fixedSize(horizontal: false, vertical: true)
                 .padding(.bottom, 8)
         }
-    }
-
-    private func alertOffers(_ preferences: Preferences) -> some View {
-        HStack(spacing: 6) {
-            Text("The full-screen alert offers")
-                .font(.subheadline)
-                .foregroundStyle(.secondary)
-                .padding(.trailing, 2)
-            ForEach(Array(SettingsOptions.alertOffers(snoozeDurations: preferences.snoozeDurations).enumerated()), id: \.offset) { _, label in
-                SettingsChip(text: label)
-            }
-        }
-        .padding(.horizontal, 2)
-        .accessibilityElement(children: .combine)
     }
 }

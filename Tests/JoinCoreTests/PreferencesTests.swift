@@ -206,6 +206,62 @@ final class PreferencesTests: XCTestCase {
     }
 
     @MainActor
+    func testAnyAppearancePaneSettingEnablesRestoreDefaults() {
+        let preferences = Preferences(defaults: defaults)
+        XCTAssertTrue(preferences.appearancePaneIsDefault)
+
+        let changes: [(String, @MainActor (Preferences) -> Void)] = [
+            ("appearance", { $0.appearance.textColor = .black }),
+            ("first snooze button", { $0.snoozeDurations = [180, 300] }),
+            ("second snooze button", { $0.snoozeDurations = [60, 600] }),
+            ("auto-close off", { $0.autoCloseEnabled = false }),
+            ("auto-close time", { $0.autoCloseAfter = 30 * 60 }),
+            ("starting-soon pill", { $0.startingSoonPill.minutes = 10 }),
+        ]
+        for (name, change) in changes {
+            change(preferences)
+            XCTAssertFalse(preferences.appearancePaneIsDefault, name)
+            preferences.resetAppearancePane()
+            XCTAssertTrue(preferences.appearancePaneIsDefault, name)
+        }
+    }
+
+    @MainActor
+    func testRestoringTheAppearancePaneLeavesTheOtherPanes() {
+        let preferences = Preferences(defaults: defaults)
+        preferences.appearance = AlertAppearancePreset.midnight.appearance
+        preferences.snoozeDurations = [180, 600]
+        preferences.autoCloseAfter = 30 * 60
+        preferences.autoCloseEnabled = false
+        preferences.startingSoonPill = StartingSoonPill(minutes: 10, fill: RGBA(rgb: 0xFFD60A), text: .black)
+        preferences.leadTime = 5 * 60
+        preferences.fullScreenAlertsEnabled = false
+        preferences.alertScreens = .pointer
+        preferences.soundName = "Glass"
+        preferences.soundRepeats = true
+        preferences.outOfOfficeEvents = .exclude
+        preferences.outOfOfficeKeywords = ["away"]
+
+        preferences.resetAppearancePane()
+
+        let reopened = Preferences(defaults: defaults)
+        XCTAssertEqual(reopened.appearance, .default)
+        XCTAssertEqual(reopened.snoozeDurations, Preferences.defaultSnoozeDurations)
+        XCTAssertTrue(reopened.autoCloseEnabled)
+        XCTAssertEqual(reopened.autoCloseAfter, Preferences.defaultAutoCloseAfter)
+        XCTAssertEqual(reopened.startingSoonPill, .default)
+        XCTAssertTrue(reopened.appearancePaneIsDefault)
+
+        XCTAssertEqual(reopened.leadTime, 5 * 60)
+        XCTAssertFalse(reopened.fullScreenAlertsEnabled)
+        XCTAssertEqual(reopened.alertScreens, .pointer)
+        XCTAssertEqual(reopened.soundName, "Glass")
+        XCTAssertTrue(reopened.soundRepeats)
+        XCTAssertEqual(reopened.outOfOfficeEvents, .exclude)
+        XCTAssertEqual(reopened.outOfOfficeKeywords, ["away"])
+    }
+
+    @MainActor
     func testLeadTimeIsWholeMinutes() {
         let preferences = Preferences(defaults: defaults)
         preferences.leadTime = 150

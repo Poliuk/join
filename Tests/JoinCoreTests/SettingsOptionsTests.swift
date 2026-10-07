@@ -138,10 +138,6 @@ final class SettingsOptionsTests: XCTestCase {
     func testEventsSectionCopy() {
         XCTAssertEqual(SettingsOptions.eventsSectionTitle, "Events")
         XCTAssertEqual(SettingsOptions.eventsWithoutParticipantsTitle, "Events with no participants")
-        XCTAssertEqual(
-            SettingsOptions.eventsWithoutParticipantsNote,
-            "Events nobody else is invited to, like focus time or reminders you add for yourself."
-        )
         XCTAssertEqual(SettingsOptions.outOfOfficeEventsTitle, "Out-of-office events")
         XCTAssertEqual(SettingsOptions.outOfOfficeKeywordsTitle, "Out-of-office keywords")
         XCTAssertEqual(
