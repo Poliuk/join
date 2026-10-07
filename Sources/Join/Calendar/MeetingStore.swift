@@ -13,6 +13,7 @@ final class MeetingStore {
     static let lookAhead: TimeInterval = 7 * 24 * 60 * 60
     static let safetyNetInterval: TimeInterval = 15 * 60
 
+    /// The events from the checked calendars, without those with no participants while Settings hides them.
     private(set) var meetings: [Meeting] = []
     private(set) var calendars: [CalendarInfo] = []
     private(set) var authorization: CalendarAuthorization = .notDetermined
@@ -73,7 +74,8 @@ final class MeetingStore {
             calendarIDs: preferences.enabledCalendarIDs
         )
         lastRefreshed = now
-        meetings = fetched.map { meeting in
+        let visible = MeetingFilter.visible(fetched, showsEventsWithoutParticipants: preferences.showsEventsWithoutParticipants)
+        meetings = visible.map { meeting in
             var resolved = meeting
             resolved.joinURL = MeetingLinkDetector.joinURL(in: meeting)
             resolved.isOutOfOffice = OutOfOfficeDetector.isOutOfOffice(title: meeting.title, keywords: preferences.outOfOfficeKeywords)
@@ -83,7 +85,7 @@ final class MeetingStore {
 
     /// The meetings that may produce alerts and drive the menu bar title.
     var alertableMeetings: [Meeting] {
-        preferences.alertForOutOfOffice ? meetings : meetings.filter { !$0.isOutOfOffice }
+        MeetingFilter.alertable(meetings, alertForOutOfOffice: preferences.alertForOutOfOffice)
     }
 
     var calendarsBySource: [(source: String, calendars: [CalendarInfo])] {

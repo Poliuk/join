@@ -84,8 +84,19 @@ final class EventKitCalendarService: CalendarService {
             location: event.location?.nilIfEmpty,
             notes: event.notes?.nilIfEmpty,
             url: event.url,
-            myStatus: myStatus
+            myStatus: myStatus,
+            hasParticipants: hasParticipants(event)
         )
+    }
+
+    /// Someone other than you is on the event: an attendee who isn't you, or an organizer who isn't you.
+    /// A booked room or resource isn't someone. Focus time, reminders and holds you make for yourself
+    /// have nobody else, like most holiday and subscribed calendar blocks; Settings can hide such events.
+    private static func hasParticipants(_ event: EKEvent) -> Bool {
+        let someoneElse = event.attendees?.contains { attendee in
+            !attendee.isCurrentUser && attendee.participantType != .room && attendee.participantType != .resource
+        } ?? false
+        return someoneElse || event.organizer?.isCurrentUser == false
     }
 
     /// Your own events and ones you organize count as accepted; an invitation you haven't answered,

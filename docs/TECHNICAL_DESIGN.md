@@ -1,6 +1,6 @@
 # Technical Design — Join!
 
-*Status: approved 2026-10-05, updated to match the implementation after the redesign · Companion to PRODUCT_BRIEF.md*
+*Status: approved 2026-10-05, updated to match the implementation after the redesign and for in-app updates (2026-10-07) · Companion to PRODUCT_BRIEF.md*
 
 ## 1. Platform and stack
 
@@ -36,6 +36,7 @@ Targets: **macOS 14+**, **Swift 5.10**, Swift Concurrency (`async/await`, `@Main
 │  MeetingStore       AlertCoordinator             Preferences        │
 │  (meetings, sync)   (schedule/present/snooze/    (UserDefaults-     │
 │                      dismiss, PauseState)         backed)           │
+│  UpdateChecker (daily check, Install)                               │
 └──────────┬────────────────────────┬─────────────────────────────────┘
            │                        │
 ┌──────────▼──────────┐ ┌───────────▼───────────────┐ ┌───────────────────────┐
@@ -43,9 +44,15 @@ Targets: **macOS 14+**, **Swift 5.10**, Swift Concurrency (`async/await`, `@Main
 │ (protocol)          │ │ AlertScheduler            │ │ (AppKit, one NSPanel  │
 │ └ EventKitCal…      │ │ MenuBarPresenter          │ │  per target screen)   │
 │ └ FixtureCal… (dev) │ │ PanelPresenter            │ └───────────────────────┘
-│ └ (later) Google    │ │ AlertCountdown, palette   │
-└─────────────────────┘ └───────────────────────────┘
-        │
+│ └ (later) Google    │ │ AlertCountdown, palette   │ ┌───────────────────────┐
+└─────────────────────┘ │ UpdateCheck, AppVersion   │ │ ReleaseFeed           │
+        │               └───────────────────────────┘ │ (protocol)            │
+        │                                             │ └ GitHubReleaseFeed   │
+        │                                             │ └ FixtureRel… (dev)   │
+        │                                             │ UpdateInstaller       │
+        │                                             └───────────┬───────────┘
+        │                                                         │
+        │                                                  GitHub Releases
    EventKit (EKEventStore)  ← Google account via System Settings › Internet Accounts
 ```
 
@@ -53,9 +60,9 @@ Principles:
 
 - **One source of truth for meetings.** `MeetingStore` owns `[Meeting]`; everything else reads from it.
 - **Scheduling is pure.** `AlertScheduler` takes `(meetings, alertStates, leadTime, isPaused, now)` and returns the next thing to do. No timers, no windows. Fully unit-testable.
-- **Presentation is pure too.** What the menu bar item says, what the panel lists, the alert's countdown wording and the alert's resolved colors are computed in `JoinCore` (`MenuBarPresenter`, `PanelPresenter`, `LocationFormatter`, `AlertCountdown`, `AlertAppearance.palette`, `SettingsOptions`) from plain values and a `now`. The SwiftUI views only lay the results out.
-- **Side effects live at the edges.** `AlertCoordinator` owns the timer and calls the scheduler; `AlertWindowController` and `StatusItemController` own windows.
-- **Calendar backend is swappable.** `CalendarService` is a protocol. Besides EventKit there is a fixture implementation for checking the UI (§12), and a direct Google API implementation can be dropped in later.
+- **Presentation is pure too.** What the menu bar item says, what the panel lists, the alert's countdown wording and the alert's resolved colors are computed in `JoinCore` (`MenuBarPresenter`, `PanelPresenter`, `LocationFormatter`, `AlertCountdown`, `AlertAppearance.palette`, `SettingsOptions`, `UpdateCopy`) from plain values and a `now`. The SwiftUI views only lay the results out. Whether a release is an update, and when to check for one, is decided there too (`UpdateCheck`).
+- **Side effects live at the edges.** `AlertCoordinator` owns the timer and calls the scheduler; `AlertWindowController` and `StatusItemController` own windows; `ReleaseFeed` and `UpdateInstaller` do the update's networking and file work (§14).
+- **Calendar backend is swappable.** `CalendarService` is a protocol. Besides EventKit there is a fixture implementation for checking the UI (§12), and a direct Google API implementation can be dropped in later. `ReleaseFeed` works the same way for updates: GitHub, or a fixture.
 
 ## 3. Data model
 
@@ -75,6 +82,7 @@ struct Meeting: Identifiable, Hashable, Sendable, Codable {
     var notes: String?
     var url: URL?
     var myStatus: ParticipationStatus    // accepted (also organized events, and events without attendees on calendars you can edit), tentative, declined, unknown (not answered, not invited, or someone else's calendar)
+    var hasParticipants: Bool            // someone other than you is on it (§4); false for focus time and reminders to yourself
     var joinURL: URL?                    // filled by MeetingLinkDetector
     var isOutOfOffice: Bool              // filled by OutOfOfficeDetector (§9a)
 }
@@ -101,6 +109,7 @@ final class Preferences {                  // @Observable, persisted in UserDefa
     var soundName: String? = nil
     var soundRepeats = false
     var enabledCalendarIDs: Set<String>?   // nil = never chosen → all
+    var showsEventsWithoutParticipants = true   // off leaves events with no participants out everywhere (§4)
     var menuBarShowsNextEvent = true
     var menuBarShowsEventTitles = false
     var alertForOutOfOffice = false        // see §9a
@@ -109,6 +118,15 @@ final class Preferences {                  // @Observable, persisted in UserDefa
     var appearance: AlertAppearance
     var startingSoonPill: StartingSoonPill
     var panelListFilter: PanelListFilter = .week   // the panel's Today | 7 Days switch
+    var checksForUpdates = true            // the daily update check (§14); Check Now works either way
+    var lastUpdateCheck: Date?             // the last successful check; nil = never
+    var offeredUpdateVersion: String?      // the version the last successful check offered; nil = none
+    var unsupportedUpdate: UnsupportedUpdate?   // a release this macOS can't run; nil = none
+}
+
+struct UnsupportedUpdate: Codable, Equatable {  // saved as JSON: {"version":"2.0.0","minimumSystem":"15.0"}
+    let version: String               // the release Install found this Mac can't run (§14)
+    let minimumSystem: String         // its LSMinimumSystemVersion
 }
 
 struct StartingSoonPill: Codable, Hashable {  // saved as JSON; missing keys fall back to the default
@@ -134,7 +152,7 @@ struct AlertButtonColors: Codable, Hashable {
 }
 ```
 
-Launch at login is not a preference: it is read from and written to `SMAppService` directly. The pause state is stored by `AlertCoordinator` next to the alert states (§5).
+Launch at login is not a preference: it is read from and written to `SMAppService` directly. The pause state is stored by `AlertCoordinator` next to the alert states (§5). The time of the last failed update check isn't stored at all: `UpdateChecker` keeps it in memory (§14). Setting `offeredUpdateVersion` or `unsupportedUpdate` to nil removes its key, and JSON that can't be read loads as nil. Fixture runs keep `lastUpdateCheck`, `offeredUpdateVersion` and `unsupportedUpdate` in memory too, unless `JOIN_FIXTURE_UPDATE=live` (§12).
 
 `RGBA` is a small Codable sRGB struct, so calendar colors and the theme round-trip to JSON. It also holds the color math the appearance needs: hex parsing, compositing (`composited(over:)`, `mixed(with:amount:)`), WCAG relative luminance and contrast ratio, and `mostLegible(of:_:)`.
 
@@ -157,14 +175,17 @@ Mapping rules:
 - Skip when the current user's `participantStatus == .declined` (find the `EKParticipant` with `isCurrentUser`).
 - Skip `status == .canceled`.
 - Tentative and unknown are included: you can't know whether the user will attend, so alerting is the safe default.
+- `hasParticipants` is true when someone other than you is on the event: an attendee whose `isCurrentUser` is false, or an organizer who isn't you. A booked room or resource doesn't count. An event with nobody else on it (no attendees and no organizer, or only you and rooms) has no participants: focus blocks, reminders and holds you made for yourself, and most holiday and subscribed calendar blocks. Such events are still mapped; `MeetingStore` decides whether they're used.
 
 After fetching, `MeetingStore` fills `joinURL` (§9) and `isOutOfOffice` (§9a) on each meeting.
+
+**Events with no participants.** With **Show events with no participants** off (`Preferences.showsEventsWithoutParticipants`, Settings › Calendars, §8), `MeetingStore` leaves the events without participants out of `meetings`, and so out of `alertableMeetings` (`MeetingFilter.visible`, then `MeetingFilter.alertable` for the out-of-office rule, both in JoinCore). Everything reads from those two, so the panel (hero card and lists), the menu bar item and alerts all skip them, as if their calendar were unchecked, but decided per event. It's independent of the out-of-office options (§9a): an out-of-office block with no participants is hidden whatever they say. The switch is on by default, which keeps every event, as before 1.1.0. Changing it refetches (below), so hidden events come back as soon as it's turned on again.
 
 **Staying fresh.** Refetch on:
 
 - `NSNotification.Name.EKEventStoreChanged` (fires when the system calendar database changes, including after a Google sync),
 - `NSWorkspace.didWakeNotification`,
-- a change to `enabledCalendarIDs` or `outOfOfficeKeywords`,
+- a change to `enabledCalendarIDs`, `showsEventsWithoutParticipants` or `outOfOfficeKeywords`,
 - **Refresh Calendars** in Settings,
 - a 15-minute safety-net timer.
 
@@ -200,7 +221,7 @@ Rules:
 4. Meetings whose `fireAt` fall within 1 second of the earliest one are grouped into a single `AlertPlan`, so two back-to-back meetings produce one alert listing both instead of two stacked windows.
 5. If reminders are **paused** (`PauseState.isPaused(at: now)`), return nil. When a pause ends, rule 1 applies as usual: a meeting that is about to start, or started less than 5 minutes ago, alerts right away.
 
-The meetings passed in are `MeetingStore.alertableMeetings`: all meetings, minus out-of-office blocks unless the user turned them on.
+The meetings passed in are `MeetingStore.alertableMeetings`: all meetings (without events that have no participants while those are hidden, §4), minus out-of-office blocks unless the user turned them on.
 
 `AlertCoordinator` (side effects):
 
@@ -292,7 +313,7 @@ Presets (`AlertAppearancePreset`):
 
 `StatusItemController` owns an `NSStatusItem` and a `MenuBarPanelWindow`. SwiftUI's `MenuBarExtra` was used first and dropped: its window grows with its content but never shrinks, and it can't be closed programmatically. An `NSPopover` replaced it until the redesign, which called for a borderless panel with its own corners and material and no arrow. SwiftUI still requires one scene, so `JoinApp` declares a `MenuBarExtra` with `isInserted: .constant(false)`, which keeps SwiftUI's standard Edit menu (copy and paste in text fields) without adding UI.
 
-**Status item.** `MenuBarPresenter.status(...)` (JoinCore) returns a `MenuBarStatus`: a kind, optional text and an accessibility label. Its inputs are the alertable meetings (so out-of-office blocks count only when the user opted in), `now`, the `PauseState`, `menuBarShowsNextEvent`, `menuBarShowsEventTitles` and the starting-soon window (`startingSoonPill.window`, 5 minutes by default). Precedence: paused > starting soon > in a meeting > within the hour > later, among the meetings `MenuBarPresenter.focus` keeps: a Maybe or unanswered meeting already in progress steps aside while a meeting you're attending (accepted, your own on a calendar you can edit, or organized by you) overlaps it and is on now or starts within the hour. So a long Maybe block in progress gives way to the call you accepted inside it ("Next in 47 min", not "4 h 17 min left") and comes back when nothing you've accepted is that close. Before it starts, a Maybe or unanswered meeting counts like any other, since its alert fires (a Maybe call inside an accepted meeting still gets its pill), and one that clashes with nothing you've accepted keeps its pill, ring and card. The user asked for this, after In Your Face; declined events never get this far, since the calendar service drops them.
+**Status item.** `MenuBarPresenter.status(...)` (JoinCore) returns a `MenuBarStatus`: a kind, optional text and an accessibility label. Its inputs are the alertable meetings (so out-of-office blocks count only when the user opted in, and events with no participants only while they're shown), `now`, the `PauseState`, `menuBarShowsNextEvent`, `menuBarShowsEventTitles` and the starting-soon window (`startingSoonPill.window`, 5 minutes by default). Precedence: paused > starting soon > in a meeting > within the hour > later, among the meetings `MenuBarPresenter.focus` keeps: a Maybe or unanswered meeting already in progress steps aside while a meeting you're attending (accepted, your own on a calendar you can edit, or organized by you) overlaps it and is on now or starts within the hour. So a long Maybe block in progress gives way to the call you accepted inside it ("Next in 47 min", not "4 h 17 min left") and comes back when nothing you've accepted is that close. Before it starts, a Maybe or unanswered meeting counts like any other, since its alert fires (a Maybe call inside an accepted meeting still gets its pill), and one that clashes with nothing you've accepted keeps its pill, ring and card. The user asked for this, after In Your Face; declined events never get this far, since the calendar service drops them.
 
 | Kind | When | Drawn as |
 |---|---|---|
@@ -317,10 +338,11 @@ Presets (`AlertAppearancePreset`):
 
 **Closing and keys.** The panel closes on Esc, ⌘W, a second click on the item, a click anywhere else (global and local event monitors), the app resigning active, another window becoming key (except while one of the panel's own menus is open), a Space change and a display change. It also closes before Join, Directions, Settings or Open System Settings open anything, and before any alert appears. ⌘, opens Settings and ⌘Q quits. ⌘1 and ⌘2 pick Today or 7 Days, matched by key (the number row's and the keypad's) so they also work on layouts like AZERTY; the thumb slides as for a click. When that half can't be picked (the switch is hidden, or nothing is left today) the panel beeps. Return runs the hero card's button when the hero is Starting soon or Now.
 
-**Panel content.** `PanelPresenter.content(meetings:alertable:now:showsOutOfOffice:startingSoonWindow:)` (JoinCore) returns one hero card and a list of sections. The views draw them with `PanelColors`, resolved from `PanelPalette` (JoinCore) for the drawing appearance and Increase Contrast: five inks (primary, strong, secondary, tertiary, warning) instead of ten grays, and fills as fixed opacities of black or white that match the system fills. The inks stay fixed sRGB, not vibrant: AppKit only gives vibrancy to SwiftUI's hierarchical styles, which can't be held to a contrast, and even vibrant white can't reach 4.5:1 on bare glass over a white window. `PanelPaletteTests` checks every ink at 4.5:1 on the frost over the lightest dark glass and the darkest light glass measured on the user's screenshots (`#7A7A7A` over a white window, `#8D8E8F` over a dark one; a brighter or darker backdrop can dip below that at 50%), on the hero card and the out-of-office stripes, and, for every system accent, on the starting-soon card and on the prominent button at rest and under the pointer. The prominent button is solved per accent (`PanelPalette.accentButton`): the accent darkened 15% (20% in dark mode), since white on the plain default blue is under 4.5:1; the better of white and near-black as the label (near-black on yellow, orange, green); the fill stepped further from the label until it reads at 4.5:1; and a hover fill that moves further the same way, so pointing can only raise the contrast. The starting-soon card is the regular card with the accent tint over it: 12% in light mode, and in dark mode up to 10%, less for bright accents (down to none for yellow), until its text keeps 4.5:1 (the accent border still marks it). "Starts in 4 min" is the accent stepped toward white or black until it reads at 4.6:1 on that card. Cards (hero, nothing-today, paused bar, permission prompt) are white at 55% in light mode, away from the dark text, and white at 6% in dark mode, with a separator edge. With Increase Contrast the inks go further toward black or white, the separators get stronger, and the filled buttons, the active header button and the switch get a 3:1 edge (the switch's thumb edge is drawn 1 pt wide).
+**Panel content.** `PanelPresenter.content(meetings:alertable:now:showsOutOfOffice:startingSoonWindow:)` (JoinCore) returns one hero card and a list of sections. The views draw them with `PanelColors`, resolved from `PanelPalette` (JoinCore) for the drawing appearance and Increase Contrast: five inks (primary, strong, secondary, tertiary, warning) instead of ten grays, and fills as fixed opacities of black or white that match the system fills. The inks stay fixed sRGB, not vibrant: AppKit only gives vibrancy to SwiftUI's hierarchical styles, which can't be held to a contrast, and even vibrant white can't reach 4.5:1 on bare glass over a white window. `PanelPaletteTests` checks every ink at 4.5:1 on the frost over the lightest dark glass and the darkest light glass measured on the user's screenshots (`#7A7A7A` over a white window, `#8D8E8F` over a dark one; a brighter or darker backdrop can dip below that at 50%), on the hero card and the out-of-office stripes, and, for every system accent, on the starting-soon card and on the prominent button at rest and under the pointer. The prominent button is solved per accent (`PanelPalette.accentButton`): the accent darkened 15% (20% in dark mode), since white on the plain default blue is under 4.5:1; the better of white and near-black as the label (near-black on yellow, orange, green); the fill stepped further from the label until it reads at 4.5:1; and a hover fill that moves further the same way, so pointing can only raise the contrast. The starting-soon card is the regular card with the accent tint over it: 12% in light mode, and in dark mode up to 10%, less for bright accents (down to none for yellow), until its text keeps 4.5:1 (the accent border still marks it). "Starts in 4 min" is the accent stepped toward white or black until it reads at 4.6:1 on that card. Cards (hero, nothing-today, paused bar, update bar, permission prompt) are white at 55% in light mode, away from the dark text, and white at 6% in dark mode, with a separator edge. With Increase Contrast the inks go further toward black or white, the separators get stronger, and the filled buttons, the active header button and the switch get a 3:1 edge (the switch's thumb edge is drawn 1 pt wide).
 
 - **Header:** today's date ("Tuesday, 6 October", localized), a "Fixture" badge in fixture runs (§12), the bell button and the gear menu. The panel window's accessible name is "Join! meetings".
 - **Paused bar**, while paused: "Reminders paused until 11:50 AM", "… until tomorrow" or "Reminders paused", with **Resume**.
+- **Update bar** (`UpdateBar`, §14), while an update is available or being installed: the paused bar's card, paddings and button style with an `arrow.down.circle` icon, below the paused bar when both show. It reads "Join! 1.1.0 is available" with **Install** (disabled while a check runs), then "Downloading Join! 1.1.0… 45%" (no percent while the size is unknown) and "Installing Join! 1.1.0…" with no button. If Join! can't replace itself it reads "Quit Join!, then move Join! 1.1.0 to Applications" with **Show in Finder**; if the copy is gone by the time that's clicked (the user already moved it), the bar goes back to **Install**. If the install fails, it reads "Couldn't install Join! 1.1.0" with **Download Page**, and the button's tooltip says why (`UpdateCopy.failureReason`). When Install finds that the release needs a newer macOS, the bar goes away and Settings says "Join! 2.0.0 needs macOS 15.0 or later" (§14). A failed check never shows here, only in Settings. The words come from `UpdateCopy` (JoinCore).
 - **Hero**, exactly one, chosen from the alertable meetings the way the status item chooses (`MenuBarPresenter.focus`: a Maybe or unanswered meeting in progress steps aside for one you're attending inside it):
   - **Starting soon**, when the next start is within the starting-soon window, the same as the menu bar pill's (5 minutes by default): accent-tinted card, "Starts in 4 min", accent button. Wins over Now.
   - **Now**, the meeting you are in: "Now · 40 min left", a progress bar in the calendar color, accent button.
@@ -337,7 +359,7 @@ Presets (`AlertAppearancePreset`):
   - It's drawn by hand, not with a segmented `Picker`, which draws pre-Tahoe chrome when built against this SDK and loses its labels in snapshots. VoiceOver reads a "Show meetings" group of two buttons, the chosen one selected and a dimmed Today unavailable, with the hint "Nothing else today"; the others' hints are "Command-1" and "Command-2". Tooltips name the shortcuts too.
 - **Rows:** start over end time, a calendar-color bar, the title, at most one detail line, and an icon button. The detail is, in this order: a progress bar with "3 h 10 min left" for a running meeting, an amber "Overlaps Workshop", or a pin with the short location.
 - **Out-of-office rows** are striped and muted, with no detail and no button.
-- **Hover.** The panel's own controls behave the same under the pointer: the header's bell (paused or not) and gear, the hero card's button, **Resume**, the switch's unchosen half and the row icons brighten their fill (0.12 s ease, none with Reduce Motion) and show the pointing-hand cursor. They share `panelHover(_:)`, which sets the cursor on every move because AppKit resets it as the pointer crosses the hosting view. The calendar-permission prompt keeps standard system buttons, which don't change the cursor.
+- **Hover.** The panel's own controls behave the same under the pointer: the header's bell (paused or not) and gear, the hero card's button, **Resume**, the update bar's button, the switch's unchosen half and the row icons brighten their fill (0.12 s ease, none with Reduce Motion) and show the pointing-hand cursor. They share `panelHover(_:)`, which sets the cursor on every move because AppKit resets it as the pointer crosses the hosting view. The calendar-permission prompt keeps standard system buttons, which don't change the cursor.
 - **Overlaps.** A meeting that starts while an earlier one is still running is flagged with the latest-ending of those. Only the later meeting of a pair is flagged, and out-of-office blocks never count. On a card the warning also says until when: "Overlaps Workshop, which runs until 7:30 PM".
 - **Actions.** Join (video icon) when a join link was found. Otherwise **Directions** when the meeting is in person: its location names a physical place. `LocationFormatter.physicalPlace(in:)` splits the location on ";" and new lines and drops the virtual parts: links with or without a scheme ("meet.google.com/…"), phone numbers and dial-ins, bare service names ("Teams", "Zoom", "Online", …). "Sala Retiro; Microsoft Teams Meeting" keeps "Sala Retiro"; "Teams Room 3" stays a place. Directions opens Apple Maps (`https://maps.apple.com/?daddr=…`).
 - **Locations.** `LocationFormatter` shortens the physical part for rows and cards. It finds the street first (a component followed by a house number, or one that starts with a number), then shows "name · locality" or "street · locality": "C. de Ruiz de Alarcón, 23, Retiro, 28014 Madrid, España" → "C. de Ruiz de Alarcón, 23 · Retiro"; "Museo del Prado, C. de Ruiz de Alarcón, 23, Retiro, 28014 Madrid, España" → "Museo del Prado · Retiro"; "1 Infinite Loop" over "Cupertino, CA 95014" → "1 Infinite Loop · Cupertino".
@@ -345,9 +367,9 @@ Presets (`AlertAppearancePreset`):
 **Header menus.** Both are AppKit `NSMenu`s that pop up below their 28 pt button, right edges aligned.
 
 - **Bell:** while active, a menu: "Pause for 1 hour", "Pause until tomorrow", "Pause until I resume" (VoiceOver: "Pause reminders", hint "Opens a menu"). The choice goes to `AlertCoordinator.pause(_:)`, which persists it (§5). While paused the button shows `bell.slash`, is drawn pressed (selected for VoiceOver), is labelled "Resume reminders", and resumes directly, as in the Paused artboard.
-- **Gear** (`gearshape`, VoiceOver "Settings", hint "Opens a menu"): "Settings ⌘,", "Quit Join! ⌘Q". The design's ⋯ menu and its Open Calendar item were dropped at the user's request.
+- **Gear** (`gearshape`, VoiceOver "Settings", hint "Opens a menu"): "Settings ⌘,", "Quit Join! ⌘Q". The design's ⋯ menu and its Open Calendar item were dropped at the user's request. Updates didn't add a "Check for Updates…" item either: the user kept the menu to these two, and updates live in the update bar and Settings › General › Updates.
 
-**No permission.** Without calendar access the panel shows an explanation, **Open System Settings** (`x-apple.systempreferences:com.apple.preference.security?Privacy_Calendars`) and **Check Again**.
+**No permission.** Without calendar access the panel shows an explanation, **Open System Settings** (`x-apple.systempreferences:com.apple.preference.security?Privacy_Calendars`) and **Check Again**. The update bar still shows, above the prompt.
 
 ## 8. Settings window
 
@@ -359,14 +381,15 @@ Dependent settings (Repeat until the alert is closed, the Custom time rows, Tint
 
 **Focus.** Opening the window, switching panes and closing the window all clear the first responder. That stops AppKit from focusing the first text field on open, and commits a half-typed value the same way as when the field loses focus.
 
-**Components.** `SettingsComponents.swift` holds the shared building blocks, so the three panes look alike: `SettingsPalette` (window, box, separator, chip, field and connector colors as light/dark pairs), `SettingsMetrics` (pane width, padding, indent), `SettingsSection` (a heading over a box), `SettingsBox` (the rounded group), `SettingsRow` (label left, control right, a hairline above, secondary or disabled tone, and an optional indent for dependent rows, which insets the hairline and draws an elbow connector in the gutter), `SettingsSwitchRow`, `SettingsChip`, `SettingsFlowLayout` (a wrapping layout for tokens, where a subview tagged `SettingsFlowFill` takes the rest of its line), `SettingsMinutesChoice` (a pop-up of preset minutes plus Custom…, which adds the indented Custom time row with a field that saves on Return or focus loss and a stepper; **Alert me**, both snooze buttons and the pill's **Appears** use it) and `SettingsPaneScroll`. The pop-up choices and their labels come from `SettingsOptions` in JoinCore. All controls bind to `Preferences`.
+**Components.** `SettingsComponents.swift` holds the shared building blocks, so the three panes look alike: `SettingsPalette` (window, box, separator, chip, field and connector colors as light/dark pairs), `SettingsMetrics` (pane width, padding, indent), `SettingsSection` (a heading over a box), `SettingsBox` (the rounded group), `SettingsRow` (label left, control right, a hairline above, secondary or disabled tone, and an optional indent for dependent rows, which insets the hairline and draws an elbow connector in the gutter), `SettingsSwitchRow`, `SettingsChip`, `SettingsFlowLayout` (a wrapping layout for tokens, where a subview tagged `SettingsFlowFill` takes the rest of its line), `SettingsMinutesChoice` (a pop-up of preset minutes plus Custom…, which adds the indented Custom time row with a field that saves on Return or focus loss and a stepper; **Alert me**, both snooze buttons and the pill's **Appears** use it) and `SettingsPaneScroll`. The pop-up choices and their labels come from `SettingsOptions` in JoinCore, and the Updates section's words from `UpdateCopy`. All controls bind to `Preferences`.
 
 - **General:**
   - Top box: **Open at login** (`SMAppService.mainApp.register()` / `.unregister()`; if macOS wants approval, a hint points to System Settings › General › Login Items; switch and hint are re-read whenever the app becomes active or Settings becomes key, so the hint clears after approval; in a fixture run the row is disabled, "Not available in fixture mode.", and never touches `SMAppService`), and **Menu bar** (Icon only, Time until next event, Title and time until next event), one pop-up in place of the design's two switches.
   - **Alert:** **Alert me**: When the event starts, 1, 2, 3, 5 or 10 minutes before, or Custom…. Custom shows an indented row with a minutes field and a stepper (0–120). The field saves on Return or when it loses focus, never mid-typing, so "3" → "35" → "5" can't briefly mean 35 minutes and fire alerts early. A stored lead time that isn't a preset opens as Custom. **Show alert on**: All screens, Main screen only, Screen with the pointer. **Sound**: a play button and a pop-up with None and the `/System/Library/Sounds` names. The indented **Repeat until the alert is closed** is disabled without a sound.
   - **Out of office** (§9a): **Alert for out-of-office events**, off by default; **Show out-of-office events in the list**, on by default (off leaves them out of the panel's lists); and **Title keywords** as removable tokens. Return or a comma adds a keyword, Delete in the empty field removes the last one, leaving the field adds what was typed, and duplicates are ignored regardless of case. **Restore Defaults** brings back the built-in list. The settings design put this section on Calendars; it lives on General by the user's choice.
   - **Snooze & auto-close:** **First snooze button** and **Second snooze button** (1, 3, 5 or 10 minutes, or Custom… with a 1–120 minute field, like **Alert me**; a value saved by an earlier build, such as 30 minutes, shows as Custom) and **Close alerts automatically** (Never, or after 5, 10, 15, 30 or 60 minutes). Under the box, "The alert offers" with chips that mirror the alert's snooze row: "1 min", "5 min", "At event start".
-- **Calendars:** a line saying alerts come from the checked calendars, with "N of M selected", and an orange warning when none are selected ("you won't get any alerts"). One group per account (`calendar.source.title`) with its own "N of M" and a **Select All** / **Deselect All** link when it has more than one calendar. Each calendar is a checkbox filled with the calendar's color; VoiceOver sees a standard checkbox. The first change turns the implicit "all calendars" (`nil`) into an explicit set. Footer: where to add a missing account and where the sync interval is set, an "Updated just now" / "Updated 5 minutes ago" label from `MeetingStore.lastRefreshed`, **Open Internet Accounts…** and **Refresh Calendars**, which re-reads EventKit. Without calendar access the pane shows a permission prompt instead.
+  - **Updates** (§14), the last section: **Check for updates automatically** (`checksForUpdates`, on by default), then a row with the status line and the buttons. The line reads "Join! 1.0.0 · Checked 5 minutes ago" (counted like the Calendars pane's "Updated" label), "Join! 1.0.0 · Checking…", "Join! 1.0.0 · Couldn't check for updates", "Join! 1.0.0" before the first check, "Join! 1.1.0 is available", or "Join! 2.0.0 needs macOS 15.0 or later" for a release this Mac can't run (§14). While an update is on offer the line names it, whatever a later check is doing, so **Install** never sits beside a line without a version. **Check Now** checks even with the switch off; **Install** appears when an update is available, and turns into the update bar's **Download Page** or **Show in Finder** after a failed or revealed install. Both are disabled while a check or an install is running. Under the row, a failed install's reason shows in red (`UpdateCopy.failureReason`: "The download doesn't match the release's checksum.", "This version doesn't run on this Mac's processor.", …). In a fixture run everything works against the fixture feed (§12), but Install shows "Not available in fixture mode." unless `JOIN_FIXTURE_UPDATE=live`.
+- **Calendars:** a line saying alerts come from the checked calendars, with "N of M selected", and an orange warning when none are selected ("you won't get any alerts"). One group per account (`calendar.source.title`) with its own "N of M" and a **Select All** / **Deselect All** link when it has more than one calendar. Each calendar is a checkbox filled with the calendar's color; VoiceOver sees a standard checkbox. The first change turns the implicit "all calendars" (`nil`) into an explicit set. Under the groups, an **Events** section holds the switch **Show events with no participants** (`showsEventsWithoutParticipants`, on by default) and, below the switch, the note "Events nobody else is invited to, like focus time or reminders you add for yourself. When this is off, Join! leaves them out of the menu bar and its panel, and doesn't alert for them." Both strings come from `SettingsOptions`. Turning it off hides those events everywhere at once (§4). Footer: where to add a missing account and where the sync interval is set, an "Updated just now" / "Updated 5 minutes ago" label from `MeetingStore.lastRefreshed`, **Open Internet Accounts…** and **Refresh Calendars**, which re-reads EventKit. Without calendar access the pane shows a permission prompt instead.
 - **Appearance:**
   - A live preview at the top: the real `AlertContentView` at 52 % scale, with a sample meeting frozen at "Starts in 2:59", over a sample screen picked with **Preview on**: Wallpaper, Light app or Dark app. A window can't blur what is behind it inside itself, so the sample screen is drawn already blurred, and the palette's `material` is laid over it as a plain layer, then the tint and scrim as on the real alert. **Show Demo Alert** fires a real full-screen alert with a fake event.
   - **Style:** one card per preset (Dark, Light, High contrast, Midnight), drawn as a miniature. The matching preset is outlined; "Custom" shows when none matches.
@@ -381,11 +404,15 @@ Dependent settings (Repeat until the alert is closed, the Custom time rows, Tint
 - The old `showOnAllScreens` Bool becomes `alertScreens`: true → all screens, false → main screen. Writing the new key removes the old one.
 - The old inverted `skipOutOfOffice` flag becomes `alertForOutOfOffice`, the same way.
 - `menuBarShowsEventTitles` is new and starts off. Builds before the redesign always showed the title.
+- `checksForUpdates` is new in 1.1.0 and starts on, so a copy updated by hand from 1.0.0 checks from its first launch.
+- `showsEventsWithoutParticipants` is new in 1.1.0 and starts on, so every event shows, as before, until the user turns it off.
 - The appearance JSON migrates as described in §6.
 
 ## 9a. Out-of-office events
 
 EventKit doesn't expose Google's "out of office" event type, but Google titles those events predictably in the account's language ("Out of office", "Fuera de la oficina", …). `OutOfOfficeDetector` matches the title against a keyword list (short tokens like "OOO" and "PTO" must stand alone). Unless **Alert for out-of-office events** is on (Settings › General › Out of office), matching events never alert and don't drive the menu bar item or the panel's hero card. They appear in the panel's lists as striped, muted rows with no button unless **Show out-of-office events in the list** is off, and they never count as overlaps.
+
+**Show events with no participants** (Settings › Calendars, §4) is separate: while it's off, an out-of-office block nobody else is on is left out everywhere, whatever these options say. One with participants follows them as usual.
 
 ## 9. Meeting link detection
 
@@ -416,6 +443,8 @@ Adding a provider is one table row plus a test case. Opening uses `NSWorkspace.s
 | Meeting created less than `leadTime` before start | `EKEventStoreChanged` → re-plan → fires now. |
 | Meeting cancelled while alert showing | Store no longer contains it → coordinator closes the alert. |
 | Meeting moved | New `id`, old state discarded, new occurrence scheduled. |
+| An event only you are on (focus time, a reminder, a hold) | Shows and alerts like any other by default. With **Show events with no participants** off, it's left out of the panel, the menu bar and alerts; turning the switch back on brings it back at once. |
+| **Show events with no participants** turned off while such an event's alert is on screen | The refetch drops it from the store, so the alert closes, as for a cancelled meeting. |
 | Two meetings at the same time | One alert listing both. |
 | Next meeting starts while you're in one | Within the starting-soon window (5 minutes by default) it takes over the menu bar item (pill) and the panel's hero card; the ongoing one moves to "Now". |
 | Two meetings overlap | The later one is flagged in the panel ("Overlaps …"); both alert normally. |
@@ -443,7 +472,9 @@ join/
 │   │   MeetingLinkDetector, OutOfOfficeDetector, MeetingTimeFormatter,
 │   │   MenuBarPresenter, PanelPresenter, LocationFormatter, AlertCountdown,
 │   │   AlertAppearance (presets, palette, contrast), StartingSoonPill (window,
-│   │   colors, contrast), RGBA, SettingsOptions, Preferences
+│   │   colors, contrast), RGBA, SettingsOptions, Preferences, AppVersion,
+│   │   UpdateCheck (GitHub release, AvailableUpdate, UpdateStatus, UpdateFailure,
+│   │   UnsupportedUpdate), UpdateCopy
 │   └── Join/                The app
 │       ├── App/             JoinApp (scenes), AppDelegate (script hooks), AppModel (wiring, clock)
 │       ├── Calendar/        CalendarService (protocol), EventKitCalendarService,
@@ -453,6 +484,7 @@ join/
 │       │                    MenuBarPanelView, PanelHeroView, PanelRowView, PanelStyle
 │       ├── Settings/        SettingsWindowController, SettingsComponents, GeneralTab,
 │       │                    OutOfOfficeSection, CalendarsTab, AppearanceTab, AppearancePreview
+│       ├── Updates/         ReleaseFeed (GitHub, fixture), UpdateChecker, UpdateInstaller
 │       └── Support/         Observation helper, Color↔RGBA, SystemSounds, LaunchAtLogin,
 │                            WindowSnapshots
 ├── Tests/JoinCoreTests/     XCTest suites for everything in JoinCore
@@ -475,11 +507,12 @@ Bundle id `com.poliuk.join`, `LSUIElement = YES`.
 ## 12. Testing strategy
 
 - **Unit tests (XCTest) on `JoinCore`:**
-  - `AlertScheduler` (every row of the edge-case table above with a fixed `now`), `MeetingLinkDetector` (one fixture per provider plus negatives), `MeetingFilter`, `OutOfOfficeDetector`.
+  - `AlertScheduler` (every row of the edge-case table above with a fixed `now`), `MeetingLinkDetector` (one fixture per provider plus negatives), `MeetingFilter` (which events are kept, and which the participants switch hides, out-of-office and tentative ones included), `OutOfOfficeDetector`.
   - `MeetingTimeFormatter`, including ranges across midnight and longer than a day.
   - `MenuBarPresenter` (every status item state, precedence, titles on and off, durations, the paused message, the header date), `PanelPresenter` (each hero, the rows drawn in the design, day headings, overlaps, out-of-office rows, ended meetings left out, the Today | 7 Days filter), `PanelPalette` (every ink on the frost over the measured glass, the starting-soon card and the accent button for every system accent), `LocationFormatter` (short locations, physical places, directions URL), `AlertCountdown` (phases, texts, snooze labels), `PauseState`.
   - `AlertAppearance`: `RGBA` hex, compositing and contrast; JSON round-trip; legacy JSON migration; presets and preset matching; automatic colors; contrast warnings; switching between Automatic and Custom.
-  - `Preferences` round-trip through an isolated `UserDefaults` suite, plus each migration in §8. `SettingsOptions`: pop-up choices, the "Updated" label, calendar selection, keyword tokens.
+  - `Preferences` round-trip through an isolated `UserDefaults` suite, plus each migration in §8. `SettingsOptions`: pop-up choices, the "Updated" label, calendar selection, keyword tokens, the participants switch's title and note.
+  - Updates: `AppVersion` (parsing, including what it rejects, ordering, tags), `UpdateCheck` (decoding a sample shaped like GitHub's real response, which releases count as an update, the URLs built from the tag, the digest, and when a check is due), `UpdateCopy` (every string in Settings › General › Updates and on the update bar, including each install failure's reason, the unsupported line and the offer naming the line whatever the status). `Preferences` covers the update keys' defaults, persistence and removal.
   - `MenuBarFixtures` holds the week drawn in the menu bar design (Monday 5 – Thursday 8 October 2026) in UTC, with `en_US` and `en_GB` locales, so the presenter tests check the design's exact strings and don't depend on the machine's time zone.
 - `swift test` needs XCTest, which ships with Xcode, not with the Command Line Tools. CI runs the suite on every push to main and every pull request. Locally without Xcode the suite can't run; `swift build` still works.
 - **Fixture calendars.** The `JOIN_FIXTURE` environment variable swaps EventKit for `FixtureCalendarService`, so the menu bar and Settings can be checked in a known state:
@@ -500,9 +533,15 @@ Bundle id `com.poliuk.join`, `LSUIElement = YES`.
 
   `JOIN_SETTINGS_MAX_HEIGHT=<points>` (fixture runs only) caps the Settings window's content height, to check the scrolling layout of a short screen on a tall one.
 
+  `JOIN_FIXTURE_UPDATE` (fixture runs only) picks what the update check finds, through `FixtureReleaseFeed`: `current` (the default) the running version, `available` a release one minor version above it with a Join.zip, `failed` an error. None of them touches the network, and with them Install shows "Not available in fixture mode." `live` uses `GitHubReleaseFeed` and lets Install download, verify and install a real release, replacing the bundle the fixture runs from; it's only for testing updates end to end. Except with `live`, a fixture run keeps the update check's results (when it last checked, the offered and the unsupported versions) in memory only, never in the fixture defaults, so every fixture launch checks once, straight away, and each value shows its result whatever an earlier run found. When Join! can't replace itself, a fixture run reveals the new copy in `$TMPDIR/JoinUpdate/`, never in ~/Downloads, and a fixture relaunched after an install keeps `JOIN_FIXTURE` and `JOIN_FIXTURE_UPDATE`.
+
+  ```sh
+  open --env JOIN_FIXTURE=busy --env JOIN_FIXTURE_UPDATE=available build/Join.app
+  ```
+
   `JOIN_FIXTURE_REGULAR=1` (fixture runs only) gives Join! a Dock icon and a menu bar of its own, so UI automation tools that only see regular apps can click through Settings. Some bugs only show up with real clicks, not with the script hooks below.
 
-  Every scenario has the same following days: an out-of-office block, an in-person appointment, two overlapping calls, and more meetings on the two days after. Five calendars in two accounts fill the Calendars pane. Times are relative to launch, rounded to the minute. Only these six names turn fixture mode on; any other value is logged and ignored, so a typo launches the real app. A fixture run uses its own defaults domain (`com.poliuk.join.fixture`), so it can't change real settings, never starts the alert scheduler, so it can't put an alert on screen by itself, and leaves the login item alone. It shows a "Fixture" marker in the panel header and the Settings title, and it quits after two hours so a forgotten one can't silence real alerts for long. Show Demo Alert still works. Quit a running Join! first: `open` hands the request to the running copy instead of starting a new one, and the variable is lost.
+  Every scenario has the same following days: tomorrow an out-of-office block, an in-person appointment and two overlapping calls, then more meetings on the two days after, including a Focus time block the day after tomorrow (14:00–15:00, on the personal calendar, with no link). The out-of-office block and Focus time have no participants, so turning off **Show events with no participants** hides both; every other fixture meeting has participants. Five calendars in two accounts fill the Calendars pane. Times are relative to launch, rounded to the minute. Only these six names turn fixture mode on; any other value is logged and ignored, so a typo launches the real app. A fixture run uses its own defaults domain (`com.poliuk.join.fixture`), so it can't change real settings, never starts the alert scheduler, so it can't put an alert on screen by itself, leaves the login item alone, and doesn't go online for updates unless `JOIN_FIXTURE_UPDATE=live`. It shows a "Fixture" marker in the panel header and the Settings title, and it quits after two hours so a forgotten one can't silence real alerts for long. Show Demo Alert still works. Quit a running Join! first: `open` hands the request to the running copy instead of starting a new one, and the variable is lost.
 - **Script hooks.** To drive a fixture run from scripts without clicking, `AppDelegate` listens for distributed notifications named `com.poliuk.join.fixture.<hook>`. Only fixture runs register them: any process can post a distributed notification, so a normal run must not let one pause, dismiss or capture the real app. The notification's object, when present, is the argument.
 
   | Hook | Argument | Does |
@@ -518,6 +557,8 @@ Bundle id `com.poliuk.join`, `LSUIElement = YES`.
   | `preset` | `dark`, `light`, `highContrast` or `midnight` | applies an alert style preset, as clicking its card in Appearance does |
   | `panelFilter` | `today` or `week` | sets the panel's Today \| 7 Days choice |
   | `panelFrost` | an opacity from `0` to `1`, anything else for the default | tries another frost opacity on the open panel; Reduce Transparency still makes it opaque |
+  | `checkForUpdates` | – | checks for updates now, like **Check Now** |
+  | `installUpdate` | – | installs the available update, like **Install** |
 
   The app is usually inactive, so post with immediate delivery. From a shell:
 
@@ -534,7 +575,7 @@ Bundle id `com.poliuk.join`, `LSUIElement = YES`.
   hook snapshot busy-dark   # → $(getconf DARWIN_USER_TEMP_DIR)JoinSnapshots/busy-dark
   ```
 
-- **Manual smoke checklist** for the UI: each fixture scenario in light and dark; a long panel (scrolling and fade); pause and resume, including across a relaunch; the demo alert with each preset, on all screens, the main screen and the pointer's screen; snooze and "At event start"; full-screen app on another Space; sleep/wake with a meeting 2 minutes out.
+- **Manual smoke checklist** for the UI: each fixture scenario in light and dark; a long panel (scrolling and fade); pause and resume, including across a relaunch; the demo alert with each preset, on all screens, the main screen and the pointer's screen; snooze and "At event start"; full-screen app on another Space; sleep/wake with a meeting 2 minutes out; the update bar and Settings › General › Updates with `JOIN_FIXTURE_UPDATE=available` and `failed` (a failed check shows only in Settings).
 - **No UI tests**; the AppKit window behaviour isn't meaningfully testable headless.
 
 ## 13. Build, CI, distribution
@@ -542,12 +583,59 @@ Bundle id `com.poliuk.join`, `LSUIElement = YES`.
 - **Build:** `make app` runs `scripts/build-app.sh`: `swift build -c release` once per architecture in `ARCHS` (this Mac's by default; releases pass `arm64 x86_64`), joins the binaries with `lipo` (with `--disable-build-manifest-caching`, because SwiftPM 5.10 shares one cached manifest between architectures and fails the next build that reuses it), copies it, `Info.plist` and `AppIcon.icns` into `build/Join.app`, and ad-hoc signs it with an explicit designated requirement, `identifier "com.poliuk.join"`. A plain ad-hoc signature's requirement is the hash of that exact binary, so TCC treated every rebuild as a new app and asked for calendar access again. Pinning the requirement to the bundle identifier keeps the grant across rebuilds. The trade-off: any locally built binary that claims that identifier inherits the grant, which is acceptable for a locally built app and goes away with a real signing identity. `make run` builds and opens it.
 - **App icon:** an amber tile with a white countdown ring, three quarters left from twelve o'clock, around a dark camera. `scripts/make-icon.swift` draws it with Core Graphics on the macOS icon grid (a 1024-point canvas, an 824-point tile with 186-point corners, room for the shadow), renders every size of the iconset from the vectors rather than scaling one bitmap down (only the Retina files for 16 and 32 points: `iconutil` would store 1x files at those sizes in a legacy format that macOS 26 and later shrink onto a grey plate), and runs `iconutil` to write `Resources/AppIcon.icns`, plus `docs/AppIcon.png` for the README. `Info.plist` names it with `CFBundleIconFile`. The `.icns` is committed, so building needs neither the script nor `iconutil`; run `make icon` after changing the drawing. On macOS 26 and later the system masks the tile to its own icon shape and adds its glass edge; the icon fills the shape, so it isn't shrunk onto a grey plate. There are no dark or tinted variants: those need an Icon Composer `.icon` compiled by `actool`, which comes with Xcode. The app has no Dock icon, so the icon shows in places like Finder, Spotlight, Login Items, System Settings › Privacy & Security › Calendars and the system's calendar access alert.
 - **CI:** GitHub Actions on `macos-15` (its default Xcode; `swift-tools-version:5.10` keeps the Swift 5 language mode), on every push to main and every pull request: `swift build`, `swift test`, a universal `scripts/build-app.sh` like a release's, and the app, zipped with `ditto` because artifact uploads drop the executable bit, is kept as a workflow artifact. CI never publishes anything. `macos-14` was dropped because GitHub retires that image on 2 November 2026.
-- **Releases:** pushing a tag `vMAJOR.MINOR.PATCH` runs `release.yml` on `macos-15`. It checks that the tag matches `CFBundleShortVersionString` and is on main, runs `swift test`, builds a universal app (`ARCHS="arm64 x86_64"`), zips it with `ditto -c -k --keepParent` (which keeps the signature valid), and creates the GitHub Release with `gh release create --verify-tag --generate-notes`, attaching `Join.zip`. GitHub's generated notes only list merged pull requests, so the workflow puts the commit subjects since the previous tag above them (without the "Release x.y.z" commits). The asset keeps that name in every release, so `releases/latest/download/Join.zip` always gets the newest build. `scripts/release.sh` (`make release VERSION=x.y.z`) makes the tag: it requires a clean, up-to-date main and a version newer than the last tag, writes the version into both `CFBundleShortVersionString` and `CFBundleVersion`, commits "Release x.y.z" if that changed anything, makes an annotated tag, and pushes main and the tag atomically after asking. The branch model and recovery steps are in [RELEASING.md](RELEASING.md).
-- **Distribution:** ad-hoc signed, not notarized, by decision. Gatekeeper blocks the first launch of each downloaded version until the user clicks Open Anyway in System Settings › Privacy & Security (on macOS 14, right-click › Open also works); a locally built copy isn't quarantined and opens directly. TCC keeps the calendar grant across versions because every build, local or CI, has the same designated requirement. Notarization (Developer ID + `notarytool` before the zip) can be added to `release.yml` later without touching the app.
-- **Sandbox:** off. Sandboxing requires a real signing identity to be meaningful; nothing in the app needs it.
-- **Auto-update:** not in v1. Sparkle 2 if wanted later.
+- **Releases:** pushing a tag `vMAJOR.MINOR.PATCH` runs `release.yml` on `macos-15`. It checks that the tag is `vMAJOR.MINOR.PATCH` with no leading zeros (`AppVersion`'s rule, so installed copies can offer it), matches `CFBundleShortVersionString` and is on main, runs `swift test`, builds a universal app (`ARCHS="arm64 x86_64"`), zips it with `ditto -c -k --keepParent` (which keeps the signature valid), and creates the GitHub Release with `gh release create --verify-tag --generate-notes`, attaching `Join.zip`. GitHub's generated notes only list merged pull requests, so the workflow puts the commit subjects since the previous tag above them (without the "Release x.y.z" commits). The asset keeps that name in every release, so `releases/latest/download/Join.zip` always gets the newest build. The in-app update check (§14) relies on the same things: the `vX.Y.Z` tag, an asset named `Join.zip`, and the SHA-256 digest GitHub records for each uploaded asset. `scripts/release.sh` (`make release VERSION=x.y.z`) makes the tag: it requires a clean, up-to-date main and a version of three numbers without leading zeros, newer than the last tag, writes the version into both `CFBundleShortVersionString` and `CFBundleVersion`, commits "Release x.y.z" if that changed anything, makes an annotated tag, and pushes main and the tag atomically after asking. The branch model and recovery steps are in [RELEASING.md](RELEASING.md).
+- **Distribution:** ad-hoc signed, not notarized, by decision. Gatekeeper blocks the first launch of each version downloaded in a browser until the user clicks Open Anyway in System Settings › Privacy & Security (on macOS 14, right-click › Open also works). A locally built copy isn't quarantined and opens directly, and neither is a version the app installs itself (§14), so Open Anyway is only needed for a copy downloaded by hand. TCC keeps the calendar grant across versions because every build, local or CI, has the same designated requirement. Notarization (Developer ID + `notarytool` before the zip) can be added to `release.yml` later without touching the app.
+- **Sandbox:** off. Sandboxing requires a real signing identity to be meaningful; nothing in the app needs it. The updater (§14) also relies on it being off: it replaces the app's own bundle and can write to ~/Downloads.
+- **Updates:** from 1.1.0, Join! checks GitHub once a day and, when the user clicks Install, installs the new release itself, without Sparkle (§14). Copies of 1.0.0 have no updater and must be updated by hand once.
 
-## 14. Risks and mitigations
+## 14. Updates
+
+From 1.1.0, Join! looks for a newer release once a day and can install it itself. The user chose this on 2026-10-07: a daily check against GitHub, on by default with a switch in Settings › General › Updates, and an **Install** button that downloads the new version inside the app, so it isn't quarantined and needs no Open Anyway. 1.0.0 has no updater; copies of it are updated by hand once.
+
+**Check.** `UpdateChecker` (`@MainActor @Observable`, owned by `AppModel`) asks a `ReleaseFeed` for the latest release. `GitHubReleaseFeed` sends one unauthenticated GET to `https://api.github.com/repos/Poliuk/join/releases/latest` with `Accept: application/vnd.github+json`, `X-GitHub-Api-Version: 2022-11-28`, `User-Agent: Join/<version>` and `Accept-Language: en`, on an ephemeral `URLSession` (no cookies, no cache) with a 20 s timeout. A 200 is decoded with `UpdateCheck.decodeRelease`; any other status is a failure. No token is shipped or used. The language header is set because `URLSession` would otherwise send the user's own languages and region (`en-GB,en;q=0.9`, say); the app is English only. So apart from the version in the User-Agent the request carries nothing about the user, but GitHub sees the Mac's IP address. The download (Install, step 2) sends the same User-Agent and `Accept-Language`.
+
+`UpdateCheck.update(current:release:)` (JoinCore) turns the release into an `AvailableUpdate`, or nil when the release:
+
+- isn't newer than the running app's `CFBundleShortVersionString`,
+- is a draft or a prerelease,
+- has a tag that isn't exactly `vX.Y.Z` (`AppVersion`: three numbers, no leading zeros, no suffix),
+- has no `Join.zip` asset, or one that is empty or larger than 100 MB.
+
+The update's page and download URLs are built from the validated tag (`https://github.com/Poliuk/join/releases/download/vX.Y.Z/Join.zip`); no URL from the response is ever followed. The asset's `digest` (`sha256:<hex>`) gives the expected SHA-256, or none when it's missing or malformed. A build whose version doesn't parse (`currentVersion` nil) never checks.
+
+**Schedule.** `AppModel` calls `UpdateChecker.start(now:)` from its own `start()`, and `tick(now:)` from its 30-second clock and on wake (`NSWorkspace.didWakeNotification`). `UpdateCheck.isDue` decides: the switch is on; there has been no successful check yet, or the last one (`Preferences.lastUpdateCheck`) is at least 24 hours old, or in the future because the clock moved back; and no check has failed in the last hour. A success stores its time and the version it offered (`Preferences.offeredUpdateVersion`, nil when it found none). A failure is kept in memory only, so a relaunch may try again sooner. **Check Now** checks whatever the switch says. One check runs at a time, and nothing installs while one runs: `installUpdate()` refuses, and Install is disabled in the panel and in Settings.
+
+The offer itself isn't kept across launches, only its version. At launch (`start(now:)`), with the switch on and `offeredUpdateVersion` newer than the running version, `UpdateChecker` checks at once, due or not, and shows no offer until that check succeeds; if it fails (Join! opened at login before the network was up, say), it's retried an hour later like any failed check, not at the next daily one. Otherwise it ticks as usual. So an update found yesterday is offered again after a relaunch, but only if it's still the latest release. Together this makes about one request a day per Mac: one an hour while checks keep failing, plus one at a launch after a failure or while an update is on offer. Fixture runs keep `lastUpdateCheck`, `offeredUpdateVersion` and `unsupportedUpdate` in memory unless `JOIN_FIXTURE_UPDATE=live` (§12).
+
+**Failures are quiet.** Being offline, a 403 or 429 (GitHub allows 60 unauthenticated requests an hour per IP address), a 5xx or JSON that doesn't decode all end in `UpdateStatus.failed`: Settings says "Couldn't check for updates", the panel shows nothing, and a failed automatic check never shows an alert.
+
+**Install.** `UpdateInstaller` does the work and returns `.relaunching` or `.revealed(URL)`, or fails with an `UpdateFailure` (JoinCore: `download`, `tooLarge`, `checksum`, `unzip`, `notJoin`, `wrongArchitecture`, `unsupportedSystem(minimum)`, `signature`, `save`, `relaunch`). `UpdateChecker.install` follows it as an `UpdateInstallState` (`idle`, `downloading(fraction)`, `installing`, `revealed(URL)`, `failed(UpdateFailure)`) for the update bar (§7) and Settings (§8), and `UpdateCopy.failureReason` says why in words ("The download didn't finish.", "This version needs macOS 15.0 or later.", …). The steps:
+
+1. Make a working folder: an item-replacement directory on the app's volume (`FileManager.url(for: .itemReplacementDirectory, in: .userDomainMask, appropriateFor: Bundle.main.bundleURL, create: true)`), so the swap in step 6 stays on one volume, or a temporary directory if that fails. It's removed afterwards.
+2. Download `Join.zip` from the URL built from the tag with a `URLSession` data task whose delegate writes the bytes straight into `Join.zip` in the working folder, reporting progress. Only a 200 (after redirects) is accepted. A download that announces more than 100 MB is refused before its first byte, and one that grows past 100 MB is cancelled as soon as it does (`tooLarge`). Nothing goes through `URLSession`'s own temporary files, so a failed or cancelled download leaves nothing behind once the working folder is removed. The session is invalidated afterwards.
+3. Check its SHA-256 (CryptoKit) against the digest, when the release has one.
+4. Unzip it with `/usr/bin/ditto -x -k`.
+5. Verify the unzipped `Join.app`: its bundle identifier is the running app's (else `notJoin`), its `CFBundleShortVersionString` is the expected version (`notJoin`), its `LSMinimumSystemVersion` isn't above the running macOS (`unsupportedSystem`), its executable has a slice for this Mac's processor, arm64 on Apple silicon and x86_64 on Intel, as `Bundle.executableArchitectures` lists them (`wrongArchitecture`; checked after the macOS version, so a release for newer Macs ends in the lasting unsupported state below rather than a failure offered again every day), and its code signature is valid and satisfies `identifier "com.poliuk.join"` (`SecStaticCodeCreateWithPath`, `SecRequirementCreateWithString`, `SecStaticCodeCheckValidity` with strict validation, all architectures and nested code; else `signature`).
+6. Replace the running app's bundle with `FileManager.replaceItemAt`, which swaps it atomically, and relaunch. `replaceItemAt` can throw after the swap, when it can't delete the old copy (a locked file inside it, say). So after an error Join! verifies what's at its own path: if it passes step 5 as the new version, the update is in place, and Join! removes what it can of the old copy and relaunches. Otherwise it goes on to step 7, after verifying again what it's about to reveal; if that fails, the install fails with `save`, so an unverified bundle is never revealed.
+7. If the bundle's folder isn't writable, the app is running translocated, or the replace fails: move the verified app to `~/Downloads/Join <version>/Join.app` (a unique folder name if that one is taken) and reveal it in Finder. The bar says "Quit Join!, then move Join! 1.1.0 to Applications", with **Show in Finder**; if the copy isn't there any more (the user already moved it), Show in Finder puts the bar back to Install. Fixture runs reveal into `$TMPDIR/JoinUpdate/` instead and never touch ~/Downloads.
+
+Any other error ends in `failed`, and the bar offers **Download Page**, except `unsupportedSystem` (below). The zip comes in through `URLSession`, not a browser, so it carries no quarantine attribute and the new version opens without Open Anyway. The calendar permission carries over, since every build has the same designated requirement (§13).
+
+**A release this Mac can't run.** GitHub's API doesn't say which macOS a release needs, so one that drops this Mac's macOS is offered like any other. When step 5 finds its `LSMinimumSystemVersion` above the running macOS, `UpdateChecker` stores the version and the minimum in `Preferences.unsupportedUpdate`, clears the offer, so the update bar goes away, and sets `UpdateStatus.unsupported`: Settings reads "Join! 2.0.0 needs macOS 15.0 or later", with no Install. That survives a relaunch. A later check that finds the same release keeps it that way and doesn't offer it; a newer release clears the stored value and is offered as usual, and so does the same release once the Mac runs a macOS that's new enough. A release without a slice for this Mac's processor (`wrongArchitecture`) is a broken build rather than one for newer Macs, so it fails like any other error.
+
+**Relaunch.** Join! starts a small `/bin/sh` loop that checks with `kill -0` every 0.2 s whether this process is still running and, once it has exited, runs `/usr/bin/open -n` on the new bundle. Then it calls `NSApp.terminate(nil)`. `-n` opens a new instance even when another copy with the same bundle identifier is running, as on a developer's Mac. A fixture run passes `--env JOIN_FIXTURE=<scenario>` (and `JOIN_FIXTURE_UPDATE`, if set) to `open`, so the relaunched copy is a fixture too.
+
+**Trust model and its limits.**
+
+- The trust anchor is HTTPS plus the GitHub account and its release workflow. Whoever can publish a release on Poliuk/join (the account, or a change to `release.yml` that reaches a tag on main) can put an update in front of every copy with the check on within a day, and one click on Install runs it.
+- The digest comes from the same API response as the release. It catches a download that was damaged or tampered with on the way, not a release that was bad when it was published.
+- The signature check pins only the designated requirement `identifier "com.poliuk.join"`, the one every build is signed with (§13). An ad-hoc signature has no certificate behind it, so anyone can sign a bundle that satisfies it: the check refuses a damaged bundle or a different app, not a forged Join!. A Developer ID requirement (with a team identifier) would close that gap; it comes with notarization.
+- Only newer versions are offered, so moving `latest` back to an older release never downgrades anyone. A bad release is fixed by the next patch ([RELEASING.md](RELEASING.md)). Deleting it stops installs at once, since the download URL then fails; marking it a pre-release only stops new offers, and copies that already found it keep offering it until their next check.
+- Replacing a copy in /Applications hasn't been tested under macOS's App Management protection (System Settings › Privacy & Security › App Management). If macOS refuses the replace, the install falls back to revealing the new copy (step 7).
+
+**Why not Sparkle.** Sparkle 2 is the usual updater for apps outside the App Store, and the earlier plan was to add it if updates were wanted. But it's a third-party framework (the app has none, §1), and it needs an appcast to publish and an EdDSA key to sign every release with, kept in the release workflow's secrets. GitHub's releases API already says which release is the latest and records a SHA-256 digest for each asset, so the updater is one request plus Foundation, CryptoKit and Security. What that gives up is Sparkle's own signature: a key kept outside GitHub would stop an update published from a compromised GitHub account.
+
+## 15. Risks and mitigations
 
 | Risk | Impact | Mitigation |
 |---|---|---|
@@ -558,12 +646,15 @@ Bundle id `com.poliuk.join`, `LSUIElement = YES`.
 | One-shot timers unreliable across sleep / App Nap | Missed alert | Heartbeat + overdue-fires-now rule + disabling App Nap near fire time. This is the most important correctness property; it gets the most tests. |
 | Custom alert colors that are hard to read | Alert misread or ignored | Automatic colors by default, contrast warnings under 4.5:1, Join fill never below 40 %, presets, Restore Defaults. |
 | A pause left on by mistake | No alerts for the rest of the day, or at all | The menu bar item shows the crossed-out bell and the panel shows a paused bar with Resume; timed pauses end on their own. |
-| Script hooks accept notifications from any local process | Another program could pause reminders, dismiss an alert or open Settings | They only do what a click could do, and nothing leaves the Mac. They can be limited to debug builds if that ever matters. |
-| No Apple Developer membership | Gatekeeper friction for users | Ship ad-hoc signed; document Open Anyway in System Settings › Privacy & Security (right-click › Open on macOS 14); notarize later. |
+| Script hooks accept notifications from any local process | Another program could pause reminders, dismiss an alert or open Settings | Only fixture runs register them, and they only do what a click could do. Nothing leaves the Mac, except an update check in a fixture run with `JOIN_FIXTURE_UPDATE=live`. They can be limited to debug builds if that ever matters. |
+| No Apple Developer membership | Gatekeeper friction for users | Ship ad-hoc signed; document Open Anyway in System Settings › Privacy & Security (right-click › Open on macOS 14); updates installed from the app skip it (§14); notarize later. |
+| A bad release goes out | Every copy with the update check on offers it within a day | Install refuses a damaged zip, a different app, the wrong version, or a build without this Mac's processor (§14). Delete the release: `latest` and `releases/latest/download/Join.zip` fall back to the previous one, and an Install already on offer fails at the download. Marking it a pre-release only stops new offers: copies that already found it keep offering it until their next check. Copies that installed it get the fix with the next patch ([RELEASING.md](RELEASING.md)). |
+| The GitHub account or the release workflow is compromised | A forged update offered to every installed copy | Accepted for now: the identifier-only signature requirement can't tell a forged build apart (§14). A Developer ID requirement, or a signing key kept outside GitHub, would. |
+| GitHub's API is down or rate-limits the check | No update offered | About one request a day per Mac; a failure only shows in Settings, and the next try waits an hour. |
 | EventKit doesn't expose structured conference data | Join link missed for exotic providers | Regex table + generic `https://` fallback from location; easy community contributions. |
 | `.screenSaver` window level fights with macOS lock screen / actual screen saver | Alert hidden behind lock screen | Acceptable: if the screen is locked the user isn't there. The alert remains until dismissed. |
 
-## 15. Delivery plan
+## 16. Delivery plan
 
 | Milestone | Scope | Exit criterion |
 |---|---|---|

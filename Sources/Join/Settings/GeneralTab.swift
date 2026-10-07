@@ -109,6 +109,13 @@ struct GeneralTab: View {
                 }
                 alertOffers(preferences)
             }
+
+            SettingsSection(title: UpdateCopy.sectionTitle) {
+                SettingsSwitchRow(title: UpdateCopy.automaticChecksTitle, isOn: $preferences.checksForUpdates, separator: false)
+                SettingsSeparator()
+                updateStatusRow
+                updateNotes
+            }
         }
         .padding(SettingsMetrics.panePadding)
         .onAppear { refreshLaunchAtLogin() }
@@ -236,6 +243,63 @@ struct GeneralTab: View {
                 }
             }
         )
+    }
+
+    // MARK: Updates
+
+    /// "Join! 1.0.0 · Checked 5 minutes ago" or the update on offer, then how an install is going, with
+    /// Check Now and the update bar's button: Install, Download Page after a failed install, Show in Finder
+    /// once revealed. Install waits for a check under way, which may change the offer.
+    private var updateStatusRow: some View {
+        let checker = model.updateChecker
+        let status = checker.status
+        let offered = checker.offeredUpdate
+        let lastCheck = checker.lastCheck
+        return HStack(spacing: 16) {
+            VStack(alignment: .leading, spacing: 2) {
+                TimelineView(.periodic(from: .now, by: 30)) { context in
+                    Text(UpdateCopy.statusLine(
+                        current: checker.currentVersion, status: status, offered: offered, lastCheck: lastCheck, now: context.date
+                    ))
+                }
+                if let update = checker.offeredUpdate, checker.install != .idle {
+                    Text(UpdateCopy.barMessage(version: update.version, install: checker.install))
+                        .font(.subheadline.monospacedDigit())
+                        .foregroundStyle(.secondary)
+                }
+            }
+            Spacer(minLength: 0)
+            HStack(spacing: 8) {
+                Button(UpdateCopy.checkNowTitle) { checker.checkNow() }
+                    .disabled(checker.currentVersion == nil || checker.isChecking || checker.isInstalling)
+                if checker.offeredUpdate != nil {
+                    let title = UpdateCopy.barButtonTitle(install: checker.install)
+                    Button(title ?? UpdateCopy.installTitle) { model.performUpdateAction() }
+                        .disabled(title == nil || (checker.install == .idle && (!checker.canInstall || checker.isChecking)))
+                }
+            }
+        }
+        .padding(.vertical, 6)
+        .frame(minHeight: 40)
+    }
+
+    /// Why the last install failed, or that a fixture run can't install.
+    @ViewBuilder
+    private var updateNotes: some View {
+        let checker = model.updateChecker
+        if case .failed(let failure) = checker.install {
+            Text(UpdateCopy.failureReason(failure))
+                .font(.subheadline)
+                .foregroundStyle(Color.red)
+                .fixedSize(horizontal: false, vertical: true)
+                .padding(.bottom, 8)
+        } else if checker.offeredUpdate != nil, checker.install == .idle, !checker.canInstall {
+            Text(UpdateCopy.installFixtureNote)
+                .font(.subheadline)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+                .padding(.bottom, 8)
+        }
     }
 
     private func alertOffers(_ preferences: Preferences) -> some View {

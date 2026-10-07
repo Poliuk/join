@@ -9,7 +9,10 @@ cd "$(dirname "$0")/.."
 fail() { echo "error: $*" >&2; exit 1; }
 
 VERSION="${1:-}"
-echo "$VERSION" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+$' || fail "usage: scripts/release.sh MAJOR.MINOR.PATCH"
+# AppVersion's rule: three numbers without leading zeros. Installed copies never offer a release whose
+# tag breaks it, and a build with such a version never checks for updates.
+echo "$VERSION" | grep -Eq '^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$' ||
+    fail "usage: scripts/release.sh MAJOR.MINOR.PATCH (numbers without leading zeros)"
 TAG="v$VERSION"
 PLIST=Resources/Info.plist
 

@@ -23,6 +23,9 @@ public struct Meeting: Identifiable, Hashable, Sendable, Codable {
     public var notes: String?
     public var url: URL?
     public var myStatus: ParticipationStatus
+    /// Someone other than you is on the event: an attendee who isn't you, or an organizer who isn't you.
+    /// False for focus blocks and reminders you add for yourself, which Settings can hide.
+    public var hasParticipants: Bool
     public var joinURL: URL?
     /// Set by the detector; such events can be excluded from alerts in Settings.
     public var isOutOfOffice: Bool
@@ -40,6 +43,7 @@ public struct Meeting: Identifiable, Hashable, Sendable, Codable {
         notes: String? = nil,
         url: URL? = nil,
         myStatus: ParticipationStatus = .accepted,
+        hasParticipants: Bool = true,
         joinURL: URL? = nil,
         isOutOfOffice: Bool = false
     ) {
@@ -55,6 +59,7 @@ public struct Meeting: Identifiable, Hashable, Sendable, Codable {
         self.notes = notes
         self.url = url
         self.myStatus = myStatus
+        self.hasParticipants = hasParticipants
         self.joinURL = joinURL
         self.isOutOfOffice = isOutOfOffice
     }
@@ -77,5 +82,18 @@ public enum MeetingFilter {
     public static func shouldInclude(isAllDay: Bool, isCanceled: Bool, myStatus: ParticipationStatus) -> Bool {
         if isAllDay || isCanceled { return false }
         return myStatus != .declined
+    }
+
+    /// The meetings Join! uses anywhere: the panel, the menu bar and alerts. With the switch off, events
+    /// nobody else is on are left out, like the events of an unchecked calendar, whether or not they look
+    /// out of office. Keeps the order.
+    public static func visible(_ meetings: [Meeting], showsEventsWithoutParticipants: Bool) -> [Meeting] {
+        showsEventsWithoutParticipants ? meetings : meetings.filter(\.hasParticipants)
+    }
+
+    /// The visible meetings that may alert and drive the menu bar: out-of-office ones only when Settings
+    /// says so. Takes the output of `visible`, so a hidden event never comes back here.
+    public static func alertable(_ visibleMeetings: [Meeting], alertForOutOfOffice: Bool) -> [Meeting] {
+        alertForOutOfOffice ? visibleMeetings : visibleMeetings.filter { !$0.isOutOfOffice }
     }
 }

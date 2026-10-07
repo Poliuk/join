@@ -21,11 +21,16 @@ final class PreferencesTests: XCTestCase {
         XCTAssertTrue(preferences.autoCloseEnabled)
         XCTAssertNil(preferences.soundName)
         XCTAssertNil(preferences.enabledCalendarIDs)
+        XCTAssertTrue(preferences.showsEventsWithoutParticipants)
         XCTAssertEqual(preferences.appearance, .default)
         XCTAssertFalse(preferences.alertForOutOfOffice)
         XCTAssertTrue(preferences.showOutOfOfficeInList)
         XCTAssertEqual(preferences.outOfOfficeKeywords, OutOfOfficeDetector.defaultKeywords)
         XCTAssertEqual(preferences.startingSoonPill, .default)
+        XCTAssertTrue(preferences.checksForUpdates)
+        XCTAssertNil(preferences.lastUpdateCheck)
+        XCTAssertNil(preferences.offeredUpdateVersion)
+        XCTAssertNil(preferences.unsupportedUpdate)
     }
 
     @MainActor
@@ -63,6 +68,20 @@ final class PreferencesTests: XCTestCase {
         XCTAssertFalse(preferences.isCalendarEnabled("holidays"))
         XCTAssertTrue(preferences.isCalendarEnabled("work"))
         XCTAssertEqual(Preferences(defaults: defaults).enabledCalendarIDs, ["work", "personal"])
+    }
+
+    @MainActor
+    func testShowsEventsWithoutParticipantsDefaultsOnAndPersists() {
+        XCTAssertNil(defaults.object(forKey: Preferences.Keys.showsEventsWithoutParticipants), "nothing is stored until it changes")
+        XCTAssertTrue(Preferences(defaults: defaults).showsEventsWithoutParticipants)
+
+        Preferences(defaults: defaults).showsEventsWithoutParticipants = false
+        XCTAssertEqual(defaults.object(forKey: "showsEventsWithoutParticipants") as? Bool, false)
+        let preferences = Preferences(defaults: defaults)
+        XCTAssertFalse(preferences.showsEventsWithoutParticipants)
+
+        preferences.showsEventsWithoutParticipants = true
+        XCTAssertTrue(Preferences(defaults: defaults).showsEventsWithoutParticipants)
     }
 
     @MainActor
@@ -144,5 +163,56 @@ final class PreferencesTests: XCTestCase {
         XCTAssertEqual(Preferences(defaults: defaults).panelListFilter, .today)
         defaults.set("everything", forKey: Preferences.Keys.panelListFilter)
         XCTAssertEqual(Preferences(defaults: defaults).panelListFilter, .week, "an unknown value falls back to the default")
+    }
+
+    @MainActor
+    func testUpdateCheckSettingsPersist() {
+        let checked = Date(timeIntervalSinceReferenceDate: 800_000_000)
+        let first = Preferences(defaults: defaults)
+        first.checksForUpdates = false
+        first.lastUpdateCheck = checked
+        XCTAssertEqual(defaults.object(forKey: Preferences.Keys.checksForUpdates) as? Bool, false)
+        XCTAssertEqual(defaults.object(forKey: Preferences.Keys.lastUpdateCheck) as? Date, checked)
+
+        let second = Preferences(defaults: defaults)
+        XCTAssertFalse(second.checksForUpdates)
+        XCTAssertEqual(second.lastUpdateCheck, checked)
+
+        second.checksForUpdates = true
+        second.lastUpdateCheck = nil
+        XCTAssertNil(defaults.object(forKey: Preferences.Keys.lastUpdateCheck))
+        let third = Preferences(defaults: defaults)
+        XCTAssertTrue(third.checksForUpdates)
+        XCTAssertNil(third.lastUpdateCheck)
+    }
+
+    @MainActor
+    func testOfferedAndUnsupportedUpdatesPersistAndNilRemovesThem() {
+        let unsupported = UnsupportedUpdate(version: "1.2.0", minimumSystem: "15.0")
+        let first = Preferences(defaults: defaults)
+        first.offeredUpdateVersion = "1.1.0"
+        first.unsupportedUpdate = unsupported
+        XCTAssertEqual(defaults.string(forKey: Preferences.Keys.offeredUpdateVersion), "1.1.0")
+        XCTAssertNotNil(defaults.data(forKey: Preferences.Keys.unsupportedUpdate))
+
+        let second = Preferences(defaults: defaults)
+        XCTAssertEqual(second.offeredUpdateVersion, "1.1.0")
+        XCTAssertEqual(second.unsupportedUpdate, unsupported)
+
+        second.offeredUpdateVersion = nil
+        second.unsupportedUpdate = nil
+        XCTAssertNil(defaults.object(forKey: Preferences.Keys.offeredUpdateVersion))
+        XCTAssertNil(defaults.object(forKey: Preferences.Keys.unsupportedUpdate))
+        let third = Preferences(defaults: defaults)
+        XCTAssertNil(third.offeredUpdateVersion)
+        XCTAssertNil(third.unsupportedUpdate)
+    }
+
+    @MainActor
+    func testUnreadableUnsupportedUpdateIsNil() {
+        defaults.set(Data("not json".utf8), forKey: Preferences.Keys.unsupportedUpdate)
+        XCTAssertNil(Preferences(defaults: defaults).unsupportedUpdate)
+        defaults.set(Data(#"{"version": "1.2.0"}"#.utf8), forKey: Preferences.Keys.unsupportedUpdate)
+        XCTAssertNil(Preferences(defaults: defaults).unsupportedUpdate, "no minimum system")
     }
 }

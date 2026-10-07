@@ -110,16 +110,27 @@ public enum SettingsOptions {
 
     // MARK: Calendars
 
+    /// The switch under the calendar list, and the note below it.
+    public static let eventsSectionTitle = "Events"
+    public static let eventsWithoutParticipantsTitle = "Show events with no participants"
+    public static let eventsWithoutParticipantsNote = "Events nobody else is invited to, like focus time or reminders you add for yourself. When this is off, Join! leaves them out of the menu bar and its panel, and doesn't alert for them."
+
     /// "Updated just now", "Updated 5 minutes ago", …
     public static func updatedLabel(lastRefreshed: Date, now: Date) -> String {
-        let seconds = now.timeIntervalSince(lastRefreshed)
-        if seconds < 60 { return "Updated just now" }
+        "Updated " + relativeTime(since: lastRefreshed, now: now)
+    }
+
+    /// "just now", "5 minutes ago", "1 hour ago", "2 days ago", rounding down. A time in the future
+    /// (the clock moved back) reads as just now.
+    static func relativeTime(since date: Date, now: Date) -> String {
+        let seconds = now.timeIntervalSince(date)
+        if seconds < 60 { return "just now" }
         let minutes = Int(seconds / 60)
-        if minutes < 60 { return minutes == 1 ? "Updated 1 minute ago" : "Updated \(minutes) minutes ago" }
+        if minutes < 60 { return minutes == 1 ? "1 minute ago" : "\(minutes) minutes ago" }
         let hours = minutes / 60
-        if hours < 24 { return hours == 1 ? "Updated 1 hour ago" : "Updated \(hours) hours ago" }
+        if hours < 24 { return hours == 1 ? "1 hour ago" : "\(hours) hours ago" }
         let days = hours / 24
-        return days == 1 ? "Updated 1 day ago" : "Updated \(days) days ago"
+        return days == 1 ? "1 day ago" : "\(days) days ago"
     }
 
     public static func wholeMinutes(_ seconds: TimeInterval) -> Int {

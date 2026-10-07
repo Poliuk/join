@@ -6,7 +6,8 @@ import JoinCore
 /// domain and never schedule alerts, so they can't disturb real settings or cover the screen.
 /// Scenarios follow the menu bar design's week: nothing (no more meetings today), later (next
 /// meeting later today), busy (one starts in 4 min while another runs), meeting (in a meeting),
-/// maybe (a long Maybe block runs while a call you accepted starts in 47 min).
+/// maybe (a long Maybe block runs while a call you accepted starts in 47 min). Tomorrow's out-of-office
+/// block and Focus time the day after have no participants, for the Calendars pane's switch that hides them.
 @MainActor
 final class FixtureCalendarService: CalendarService {
     static let environmentKey = "JOIN_FIXTURE"
@@ -65,9 +66,10 @@ final class FixtureCalendarService: CalendarService {
             return Date(timeIntervalSinceReferenceDate: rounded + minutes * 60)
         }
         func meeting(_ id: String, _ title: String, _ start: Date, _ end: Date, _ info: CalendarInfo,
-                     location: String? = nil, notes: String? = nil, status: ParticipationStatus = .accepted) -> Meeting {
+                     location: String? = nil, notes: String? = nil, status: ParticipationStatus = .accepted,
+                     participants: Bool = true) -> Meeting {
             Meeting(id: id, title: title, start: start, end: end, calendarID: info.id, calendarTitle: info.title,
-                    calendarColor: info.color, location: location, notes: notes, myStatus: status)
+                    calendarColor: info.color, location: location, notes: notes, myStatus: status, hasParticipants: participants)
         }
         let meet = "Join with Google Meet: https://meet.google.com/abc-defg-hij"
         let zoom = "https://us06web.zoom.us/j/12345678901?pwd=sample"
@@ -92,12 +94,13 @@ final class FixtureCalendarService: CalendarService {
         }
 
         let later: [Meeting] = [
-            meeting("ooo1", "Fuera de la oficina", day(1, 12, 30), day(1, 14, 30), Self.ooo),
+            meeting("ooo1", "Fuera de la oficina", day(1, 12, 30), day(1, 14, 30), Self.ooo, participants: false),
             meeting("lunch2", "Lunch with Lucía", day(1, 13), day(1, 14), Self.personal, location: address),
             meeting("workshop2", "Workshop", day(1, 15), day(1, 19, 30), Self.personal, notes: meet),
             meeting("planning2", "Ana/Luis: Product Planning", day(1, 16), day(1, 17), Self.work, location: zoom),
             meeting("rev", "Revisión semanal", day(2, 9, 10), day(2, 10, 10), Self.personal, notes: meet),
             meeting("one", "1:1 Marta / Andrés", day(2, 12), day(2, 12, 45), Self.work, notes: meet),
+            meeting("focus", "Focus time", day(2, 14), day(2, 15), Self.personal, participants: false),
             meeting("roadmap", "Quarterly Roadmap Review", day(2, 16), day(2, 17), Self.work, location: zoom),
             meeting("crit", "Design Crit", day(3, 10), day(3, 11), Self.work, notes: meet),
         ]

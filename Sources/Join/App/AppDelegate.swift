@@ -61,6 +61,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 // An opacity from 0 to 1 to try on the real panel; anything else goes back to the palette's.
                 delegate.model.panelFrostOverride = argument.flatMap(Double.init).flatMap { (0...1).contains($0) ? $0 : nil }
             }),
+            // Against the fixture feed (JOIN_FIXTURE_UPDATE); installing only does anything with =live.
+            ("checkForUpdates", { delegate, _ in delegate.model.updateChecker.checkNow() }),
+            ("installUpdate", { delegate, _ in delegate.model.updateChecker.installUpdate() }),
             ("appearance", { _, argument in
                 switch argument {
                 case "light": NSApp.appearance = NSAppearance(named: .aqua)

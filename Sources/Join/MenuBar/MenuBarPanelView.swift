@@ -60,16 +60,18 @@ struct MenuBarPanelView: View {
     @ViewBuilder
     private var panelBody: some View {
         VStack(alignment: .leading, spacing: 0) {
+            let showsUpdate = model.updateChecker.offeredUpdate != nil
             if model.meetingStore.authorization == .authorized {
                 let content = model.panelContent
                 let pausedMessage = model.pausedMessage
                 if let pausedMessage {
                     PausedBar(message: pausedMessage) { model.resume() }
                 }
+                updateBar(topPadding: pausedMessage == nil ? 10 : 8)
                 let filter = content.filtered(by: model.preferences.panelListFilter)
                 PanelHeroView(hero: content.hero, perform: model.perform)
                     .padding(.horizontal, 10)
-                    .padding(.top, pausedMessage == nil ? 10 : 8)
+                    .padding(.top, pausedMessage == nil && !showsUpdate ? 10 : 8)
                     .padding(.bottom, 2)
                 if filter.isShown {
                     PanelFilterToggle(state: filter) { model.preferences.panelListFilter = $0 }
@@ -91,11 +93,36 @@ struct MenuBarPanelView: View {
                 }
                 .transaction { $0.animation = nil }
             } else {
-                PermissionPrompt(authorization: model.meetingStore.authorization)
+                updateBar(topPadding: 10)
+                PermissionPrompt(authorization: model.meetingStore.authorization, topPadding: showsUpdate ? 8 : 10)
             }
         }
         .padding(.bottom, 8)
         .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    /// Shown while an update is on offer, whether or not the calendars can be read.
+    @ViewBuilder
+    private func updateBar(topPadding: CGFloat) -> some View {
+        let checker = model.updateChecker
+        if let update = checker.offeredUpdate {
+            let install = checker.install
+            let installUnavailable = install == .idle && !checker.canInstall
+            UpdateBar(
+                message: UpdateCopy.barMessage(version: update.version, install: install),
+                buttonTitle: UpdateCopy.barButtonTitle(install: install),
+                // Install waits for a check under way, which may change the offer.
+                buttonEnabled: !installUnavailable && !(install == .idle && checker.isChecking),
+                help: installUnavailable ? UpdateCopy.installFixtureNote : failureReason(install),
+                action: model.performUpdateAction
+            )
+            .padding(.top, topPadding)
+        }
+    }
+
+    private func failureReason(_ install: UpdateInstallState) -> String? {
+        if case .failed(let failure) = install { return UpdateCopy.failureReason(failure) }
+        return nil
     }
 
     /// Fades the list out at the bottom while there is more to scroll to. It fades into the frost, not
@@ -355,12 +382,67 @@ private struct PausedBar: View {
     }
 }
 
+// MARK: Update bar
+
+/// "Join! 1.1.0 is available" with Install, then the download's progress, and Download Page after a
+/// failed install or Show in Finder once the new copy waits in a folder. Laid out like the paused bar.
+@MainActor
+private struct UpdateBar: View {
+    let message: String
+    let buttonTitle: String?
+    var buttonEnabled = true
+    /// The button's tooltip: why an install failed, or why Install is off in a fixture run.
+    let help: String?
+    let action: () -> Void
+
+    var body: some View {
+        HStack(spacing: 8) {
+            Image(systemName: "arrow.down.circle")
+                .font(.system(size: 12))
+                .foregroundStyle(PanelColors.secondary)
+                .frame(width: 14, height: 14)
+            // "Quit Join!, then move Join! 1.1.0 to Applications" doesn't fit beside its button on one line.
+            Text(message)
+                .font(.system(size: 12.5).monospacedDigit())
+                .foregroundStyle(PanelColors.strong)
+                .lineLimit(2)
+                .fixedSize(horizontal: false, vertical: true)
+                .frame(maxWidth: .infinity, alignment: .leading)
+            if let buttonTitle {
+                Button(action: action) {
+                    Text(buttonTitle)
+                        .font(.system(size: 12, weight: .semibold))
+                        .padding(.horizontal, 10)
+                        .frame(height: 24)
+                }
+                .buttonStyle(PanelFillButtonStyle(
+                    fill: PanelColors.buttonFill,
+                    foreground: PanelColors.primary,
+                    cornerRadius: 6,
+                    hoverFill: PanelColors.buttonHoverFill
+                ))
+                .disabled(!buttonEnabled)
+                .opacity(buttonEnabled ? 1 : 0.5)
+                .help(help ?? "")
+            }
+        }
+        // As tall as with a button while there's none, so the bar doesn't jump as the download starts.
+        .frame(minHeight: 24)
+        .padding(.leading, 12)
+        .padding(.trailing, 6)
+        .padding(.vertical, 6)
+        .panelCard(cornerRadius: 10)
+        .padding(.horizontal, 10)
+    }
+}
+
 // MARK: Calendar permission
 
 @MainActor
 private struct PermissionPrompt: View {
     @Environment(AppModel.self) private var model
     let authorization: CalendarAuthorization
+    var topPadding: CGFloat = 10
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
@@ -387,7 +469,7 @@ private struct PermissionPrompt: View {
         .frame(maxWidth: .infinity, alignment: .leading)
         .panelCard(cornerRadius: 12)
         .padding(.horizontal, 10)
-        .padding(.top, 10)
+        .padding(.top, topPadding)
     }
 
     private var message: String {

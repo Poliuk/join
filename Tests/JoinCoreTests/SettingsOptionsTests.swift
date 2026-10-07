@@ -85,6 +85,25 @@ final class SettingsOptionsTests: XCTestCase {
         XCTAssertEqual(label(after: 3600), "Updated 1 hour ago")
         XCTAssertEqual(label(after: 5 * 3600), "Updated 5 hours ago")
         XCTAssertEqual(label(after: 50 * 3600), "Updated 2 days ago")
+        XCTAssertEqual(label(after: 24 * 3600), "Updated 1 day ago")
+        XCTAssertEqual(label(after: 119), "Updated 1 minute ago")
+    }
+
+    func testRelativeTimeRoundsDown() {
+        let start = Date(timeIntervalSinceReferenceDate: 800_000_000)
+        func relative(after seconds: TimeInterval) -> String {
+            SettingsOptions.relativeTime(since: start, now: start.addingTimeInterval(seconds))
+        }
+        XCTAssertEqual(relative(after: -3600), "just now")
+        XCTAssertEqual(relative(after: 0), "just now")
+        XCTAssertEqual(relative(after: 59.9), "just now")
+        XCTAssertEqual(relative(after: 60), "1 minute ago")
+        XCTAssertEqual(relative(after: 2 * 60), "2 minutes ago")
+        XCTAssertEqual(relative(after: 3600 - 1), "59 minutes ago")
+        XCTAssertEqual(relative(after: 2 * 3600 - 1), "1 hour ago")
+        XCTAssertEqual(relative(after: 23 * 3600 + 59 * 60), "23 hours ago")
+        XCTAssertEqual(relative(after: 48 * 3600 - 1), "1 day ago")
+        XCTAssertEqual(relative(after: 30 * 24 * 3600), "30 days ago")
     }
 
     func testCalendarSelectionCountsAndGroupToggles() {
@@ -97,6 +116,15 @@ final class SettingsOptionsTests: XCTestCase {
         let reselected = CalendarSelection.setting(["birthdays", "holidays"], enabled: true, in: deselected, allCalendarIDs: all)
         XCTAssertEqual(reselected, Set(all))
         XCTAssertEqual(CalendarSelection.setting(["work"], enabled: true, in: [], allCalendarIDs: all), ["work"])
+    }
+
+    func testEventsWithoutParticipantsCopy() {
+        XCTAssertEqual(SettingsOptions.eventsSectionTitle, "Events")
+        XCTAssertEqual(SettingsOptions.eventsWithoutParticipantsTitle, "Show events with no participants")
+        XCTAssertEqual(
+            SettingsOptions.eventsWithoutParticipantsNote,
+            "Events nobody else is invited to, like focus time or reminders you add for yourself. When this is off, Join! leaves them out of the menu bar and its panel, and doesn't alert for them."
+        )
     }
 
     func testAddingKeywordsTrimsAndSkipsDuplicates() {

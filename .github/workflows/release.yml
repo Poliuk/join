@@ -18,6 +18,11 @@ jobs:
           fetch-depth: 0
       - name: Check the tag
         run: |
+          # AppVersion's rule, as in scripts/release.sh: installed copies never offer any other tag.
+          if ! echo "$GITHUB_REF_NAME" | grep -Eq '^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$'; then
+            echo "::error::$GITHUB_REF_NAME isn't a release tag (vMAJOR.MINOR.PATCH, no leading zeros, no suffix), so installed copies would never offer it. Delete it and make releases with scripts/release.sh."
+            exit 1
+          fi
           VERSION="${GITHUB_REF_NAME#v}"
           BUNDLE_VERSION="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' Resources/Info.plist)"
           if [ "$VERSION" != "$BUNDLE_VERSION" ]; then

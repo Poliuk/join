@@ -9,10 +9,12 @@ final class AppModel {
     let preferences: Preferences
     let meetingStore: MeetingStore
     let alertCoordinator: AlertCoordinator
+    let updateChecker: UpdateChecker
 
     /// Advances on every half minute of the clock so countdowns in the menu bar and panel stay fresh.
     private(set) var now = Date()
     @ObservationIgnored private var ticker: Timer?
+    @ObservationIgnored private var wakeObserver: NSObjectProtocol?
     @ObservationIgnored private let settingsWindow = SettingsWindowController()
     /// Closes the menu bar panel; set by the status item controller.
     @ObservationIgnored var closePanel: (() -> Void)?
@@ -32,6 +34,7 @@ final class AppModel {
         self.preferences = preferences
         self.meetingStore = store
         self.alertCoordinator = AlertCoordinator(store: store, preferences: preferences, windows: AlertWindowController(), defaults: defaults)
+        self.updateChecker = UpdateChecker(preferences: preferences, fixtureScenario: fixture)
     }
 
     func start() {
@@ -42,14 +45,28 @@ final class AppModel {
         let interval: TimeInterval = 30
         let firstTick = Date(timeIntervalSinceReferenceDate: (Date().timeIntervalSinceReferenceDate / interval).rounded(.up) * interval)
         let ticker = Timer(fire: firstTick, interval: interval, repeats: true) { [weak self] _ in
-            Task { @MainActor [weak self] in self?.now = Date() }
+            Task { @MainActor [weak self] in
+                guard let self else { return }
+                now = Date()
+                updateChecker.tick(now: now)
+            }
         }
         ticker.tolerance = 1
         RunLoop.main.add(ticker, forMode: .common)
         self.ticker = ticker
 
+        // The daily update check: at launch, on the ticks above and on wake, whenever it's due. At launch
+        // also when the last check offered an update, to bring the offer back.
+        updateChecker.start(now: Date())
+        wakeObserver = NSWorkspace.shared.notificationCenter.addObserver(
+            forName: NSWorkspace.didWakeNotification, object: nil, queue: .main
+        ) { [weak self] _ in
+            Task { @MainActor [weak self] in self?.updateChecker.tick(now: Date()) }
+        }
+
         observeChanges(of: { [preferences] in
             _ = preferences.enabledCalendarIDs
+            _ = preferences.showsEventsWithoutParticipants
             _ = preferences.outOfOfficeKeywords
         }) { [weak self] in
             self?.meetingStore.refresh()
@@ -59,6 +76,10 @@ final class AppModel {
         }
         observeChanges(of: { [meetingStore] in _ = meetingStore.meetings }) { [weak self] in
             self?.now = Date()
+        }
+        // Turning automatic checks back on checks straight away when one is due.
+        observeChanges(of: { [preferences] in _ = preferences.checksForUpdates }) { [weak self] in
+            self?.updateChecker.tick(now: Date())
         }
     }
 
@@ -106,6 +127,29 @@ final class AppModel {
         switch action {
         case .join(let url), .directions(let url):
             NSWorkspace.shared.open(url)
+        }
+    }
+
+    /// The update bar's button: Install, Download Page after a failed install, Show in Finder once the
+    /// new copy waits in a folder.
+    func performUpdateAction() {
+        guard let update = updateChecker.offeredUpdate else { return }
+        switch updateChecker.install {
+        case .idle:
+            updateChecker.installUpdate()
+        case .failed:
+            closePanel?()
+            NSWorkspace.shared.open(update.pageURL)
+        case .revealed(let app):
+            // Once the user has moved the new copy, there's nothing to show: the bar offers Install again.
+            guard FileManager.default.fileExists(atPath: app.path) else {
+                updateChecker.forgetRevealedCopy()
+                return
+            }
+            closePanel?()
+            NSWorkspace.shared.activateFileViewerSelecting([app])
+        case .downloading, .installing:
+            break
         }
     }
 

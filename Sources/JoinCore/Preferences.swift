@@ -18,6 +18,7 @@ public final class Preferences {
         public static let soundName = "soundName"
         public static let soundRepeats = "soundRepeats"
         public static let enabledCalendarIDs = "enabledCalendarIDs"
+        public static let showsEventsWithoutParticipants = "showsEventsWithoutParticipants"
         public static let menuBarShowsNextEvent = "menuBarShowsNextEvent"
         public static let appearance = "appearance"
         public static let alertForOutOfOffice = "alertForOutOfOffice"
@@ -27,6 +28,10 @@ public final class Preferences {
         public static let showOutOfOfficeInList = "showOutOfOfficeInList"
         public static let startingSoonPill = "startingSoonPill"
         public static let panelListFilter = "panelListFilter"
+        public static let checksForUpdates = "checksForUpdates"
+        public static let lastUpdateCheck = "lastUpdateCheck"
+        public static let offeredUpdateVersion = "offeredUpdateVersion"
+        public static let unsupportedUpdate = "unsupportedUpdate"
     }
 
     public static let defaultLeadTime: TimeInterval = 3 * 60
@@ -44,6 +49,7 @@ public final class Preferences {
     @ObservationIgnored private var _soundName: String?
     @ObservationIgnored private var _soundRepeats: Bool
     @ObservationIgnored private var _enabledCalendarIDs: Set<String>?
+    @ObservationIgnored private var _showsEventsWithoutParticipants: Bool
     @ObservationIgnored private var _menuBarShowsNextEvent: Bool
     @ObservationIgnored private var _appearance: AlertAppearance
     @ObservationIgnored private var _alertForOutOfOffice: Bool
@@ -51,6 +57,10 @@ public final class Preferences {
     @ObservationIgnored private var _showOutOfOfficeInList: Bool
     @ObservationIgnored private var _startingSoonPill: StartingSoonPill
     @ObservationIgnored private var _panelListFilter: PanelListFilter
+    @ObservationIgnored private var _checksForUpdates: Bool
+    @ObservationIgnored private var _lastUpdateCheck: Date?
+    @ObservationIgnored private var _offeredUpdateVersion: String?
+    @ObservationIgnored private var _unsupportedUpdate: UnsupportedUpdate?
 
     public init(defaults: UserDefaults = .standard) {
         self.defaults = defaults
@@ -70,6 +80,7 @@ public final class Preferences {
         _soundName = defaults.string(forKey: Keys.soundName)
         _soundRepeats = defaults.object(forKey: Keys.soundRepeats) as? Bool ?? false
         _enabledCalendarIDs = (defaults.array(forKey: Keys.enabledCalendarIDs) as? [String]).map(Set.init)
+        _showsEventsWithoutParticipants = defaults.object(forKey: Keys.showsEventsWithoutParticipants) as? Bool ?? true
         _menuBarShowsNextEvent = defaults.object(forKey: Keys.menuBarShowsNextEvent) as? Bool ?? true
         _appearance = defaults.data(forKey: Keys.appearance)
             .flatMap { try? JSONDecoder().decode(AlertAppearance.self, from: $0) } ?? .default
@@ -85,6 +96,11 @@ public final class Preferences {
         _startingSoonPill = defaults.data(forKey: Keys.startingSoonPill)
             .flatMap { try? JSONDecoder().decode(StartingSoonPill.self, from: $0) } ?? .default
         _panelListFilter = defaults.string(forKey: Keys.panelListFilter).flatMap(PanelListFilter.init(rawValue:)) ?? .week
+        _checksForUpdates = defaults.object(forKey: Keys.checksForUpdates) as? Bool ?? true
+        _lastUpdateCheck = defaults.object(forKey: Keys.lastUpdateCheck) as? Date
+        _offeredUpdateVersion = defaults.string(forKey: Keys.offeredUpdateVersion)
+        _unsupportedUpdate = defaults.data(forKey: Keys.unsupportedUpdate)
+            .flatMap { try? JSONDecoder().decode(UnsupportedUpdate.self, from: $0) }
     }
 
     /// Seconds before the meeting start at which the alert fires, always a whole number of minutes.
@@ -193,6 +209,18 @@ public final class Preferences {
         }
     }
 
+    /// Whether events nobody else is on (focus time, reminders you add for yourself) appear at all. On by
+    /// default; when off, they're left out of the panel, the menu bar and alerts, like an unchecked calendar.
+    public var showsEventsWithoutParticipants: Bool {
+        get { access(keyPath: \.showsEventsWithoutParticipants); return _showsEventsWithoutParticipants }
+        set {
+            withMutation(keyPath: \.showsEventsWithoutParticipants) {
+                _showsEventsWithoutParticipants = newValue
+                defaults.set(newValue, forKey: Keys.showsEventsWithoutParticipants)
+            }
+        }
+    }
+
     public var menuBarShowsNextEvent: Bool {
         get { access(keyPath: \.menuBarShowsNextEvent); return _menuBarShowsNextEvent }
         set {
@@ -267,6 +295,55 @@ public final class Preferences {
             withMutation(keyPath: \.panelListFilter) {
                 _panelListFilter = newValue
                 defaults.set(newValue.rawValue, forKey: Keys.panelListFilter)
+            }
+        }
+    }
+
+    /// Whether Join! asks GitHub for a newer release once a day. On by default; Check Now works either way.
+    public var checksForUpdates: Bool {
+        get { access(keyPath: \.checksForUpdates); return _checksForUpdates }
+        set {
+            withMutation(keyPath: \.checksForUpdates) {
+                _checksForUpdates = newValue
+                defaults.set(newValue, forKey: Keys.checksForUpdates)
+            }
+        }
+    }
+
+    /// When the last update check succeeded, or nil if none has. Failures aren't stored.
+    public var lastUpdateCheck: Date? {
+        get { access(keyPath: \.lastUpdateCheck); return _lastUpdateCheck }
+        set {
+            withMutation(keyPath: \.lastUpdateCheck) {
+                _lastUpdateCheck = newValue
+                if let newValue { defaults.set(newValue, forKey: Keys.lastUpdateCheck) } else { defaults.removeObject(forKey: Keys.lastUpdateCheck) }
+            }
+        }
+    }
+
+    /// The version the last successful check offered, "1.1.0", or nil when it found none. Lets a relaunch
+    /// show an offer again without waiting a day.
+    public var offeredUpdateVersion: String? {
+        get { access(keyPath: \.offeredUpdateVersion); return _offeredUpdateVersion }
+        set {
+            withMutation(keyPath: \.offeredUpdateVersion) {
+                _offeredUpdateVersion = newValue
+                if let newValue { defaults.set(newValue, forKey: Keys.offeredUpdateVersion) } else { defaults.removeObject(forKey: Keys.offeredUpdateVersion) }
+            }
+        }
+    }
+
+    /// A release whose install found it needs a newer macOS, so it isn't offered again; nil when there's none.
+    public var unsupportedUpdate: UnsupportedUpdate? {
+        get { access(keyPath: \.unsupportedUpdate); return _unsupportedUpdate }
+        set {
+            withMutation(keyPath: \.unsupportedUpdate) {
+                _unsupportedUpdate = newValue
+                if let newValue {
+                    defaults.set(try? JSONEncoder().encode(newValue), forKey: Keys.unsupportedUpdate)
+                } else {
+                    defaults.removeObject(forKey: Keys.unsupportedUpdate)
+                }
             }
         }
     }
