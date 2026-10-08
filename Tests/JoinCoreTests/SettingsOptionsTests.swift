@@ -23,8 +23,27 @@ final class SettingsOptionsTests: XCTestCase {
         XCTAssertEqual(SettingsOptions.leadTimeNeverTitle, "Never")
     }
 
-    func testFullScreenAlertSectionTitle() {
-        XCTAssertEqual(SettingsOptions.fullScreenAlertSectionTitle, "Full-screen alert")
+    func testPaneCopy() {
+        XCTAssertEqual(SettingsOptions.menuBarSectionTitle, "Menu bar")
+        XCTAssertEqual(SettingsOptions.menuBarShowsTitle, "Shows")
+        XCTAssertEqual(SettingsOptions.autoCloseRowTitle, "Close automatically")
+        XCTAssertEqual(SettingsOptions.showDemoHelp, "Shows a real full-screen alert with a sample event. Press Esc to close it.")
+        XCTAssertEqual(SettingsOptions.showDemoUnavailableHelp, "Close the current full-screen alert first.")
+        XCTAssertEqual(SettingsOptions.colorsSectionTitle, "Colors")
+        XCTAssertEqual(SettingsOptions.alertMeNeverNote, "Alert me is set to Never in Full-Screen Alert. Show Demo still works.")
+        XCTAssertEqual(SettingsOptions.restoreAppearanceHelp, "Goes back to the Dark style. Your own style stays on the Custom card.")
+    }
+
+    func testMenuBarPillCopy() {
+        XCTAssertEqual(SettingsOptions.startingSoonRowTitle, "Starting soon")
+        XCTAssertEqual(SettingsOptions.startingSoonHelp, "The menu bar shows the event like this from then on. The panel highlights it at the same time.")
+        XCTAssertEqual(SettingsOptions.startingSoonFieldLabel, "Minutes before the event")
+        XCTAssertEqual(SettingsOptions.menuBarPreviewLabel, "Preview of the menu bar before an event")
+        XCTAssertEqual(SettingsOptions.menuBarColorTitle, "Color")
+        XCTAssertEqual(SettingsOptions.menuBarColorAccessibilityTitle, "Menu bar fill")
+        XCTAssertEqual(SettingsOptions.menuBarColorWellLabel, "Menu bar fill color")
+        XCTAssertEqual(SettingsOptions.menuBarTextAccessibilityTitle, "Menu bar text")
+        XCTAssertEqual(SettingsOptions.menuBarTextWellLabel, "Menu bar text color")
     }
 
     @MainActor
@@ -51,11 +70,6 @@ final class SettingsOptionsTests: XCTestCase {
             XCTAssertEqual(SettingsOptions.durationTitle(minutes: c.minutes), c.long, "\(c.minutes) min")
             XCTAssertEqual(SettingsOptions.shortDurationTitle(minutes: c.minutes), c.short, "\(c.minutes) min")
         }
-    }
-
-    func testAlertOffersBothSnoozesThenEventStart() {
-        XCTAssertEqual(SettingsOptions.alertOffers(snoozeDurations: [60, 300]), ["1 min", "5 min", "At event start"])
-        XCTAssertEqual(SettingsOptions.alertOffers(snoozeDurations: [600, 3600]), ["10 min", "1 hr", "At event start"])
     }
 
     func testAutoCloseMapsNeverAndMinutes() {

@@ -41,7 +41,58 @@ final class StartingSoonPillTests: XCTestCase {
         XCTAssertNil(StartingSoonPill(fill: blueAccent).contrastWarning(accent: blueAccent), "a custom copy of the accent isn't flagged")
         XCTAssertNil(StartingSoonPill(text: .black).contrastWarning(accent: yellow))
         let warning = StartingSoonPill(fill: yellow, text: .white).contrastWarning(accent: blueAccent)
-        XCTAssertEqual(warning, "The pill's label contrast is 1.4:1. It may be hard to read; aim for at least 3:1.")
+        XCTAssertEqual(warning, "The menu bar item may be hard to read (1.4:1). Aim for 3:1, or set Text to Automatic.")
+    }
+
+    /// Automatic text reaches 3:1 on any fill, so a fill alone, swatch or Other…, is never flagged.
+    func testAutomaticTextReadsOnEveryFill() {
+        for value in 0...255 {
+            let gray = RGBA(red: Double(value) / 255, green: Double(value) / 255, blue: Double(value) / 255)
+            XCTAssertNil(StartingSoonPill(fill: gray).contrastWarning(accent: blueAccent), gray.hexString)
+        }
+        for swatch in StartingSoonPill.colorChoice.swatches {
+            XCTAssertNil(StartingSoonPill(fill: swatch.color).contrastWarning(accent: blueAccent), swatch.name)
+        }
+    }
+
+    func testColorChoiceHasBlueInsteadOfPurple() {
+        XCTAssertEqual(StartingSoonPill.colorChoice.swatches.map(\.name), ["Accent color", "Red", "Orange", "Green", "Blue", "Graphite"])
+        XCTAssertEqual(StartingSoonPill.colorChoice.swatches.map { $0.color?.hexString ?? "accent" },
+                       ["accent", "#FF3B30", "#FF9500", "#34C759", "#007AFF", "#8E8E93"])
+    }
+
+    func testColorSelection() {
+        func shown(_ pill: StartingSoonPill, otherPicked: Bool = false) -> String {
+            switch pill.colorSelection(accent: blueAccent, otherPicked: otherPicked) {
+            case .swatch(let swatch): return swatch.name
+            case .other: return "Other…"
+            }
+        }
+        XCTAssertEqual(shown(.default), "Accent color")
+        XCTAssertEqual(shown(StartingSoonPill(fill: RGBA(rgb: 0x34C759))), "Green")
+        XCTAssertEqual(shown(StartingSoonPill(fill: navy)), "Other…")
+        XCTAssertEqual(shown(.default, otherPicked: true), "Other…")
+
+        var pill = StartingSoonPill.default
+        pill.pickColor(.other, accent: blueAccent)
+        XCTAssertEqual(pill.fill, blueAccent, "Other… starts from the accent shown")
+        XCTAssertEqual(shown(pill, otherPicked: true), "Other…")
+        XCTAssertEqual(shown(pill), "Blue", "reopened, the color is a swatch's")
+
+        pill.pickColor(.swatch(StartingSoonPill.colorChoice.swatches[1]), accent: blueAccent)
+        XCTAssertEqual(pill.fill, RGBA(rgb: 0xFF3B30))
+        pill.setFillColor(RGBA(rgb: 0x123456, alpha: 0.4))
+        XCTAssertEqual(pill.fill, RGBA(rgb: 0x123456), "always opaque")
+        pill.pickColor(.swatch(StartingSoonPill.colorChoice.swatches[0]), accent: blueAccent)
+        XCTAssertTrue(pill.isDefault)
+    }
+
+    func testLegacyTextRow() {
+        XCTAssertFalse(StartingSoonPill.default.showsLegacyText)
+        var pill = StartingSoonPill(fill: yellow, text: navy)
+        XCTAssertTrue(pill.showsLegacyText)
+        pill.setTextCustom(false, accent: blueAccent)
+        XCTAssertFalse(pill.showsLegacyText, "Automatic hides the row")
     }
 
     func testSwitchingToCustomKeepsTheColorsShown() {

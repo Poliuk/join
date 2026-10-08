@@ -46,12 +46,19 @@ public enum AlertCountdown {
         SettingsOptions.shortDurationTitle(minutes: wholeMinutes(duration))
     }
 
+    /// The durations the alert's snooze row has a button for: Settings' two, each once, in order. Two that read
+    /// the same ("5 min") would make two identical buttons, on the alert, its demo and the Settings preview.
+    public static func snoozeChoices(_ durations: [TimeInterval]) -> [TimeInterval] {
+        var labels: Set<Int> = []
+        return durations.filter { labels.insert(wholeMinutes($0)).inserted }
+    }
+
     /// "Snooze 1 minute", "Snooze 5 minutes", "Snooze 1 hour".
     public static func snoozeAccessibilityLabel(_ duration: TimeInterval) -> String {
         "Snooze \(SettingsOptions.durationTitle(minutes: wholeMinutes(duration)))"
     }
 
-    /// The button that snoozes until the meeting starts; Settings' "The full-screen alert offers" chips use it too.
+    /// The button that snoozes until the meeting starts, after the `snoozeChoices` buttons.
     public static let snoozeUntilStartLabel = "At event start"
 
     /// VoiceOver keeps the time the button itself leaves out.

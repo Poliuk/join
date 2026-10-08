@@ -157,7 +157,7 @@ final class MinutesChoiceTests: XCTestCase {
         XCTAssertEqual(popUp.selection, .custom)
     }
 
-    // MARK: Snooze and Appears, which have no Never
+    // MARK: Snooze and Starting soon, which have no Never
 
     func testPopUpsWithoutNeverShowAPresetOrCustom() {
         for rule in [snooze, appears] {

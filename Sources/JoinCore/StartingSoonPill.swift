@@ -1,7 +1,7 @@
 import Foundation
 
-/// The menu bar's "starting soon" pill: how long before a meeting it replaces the countdown, and
-/// its colors. The panel's starting-soon card appears at the same time.
+/// The menu bar's "starting soon" pill, set in Settings › General › Menu bar: how long before a meeting it
+/// replaces the countdown, and its colors. The panel's starting-soon card appears at the same time.
 public struct StartingSoonPill: Hashable, Sendable {
     /// Whole minutes before the start, within `minuteRange`.
     public var minutes: Int {
@@ -10,7 +10,8 @@ public struct StartingSoonPill: Hashable, Sendable {
     /// nil means the system accent color.
     public var fill: RGBA?
     /// nil means Automatic: white, unless the fill shown (the accent or a custom color) gives it less
-    /// than `minimumContrast`, then near-black.
+    /// than `minimumContrast`, then near-black. Settings no longer sets it: a color stored by an earlier
+    /// build shows on the legacy Text row until it's set back to Automatic.
     public var text: RGBA?
 
     public init(minutes: Int = 5, fill: RGBA? = nil, text: RGBA? = nil) {
@@ -45,13 +46,14 @@ public struct StartingSoonPill: Hashable, Sendable {
         return shown.mostLegible(of: .white, Self.darkText)
     }
 
-    /// Warns when custom colors leave the label below `minimumContrast`. Automatic text always clears
-    /// it, so the default pill is never flagged.
+    /// Warns when custom colors leave the label below `minimumContrast`, in the alert's template. Automatic
+    /// text always reaches it, so only a legacy text color gets here, and the default pill is never flagged.
     public func contrastWarning(accent: RGBA) -> String? {
         guard fill != nil || text != nil else { return nil }
         let ratio = resolvedText(accent: accent).contrastRatio(to: resolvedFill(accent: accent))
         guard ratio < Self.minimumContrast else { return nil }
-        return "The pill's label contrast is \(AlertContrastWarning.format(ratio)). It may be hard to read; aim for at least 3:1."
+        let advice = text != nil ? "Aim for 3:1, or set Text to Automatic." : "Try another color."
+        return AlertContrastWarning.message(subject: "The menu bar item", ratio: ratio, advice: advice)
     }
 
     /// Switching to Custom starts from the color currently shown, so nothing changes until the
@@ -71,6 +73,41 @@ public struct StartingSoonPill: Hashable, Sendable {
             text = nil
         }
     }
+
+    // MARK: Color
+
+    /// General › Menu bar › Color: the system accent, five system colors, then Other….
+    public static let colorChoice = ColorChoice(swatches: [
+        ColorSwatch(name: "Accent color", color: nil),
+        ColorSwatch(name: "Red", color: RGBA(rgb: 0xFF3B30)),
+        ColorSwatch(name: "Orange", color: RGBA(rgb: 0xFF9500)),
+        ColorSwatch(name: "Green", color: RGBA(rgb: 0x34C759)),
+        ColorSwatch(name: "Blue", color: RGBA(rgb: 0x007AFF)),
+        ColorSwatch(name: "Graphite", color: RGBA(rgb: 0x8E8E93)),
+    ])
+
+    /// The item the Color pop-up shows; see `ColorChoice.selection`.
+    public func colorSelection(accent: RGBA, otherPicked: Bool) -> ColorChoice.Item {
+        Self.colorChoice.selection(stored: fill, shown: resolvedFill(accent: accent), otherPicked: otherPicked)
+    }
+
+    /// Accent color clears the fill and a named color sets it; Other… starts from the color shown, so
+    /// nothing changes until another one is picked in the well.
+    public mutating func pickColor(_ item: ColorChoice.Item, accent: RGBA) {
+        switch item {
+        case .swatch(let swatch): fill = swatch.color?.withAlpha(1)
+        case .other: setFillCustom(true, accent: accent)
+        }
+    }
+
+    /// The Other… well's color, always opaque, kept as picked even when it equals a swatch or the accent.
+    public mutating func setFillColor(_ color: RGBA) {
+        fill = color.withAlpha(1)
+    }
+
+    /// Whether General shows the legacy Text row under Color: only while a text color is stored, which
+    /// only an earlier build could save. Its Automatic (`setTextCustom(false, accent:)`) clears it.
+    public var showsLegacyText: Bool { text != nil }
 
     private static func clamped(_ minutes: Int) -> Int {
         min(max(minutes, minuteRange.lowerBound), minuteRange.upperBound)

@@ -1,94 +1,45 @@
 import SwiftUI
 import JoinCore
 
+/// How the full-screen alert looks, and nothing else: the preview, Style's five cards, the Colors box, and
+/// Restore Defaults for the look. When and how it alerts is on the Full-Screen Alert pane.
 @MainActor
 struct AppearanceTab: View {
     @Environment(AppModel.self) private var model
     @State private var previewBackdrop: AppearancePreviewBackdrop = .wallpaper
     /// The contrast warnings VoiceOver has been told about, or that were already shown.
     @State private var announcedWarnings: Set<AlertContrastWarning.Subject> = []
-    /// Whether the pill's contrast warning has been announced, or was already shown.
-    @State private var announcedPillWarning = false
 
-    private enum Column {
-        static let name: CGFloat = 132
-        static let color: CGFloat = 160
-    }
-
-    /// The auto-close pop-up's tag for Never.
-    private static let neverTag = 0
+    /// The Colors box's pop-ups share one width, so they line up down the box.
+    private static let popUpWidth: CGFloat = 168
 
     var body: some View {
         VStack(alignment: .leading, spacing: 22) {
             preview
 
-            VStack(alignment: .leading, spacing: 8) {
-                styleHeader
-                SettingsBox {
-                    presetCards
-                        .padding(.vertical, 12)
-                }
+            SettingsSection(title: "Style") {
+                styleCards
+                    .padding(.vertical, 12)
             }
 
-            // The alert's look and its buttons share one box, the buttons table after Text color; the
-            // contrast warnings for both sit under it.
-            VStack(alignment: .leading, spacing: 8) {
-                SettingsSection(title: SettingsOptions.fullScreenAlertSectionTitle) {
-                    alertRows
-                    SettingsSeparator()
-                    buttonsHeader
-                    buttonRow(.join)
-                    buttonRow(.dismissAndSnooze)
-                }
-                warnings
+            // Every color row stays in view; editing any of them makes the look the Custom card's.
+            SettingsSection(title: SettingsOptions.colorsSectionTitle) {
+                colorRows
             }
 
-            VStack(alignment: .leading, spacing: 8) {
-                SettingsSection(title: "Snooze & auto-close") {
-                    snoozeChoice("First snooze button", index: 0)
-                    snoozeChoice("Second snooze button", index: 1)
-                    SettingsRow(title: "Close full-screen alerts automatically") {
-                        Picker("Close full-screen alerts automatically", selection: autoCloseSelection) {
-                            ForEach(autoCloseChoices, id: \.self) { minutes in
-                                Text(SettingsOptions.autoCloseTitle(minutes: minutes == Self.neverTag ? nil : minutes))
-                                    .tag(minutes)
-                            }
-                        }
-                        .labelsHidden()
-                        .fixedSize()
-                    }
-                }
-                alertOffers
-            }
-
-            VStack(alignment: .leading, spacing: 8) {
-                SettingsSection(title: "Starting soon") {
-                    startingSoonRows
-                }
-                if let warning = pill.contrastWarning(accent: accent) {
-                    AppearanceContrastWarning(message: warning)
-                }
-            }
-
-            // At the bottom of the pane, so it resets everything on it: the alert's look, the snooze
-            // buttons, auto-close and the pill.
+            // The look only: the Custom card's saved look, snooze, auto-close and the menu bar's pill stay.
             HStack {
                 Spacer()
-                Button("Restore Defaults") {
-                    // End any edit first, so a half-typed snooze minute can't be saved over the reset later.
-                    NSApp.keyWindow?.makeFirstResponder(nil)
-                    model.preferences.resetAppearancePane()
-                }
-                    .disabled(model.preferences.appearancePaneIsDefault)
+                Button("Restore Defaults") { model.preferences.resetAppearance() }
+                    .disabled(appearance.isDefault)
+                    .help(SettingsOptions.restoreAppearanceHelp)
             }
         }
         .padding(SettingsMetrics.panePadding)
         .onAppear {
             announcedWarnings = Set(appearance.contrastWarnings.map(\.subject))
-            announcedPillWarning = pill.contrastWarning(accent: accent) != nil
         }
         .task(id: appearance) { await announceNewWarnings() }
-        .task(id: pill) { await announcePillWarning() }
     }
 
     private var appearance: AlertAppearance { model.preferences.appearance }
@@ -99,10 +50,12 @@ struct AppearanceTab: View {
         model.preferences.appearance = updated
     }
 
-    // MARK: Preview and style
+    // MARK: Preview
 
+    /// The preview, what it's drawn over and Show Demo, then, while Alert me is Never, a note that only
+    /// real alerts stop.
     private var preview: some View {
-        VStack(spacing: 10) {
+        VStack(alignment: .leading, spacing: 10) {
             AppearancePreview(
                 appearance: appearance,
                 backdrop: previewBackdrop,
@@ -110,10 +63,11 @@ struct AppearanceTab: View {
             )
             HStack(spacing: 16) {
                 HStack(spacing: 8) {
-                    Text("Preview on")
+                    Text("Preview over")
                         .font(.system(size: 12))
                         .foregroundStyle(.secondary)
-                    Picker("Preview on", selection: $previewBackdrop) {
+                        .fixedSize()
+                    Picker("Preview over", selection: $previewBackdrop) {
                         ForEach(AppearancePreviewBackdrop.allCases) { backdrop in
                             Text(backdrop.title).tag(backdrop)
                         }
@@ -124,296 +78,137 @@ struct AppearanceTab: View {
                     .fixedSize()
                 }
                 Spacer()
-                Button("Show Demo") { model.alertCoordinator.showDemoAlert() }
-                    .disabled(model.alertCoordinator.isAlerting)
+                ShowDemoButton()
             }
-        }
-        .font(.system(size: 13))
-    }
-
-    private var styleHeader: some View {
-        HStack {
-            Text("Style")
-                .font(.body.weight(.semibold))
-                .accessibilityAddTraits(.isHeader)
-            Spacer()
-            if appearance.matchingPreset == nil {
-                Text("Custom")
-                    .font(.system(size: 11, weight: .regular))
-                    .foregroundStyle(.secondary)
+            .font(.system(size: 13))
+            if !model.preferences.fullScreenAlertsEnabled {
+                SettingsWarning(message: SettingsOptions.alertMeNeverNote)
             }
         }
     }
 
-    private var presetCards: some View {
-        let selected = appearance.matchingPreset
+    // MARK: Style
+
+    /// Dark, Light, High contrast, Midnight and Custom. The card outlined is the one the look matches,
+    /// Custom while it matches no preset. Custom holds the user's own look, which a preset or Restore
+    /// Defaults leaves alone, and shows a placeholder until there is one.
+    private var styleCards: some View {
+        let selected = appearance.style
+        let customLook = model.preferences.customAppearance ?? (selected == .custom ? appearance : nil)
         return HStack(spacing: 12) {
-            ForEach(AlertAppearancePreset.allCases) { preset in
-                AppearancePresetCard(preset: preset, isSelected: preset == selected) {
-                    model.preferences.appearance = preset.appearance
+            ForEach(AlertStyle.allCases) { style in
+                AppearanceStyleCard(
+                    name: style.name,
+                    swatch: swatch(for: style, customLook: customLook),
+                    isSelected: style == selected,
+                    help: style.help(hasCustomLook: customLook != nil)
+                ) {
+                    switch style {
+                    case .preset(let preset): model.preferences.appearance = preset.appearance
+                    case .custom: model.preferences.applyCustomAppearance()
+                    }
                 }
             }
         }
         .padding(.horizontal, 2)
     }
 
-    // MARK: Alert
+    private func swatch(for style: AlertStyle, customLook: AlertAppearance?) -> AppearanceStyleCard.Swatch? {
+        switch style {
+        case .preset(let preset): return preset.swatch
+        case .custom: return customLook?.swatch
+        }
+    }
 
+    // MARK: Colors
+
+    /// Backdrop, then a pop-up of named swatches for each color, with Strength under a tint and an earlier
+    /// build's label color on a Text row under its button. Each contrast warning sits under the row to change.
     @ViewBuilder
-    private var alertRows: some View {
-        SettingsRow(title: "Backdrop", separator: false) {
-            Picker("Backdrop", selection: Binding(
+    private var colorRows: some View {
+        let warnings = appearance.contrastWarnings
+
+        SettingsRow(title: AlertColorRow.backdropTitle, separator: false) {
+            Picker(AlertColorRow.backdropTitle, selection: Binding(
                 get: { appearance.blurMode },
                 set: { mode in update { $0.blurMode = mode } }
             )) {
-                Text(BlurMode.dark.displayName).tag(BlurMode.dark)
-                Text(BlurMode.light.displayName).tag(BlurMode.light)
-                if appearance.blurMode == .none {
-                    Text(BlurMode.none.displayName).tag(BlurMode.none)
+                ForEach(appearance.backdropChoices, id: \.self) { mode in
+                    Text(mode.displayName).tag(mode)
                 }
             }
+            .pickerStyle(.segmented)
             .labelsHidden()
             .fixedSize()
         }
 
-        SettingsRow(title: "Tint") {
-            AppearanceColorChoice(
-                title: "Tint",
-                wellLabel: "Tint color",
-                offTitle: "None",
-                wellFirst: true,
-                isCustom: Binding(
-                    get: { appearance.tint != nil },
-                    set: { enabled in update { $0.setTintEnabled(enabled) } }
-                ),
-                color: colorBinding(get: { $0.tint }, set: { $0.tint = $1 })
-            )
-        }
-
+        colorRow(.tint)
         if appearance.tint != nil {
-            SettingsRow(title: "Tint strength", indented: true) {
+            SettingsRow(title: AlertColorRow.tintStrengthTitle, indented: true) {
                 AppearancePercentSlider(
-                    title: "Tint strength",
+                    title: AlertColorRow.tintStrengthAccessibilityTitle,
                     value: Binding(get: { appearance.tintStrength }, set: { value in update { $0.tintStrength = value } }),
                     range: 0...1
                 )
                 .frame(width: 220)
             }
         }
+        warningRows(under: .tint, in: warnings)
 
-        SettingsRow(title: "Text color") {
-            AppearanceColorChoice(
-                title: "Text color",
-                wellLabel: "Text color",
-                offTitle: "Automatic",
-                wellFirst: true,
-                isCustom: Binding(
-                    get: { appearance.textColor != nil },
-                    set: { custom in update { $0.setTextColorCustom(custom) } }
-                ),
-                color: colorBinding(get: { $0.textColor }, set: { $0.textColor = $1 })
+        colorRow(.eventText)
+        warningRows(under: .eventText, in: warnings)
+
+        colorRow(.joinButton)
+        legacyTextRow(.join)
+        warningRows(under: .joinButton, in: warnings)
+
+        colorRow(.buttons)
+        legacyTextRow(.dismissAndSnooze)
+        warningRows(under: .buttons, in: warnings)
+    }
+
+    private func colorRow(_ row: AlertColorRow) -> some View {
+        SettingsRow(title: row.title) {
+            SettingsColorChoice(
+                title: row.accessibilityTitle,
+                wellLabel: row.wellLabel,
+                choice: row.choice,
+                automaticDot: row == .tint ? .none : .automatic,
+                supportsOpacity: row.wellSupportsOpacity,
+                popUpWidth: Self.popUpWidth,
+                stored: { model.preferences.appearance.storedColor(for: row) },
+                shown: { model.preferences.appearance.shownColor(for: row) },
+                pick: { item in update { $0.pick(item, for: row) } },
+                setColor: { color in update { $0.setColor(color, for: row) } }
             )
         }
     }
 
-    // MARK: Buttons
-
-    /// The column titles over the Join and Dismiss & Snooze rows, in the Full-screen alert box.
-    private var buttonsHeader: some View {
-        HStack(spacing: 12) {
-            Color.clear.frame(width: Column.name, height: 1)
-            Text("Text").frame(width: Column.color, alignment: .leading)
-            Text("Fill").frame(width: Column.color, alignment: .leading)
-            Text("Fill opacity").frame(maxWidth: .infinity, alignment: .leading)
-        }
-        .font(.system(size: 11))
-        .foregroundStyle(.secondary)
-        .frame(minHeight: 30)
-        .accessibilityHidden(true)
-    }
-
-    private func buttonRow(_ kind: AlertButtonKind) -> some View {
-        let name = kind == .join ? "Join button" : "Dismiss and Snooze"
-        return VStack(spacing: 0) {
-            SettingsSeparator()
-            buttonRowControls(kind, name: name)
-                .padding(.vertical, 6)
-                .frame(minHeight: 40)
-        }
-    }
-
-    private func buttonRowControls(_ kind: AlertButtonKind, name: String) -> some View {
-        HStack(spacing: 12) {
-            Text(kind.displayName)
-                .frame(width: Column.name, alignment: .leading)
-            AppearanceColorChoice(
-                title: "\(name) text",
-                wellLabel: "\(name) text color",
-                offTitle: "Automatic",
-                wellFirst: false,
-                isCustom: Binding(
-                    get: { appearance[button: kind].text != nil },
-                    set: { custom in update { $0.setButtonTextCustom(custom, for: kind) } }
-                ),
-                color: colorBinding(get: { $0[button: kind].text }, set: { $0[button: kind].text = $1 })
-            )
-            .frame(width: Column.color, alignment: .leading)
-            AppearanceColorChoice(
-                title: "\(name) fill",
-                wellLabel: "\(name) fill color",
-                offTitle: "Automatic",
-                wellFirst: false,
-                isCustom: Binding(
-                    get: { appearance[button: kind].fill != nil },
-                    set: { custom in update { $0.setButtonFillCustom(custom, for: kind) } }
-                ),
-                color: colorBinding(get: { $0[button: kind].fill }, set: { $0[button: kind].fill = $1 })
-            )
-            .frame(width: Column.color, alignment: .leading)
-            AppearancePercentSlider(
-                title: "\(name) fill opacity",
-                value: Binding(
-                    get: { appearance[button: kind].fillOpacity },
-                    set: { value in update { $0[button: kind].fillOpacity = value } }
-                ),
-                range: kind.fillOpacityRange
-            )
-        }
-    }
-
-    // MARK: Snooze and auto-close
-
-    private func snoozeChoice(_ title: String, index: Int) -> some View {
-        let preferences = model.preferences
-        return SettingsMinutesChoice(
-            title: title,
-            separator: index > 0,
-            presets: SettingsOptions.snoozeMinutes,
-            range: SettingsOptions.customSnoozeRange,
-            presetTitle: SettingsOptions.durationTitle(minutes:),
-            unit: SettingsOptions.minutesUnit,
-            fieldLabel: "\(title), minutes",
-            minutes: Binding(
-                get: { SettingsOptions.wholeMinutes(preferences.snoozeDurations[index]) },
-                set: { minutes in
-                    var durations = preferences.snoozeDurations
-                    durations[index] = TimeInterval(minutes * 60)
-                    preferences.snoozeDurations = durations
-                }
-            )
-        )
-    }
-
-    private var autoCloseChoices: [Int] {
-        let preferences = model.preferences
-        let current = SettingsOptions.autoCloseSelection(enabled: preferences.autoCloseEnabled, after: preferences.autoCloseAfter)
-        return [Self.neverTag] + SettingsOptions.autoCloseChoices(including: current)
-    }
-
-    private var autoCloseSelection: Binding<Int> {
-        let preferences = model.preferences
-        return Binding(
-            get: {
-                SettingsOptions.autoCloseSelection(enabled: preferences.autoCloseEnabled, after: preferences.autoCloseAfter)
-                    ?? Self.neverTag
-            },
-            set: { minutes in
-                if minutes == Self.neverTag {
-                    preferences.autoCloseEnabled = false
-                } else {
-                    preferences.autoCloseAfter = TimeInterval(minutes * 60)
-                    preferences.autoCloseEnabled = true
-                }
-            }
-        )
-    }
-
-    /// "The full-screen alert offers" and the snooze row's labels, as chips under the box.
-    private var alertOffers: some View {
-        HStack(spacing: 6) {
-            Text("The full-screen alert offers")
-                .font(.subheadline)
-                .foregroundStyle(.secondary)
-                .padding(.trailing, 2)
-            ForEach(Array(SettingsOptions.alertOffers(snoozeDurations: model.preferences.snoozeDurations).enumerated()), id: \.offset) { _, label in
-                SettingsChip(text: label)
-            }
-        }
-        .padding(.horizontal, 2)
-        .accessibilityElement(children: .combine)
-    }
-
-    // MARK: Starting soon
-
-    private var pill: StartingSoonPill { model.preferences.startingSoonPill }
-
-    /// The system accent as the pill draws it now.
-    private var accent: RGBA { NSColor.controlAccentColor.rgba }
-
-    private func updatePill(_ change: (inout StartingSoonPill) -> Void) {
-        var updated = model.preferences.startingSoonPill
-        change(&updated)
-        model.preferences.startingSoonPill = updated
-    }
-
+    /// Only while an earlier build's label color is stored for the kind; its Automatic clears it.
     @ViewBuilder
-    private var startingSoonRows: some View {
-        StartingSoonPreview(pill: pill, showsText: model.preferences.menuBarShowsNextEvent)
-
-        SettingsMinutesChoice(
-            title: "Appears",
-            presets: SettingsOptions.startingSoonMinutes,
-            range: StartingSoonPill.minuteRange,
-            presetTitle: SettingsOptions.startingSoonTitle(minutes:),
-            unit: SettingsOptions.minutesBeforeUnit,
-            fieldLabel: "Minutes before the meeting the pill appears",
-            minutes: Binding(get: { pill.minutes }, set: { minutes in updatePill { $0.minutes = minutes } })
-        )
-
-        SettingsRow(title: "Fill") {
-            AppearanceColorChoice(
-                title: "Pill fill",
-                wellLabel: "Pill fill color",
-                offTitle: "Accent color",
-                wellFirst: true,
-                isCustom: Binding(
-                    get: { pill.fill != nil },
-                    set: { custom in updatePill { $0.setFillCustom(custom, accent: accent) } }
-                ),
-                color: pillColorBinding(get: { $0.fill }, set: { $0.fill = $1 })
-            )
-        }
-
-        SettingsRow(title: "Text color") {
-            AppearanceColorChoice(
-                title: "Pill text color",
-                wellLabel: "Pill text color",
-                offTitle: "Automatic",
-                wellFirst: true,
-                isCustom: Binding(
-                    get: { pill.text != nil },
-                    set: { custom in updatePill { $0.setTextCustom(custom, accent: accent) } }
-                ),
-                color: pillColorBinding(get: { $0.text }, set: { $0.text = $1 })
-            )
-        }
-    }
-
-    private func pillColorBinding(
-        get: @escaping (StartingSoonPill) -> RGBA?,
-        set: @escaping (inout StartingSoonPill, RGBA) -> Void
-    ) -> Binding<Color> {
-        Binding(
-            get: { Color(get(model.preferences.startingSoonPill) ?? .white) },
-            set: { color in
-                var rgba = RGBA(color)
-                rgba.alpha = 1
-                updatePill { set(&$0, rgba) }
+    private func legacyTextRow(_ kind: AlertButtonKind) -> some View {
+        if appearance.showsLegacyText(for: kind), let text = appearance[button: kind].text {
+            SettingsRow(title: LegacyTextRow.title, indented: true) {
+                SettingsLegacyTextChoice(
+                    title: kind.legacyTextAccessibilityTitle,
+                    wellLabel: kind.legacyTextWellLabel,
+                    color: text,
+                    popUpWidth: Self.popUpWidth,
+                    clear: { update { $0.setButtonTextCustom(false, for: kind) } },
+                    setColor: { color in update { $0.setLegacyText(color, for: kind) } }
+                )
             }
-        )
+        }
     }
 
-    // MARK: Helpers
+    /// The tint's warning hangs under Strength, so it takes that row's indent.
+    private func warningRows(under row: AlertColorRow, in warnings: [AlertContrastWarning]) -> some View {
+        ForEach(warnings.filter { $0.row == row }) { warning in
+            SettingsWarning(message: warning.message)
+                .padding(.leading, row == .tint ? SettingsMetrics.indent : 0)
+                .padding(.bottom, 10)
+        }
+    }
 
     /// Tells VoiceOver about warnings that appeared since the last announcement. Debounced, so
     /// dragging in the color panel is read out once, with the ratio it settles on.
@@ -425,102 +220,6 @@ struct AppearanceTab: View {
         announcedWarnings = Set(warnings.map(\.subject))
         guard !new.isEmpty else { return }
         AccessibilityNotification.Announcement(new.map(\.message).joined(separator: " ")).post()
-    }
-
-    /// Like `announceNewWarnings`, for the pill's warning.
-    private func announcePillWarning() async {
-        try? await Task.sleep(for: .seconds(1))
-        guard !Task.isCancelled else { return }
-        let warning = pill.contrastWarning(accent: accent)
-        defer { announcedPillWarning = warning != nil }
-        guard let warning, !announcedPillWarning else { return }
-        AccessibilityNotification.Announcement(warning).post()
-    }
-
-    /// The event text's warning, then the buttons'.
-    private var warnings: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            ForEach(appearance.contrastWarnings) { warning in
-                AppearanceContrastWarning(message: warning.message)
-            }
-        }
-    }
-
-    /// Only shown while the color is custom, so the getter's fallback is never on screen.
-    private func colorBinding(
-        get: @escaping (AlertAppearance) -> RGBA?,
-        set: @escaping (inout AlertAppearance, RGBA) -> Void
-    ) -> Binding<Color> {
-        Binding(
-            get: { Color(get(model.preferences.appearance) ?? .white) },
-            set: { color in
-                var rgba = RGBA(color)
-                rgba.alpha = 1
-                update { set(&$0, rgba) }
-            }
-        )
-    }
-}
-
-/// The pill as the menu bar will draw it, on a strip like the menu bar, above its settings.
-private struct StartingSoonPreview: View {
-    let pill: StartingSoonPill
-    /// Icon only in the menu bar means a pill without text.
-    let showsText: Bool
-
-    var body: some View {
-        HStack(spacing: 16) {
-            VStack(alignment: .leading, spacing: 2) {
-                Text("Starting in \(pill.minutes) min or less")
-                Text("Replaces the countdown in the menu bar")
-                    .font(.system(size: 11))
-                    .foregroundStyle(.secondary)
-            }
-            Spacer(minLength: 0)
-            Image(nsImage: StatusItemImages.pill(text: showsText ? "Next in \(min(4, pill.minutes)) min" : nil, style: pill))
-                .padding(.horizontal, 10)
-                .padding(.vertical, 5)
-                .background(
-                    RoundedRectangle(cornerRadius: 8, style: .continuous)
-                        .fill(Color(light: RGBA(rgb: 0xE4E4E9), dark: RGBA(rgb: 0x1E1E21)))
-                )
-                .overlay(
-                    RoundedRectangle(cornerRadius: 8, style: .continuous)
-                        .strokeBorder(SettingsPalette.boxBorder, lineWidth: 1)
-                )
-                .accessibilityLabel("Preview of the starting-soon pill")
-        }
-        .padding(.vertical, 8)
-        .frame(minHeight: 48)
-    }
-}
-
-/// An Automatic (or None) / Custom pop-up, with a color well while Custom.
-private struct AppearanceColorChoice: View {
-    let title: String
-    let wellLabel: String
-    let offTitle: String
-    /// The alert's rows put the well before the pop-up; the buttons table after it.
-    let wellFirst: Bool
-    @Binding var isCustom: Bool
-    @Binding var color: Color
-
-    var body: some View {
-        HStack(spacing: 8) {
-            if wellFirst && isCustom { well }
-            Picker(title, selection: $isCustom) {
-                Text(offTitle).tag(false)
-                Text("Custom").tag(true)
-            }
-            .labelsHidden()
-            .fixedSize()
-            if !wellFirst && isCustom { well }
-        }
-    }
-
-    private var well: some View {
-        ColorPicker(wellLabel, selection: $color, supportsOpacity: false)
-            .labelsHidden()
     }
 }
 
@@ -560,48 +259,51 @@ private struct AppearancePercentSlider: View {
     private var percent: String { "\(Int((clamped * 100).rounded()))%" }
 }
 
-private struct AppearancePresetCard: View {
-    let preset: AlertAppearancePreset
+/// One of Style's cards: a miniature of the alert (backdrop, text lines, Join bar) over its name. Every
+/// name stays primary, so a row with no card outlined never looks disabled.
+private struct AppearanceStyleCard: View {
+    typealias Swatch = (background: RGBA, line: RGBA, join: RGBA)
+
+    let name: String
+    /// nil draws the Custom card's placeholder, until there's a look of the user's own.
+    let swatch: Swatch?
     let isSelected: Bool
+    let help: String?
     let action: () -> Void
 
     var body: some View {
         Button(action: action) {
             VStack(spacing: 6) {
-                swatch
-                Text(preset.name)
+                tile
+                Text(name)
                     .font(.system(size: 12))
-                    .foregroundStyle(isSelected ? .primary : .secondary)
+                    .foregroundStyle(.primary)
             }
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
         .frame(maxWidth: .infinity)
-        .accessibilityLabel(preset.name)
+        .helpTag(help)
+        .accessibilityLabel(name)
         .accessibilityAddTraits(isSelected ? .isSelected : [])
     }
 
-    private var swatch: some View {
-        let colors = preset.swatch
+    private var tile: some View {
         let shape = RoundedRectangle(cornerRadius: 7, style: .continuous)
-        return GeometryReader { proxy in
-            VStack(spacing: 5) {
-                Capsule()
-                    .fill(Color(colors.line))
-                    .frame(width: proxy.size.width * 0.46, height: 4)
-                Capsule()
-                    .fill(Color(colors.line))
-                    .opacity(0.6)
-                    .frame(width: proxy.size.width * 0.28, height: 3)
-                RoundedRectangle(cornerRadius: 3, style: .continuous)
-                    .fill(Color(colors.join))
-                    .frame(width: proxy.size.width * 0.4, height: 9)
-                    .padding(.top, 2)
+        return Group {
+            if let swatch {
+                miniature(swatch)
+                    .background(shape.fill(Color(swatch.background)))
+            } else {
+                Image(systemName: "slider.horizontal.3")
+                    .font(.system(size: 18))
+                    .foregroundStyle(.secondary)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    .background(shape.fill(SettingsPalette.chip))
+                    .accessibilityHidden(true)
             }
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
         .frame(height: 58)
-        .background(shape.fill(Color(colors.background)))
         .overlay {
             if isSelected {
                 RoundedRectangle(cornerRadius: 9, style: .continuous)
@@ -612,21 +314,23 @@ private struct AppearancePresetCard: View {
             }
         }
     }
-}
 
-private struct AppearanceContrastWarning: View {
-    let message: String
-
-    var body: some View {
-        HStack(alignment: .firstTextBaseline, spacing: 6) {
-            Image(systemName: "exclamationmark.triangle")
-                .foregroundStyle(Color(light: RGBA(rgb: 0xA15C00), dark: RGBA(rgb: 0xFFB340)))
-                .accessibilityHidden(true)
-            Text(message)
-                .foregroundStyle(.secondary)
-                .fixedSize(horizontal: false, vertical: true)
+    private func miniature(_ swatch: Swatch) -> some View {
+        GeometryReader { proxy in
+            VStack(spacing: 5) {
+                Capsule()
+                    .fill(Color(swatch.line))
+                    .frame(width: proxy.size.width * 0.46, height: 4)
+                Capsule()
+                    .fill(Color(swatch.line))
+                    .opacity(0.6)
+                    .frame(width: proxy.size.width * 0.28, height: 3)
+                RoundedRectangle(cornerRadius: 3, style: .continuous)
+                    .fill(Color(swatch.join))
+                    .frame(width: proxy.size.width * 0.4, height: 9)
+                    .padding(.top, 2)
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
-        .font(.system(size: 11))
-        .frame(maxWidth: .infinity, alignment: .leading)
     }
 }

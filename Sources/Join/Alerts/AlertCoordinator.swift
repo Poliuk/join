@@ -217,7 +217,7 @@ final class AlertCoordinator {
         let start = Date(timeIntervalSinceReferenceDate: (Date.timeIntervalSinceReferenceDate + 3 * 60).rounded(.down))
         let demo = Meeting(
             id: "demo",
-            title: "Hello, I’m a demo event",
+            title: MenuBarPresenter.demoEventTitle,
             start: start,
             end: start.addingTimeInterval(60 * 60),
             calendarTitle: "Work",

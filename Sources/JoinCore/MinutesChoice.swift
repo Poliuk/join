@@ -1,7 +1,7 @@
 import Foundation
 
 /// The rule behind a Settings pop-up of preset minutes and Custom…: **Alert me**, both snooze buttons
-/// and the pill's **Appears**. Only Alert me offers **Never**, between the presets and Custom…, and it
+/// and the menu bar's **Starting soon**. Only Alert me offers **Never**, between the presets and Custom…, and it
 /// turns full-screen alerts off while keeping the time. The view remembers whether Custom… was picked;
 /// this decides what the pop-up shows and what picking an item or saving a custom value changes.
 public struct MinutesChoice: Sendable {
@@ -38,8 +38,8 @@ public struct MinutesChoice: Sendable {
     }
 
     /// Whether Custom… is the choice on opening the pane, or after the stored minutes change from
-    /// elsewhere (Restore Defaults): when they aren't a preset, such as a lead time of 2 or 10 minutes
-    /// from before 1.2.0, unless Never is chosen, which shows whatever time is kept.
+    /// elsewhere: when they aren't a preset, such as a lead time of 2 or 10 minutes from before 1.2.0,
+    /// unless Never is chosen, which shows whatever time is kept.
     public func opensAsCustom(minutes: Int, neverChosen: Bool) -> Bool {
         !isNever(neverChosen) && !presets.contains(minutes)
     }

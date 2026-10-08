@@ -69,6 +69,8 @@ struct AlertContentView: View {
     var now: Date? = nil
     /// false for the Settings preview: the buttons are drawn, but there is nothing to click or focus.
     var isInteractive = true
+    /// The room above and below the content. The Settings preview crops close to the content, so it keeps none.
+    var verticalPadding: CGFloat = 40
 
     var body: some View {
         if let now {
@@ -147,7 +149,8 @@ struct AlertContentView: View {
         }
         .foregroundStyle(Color(palette.text))
         .multilineTextAlignment(.center)
-        .padding(40)
+        .padding(.horizontal, 40)
+        .padding(.vertical, verticalPadding)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 
@@ -164,8 +167,10 @@ struct AlertContentView: View {
         return AlertCountdown.joinTitle(for: AlertCountdown.phase(start: meeting.start, end: meeting.end, now: now))
     }
 
+    /// Each snooze duration once, so two that read the same never make two identical buttons, then
+    /// snoozing until the event while it's still ahead.
     private func snoozeOptions(nextStart: Date?) -> [AlertSnoozeOption] {
-        var options = session.snoozeDurations.enumerated().map { index, duration in
+        var options = AlertCountdown.snoozeChoices(session.snoozeDurations).enumerated().map { index, duration in
             AlertSnoozeOption(
                 id: "duration-\(index)",
                 label: AlertCountdown.snoozeLabel(duration),

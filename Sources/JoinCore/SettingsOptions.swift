@@ -4,9 +4,6 @@ import Foundation
 public enum SettingsOptions {
     // MARK: Full-screen alert
 
-    /// The General pane's section for the full-screen alert, and the Appearance pane's for its look and buttons.
-    public static let fullScreenAlertSectionTitle = "Full-screen alert"
-
     /// Preset lead times, in minutes. Anything else, including 2 and 10 from earlier builds, shows as
     /// Custom… while full-screen alerts are on.
     public static let leadTimeMinutes: [Int] = [0, 1, 3, 5]
@@ -48,12 +45,50 @@ public enum SettingsOptions {
         return "\(minutes) min"
     }
 
-    /// What the full-screen alert's snooze row offers: both snooze durations, then snoozing until the event.
-    public static func alertOffers(snoozeDurations: [TimeInterval]) -> [String] {
-        snoozeDurations.map { shortDurationTitle(minutes: wholeMinutes($0)) } + [AlertCountdown.snoozeUntilStartLabel]
-    }
+    // MARK: Full-Screen Alert pane
+
+    /// The pane's auto-close row, under Snooze & auto-close; "full-screen alerts" would repeat the pane's name.
+    public static let autoCloseRowTitle = "Close automatically"
+
+    /// Show Demo's help tags, on the Full-Screen Alert and Appearance panes, while it works and while a real
+    /// full-screen alert is on screen.
+    public static let showDemoHelp = "Shows a real full-screen alert with a sample event. Press Esc to close it."
+    public static let showDemoUnavailableHelp = "Close the current full-screen alert first."
+
+    // MARK: Appearance pane
+
+    /// The box of the alert's colors, under Style.
+    public static let colorsSectionTitle = "Colors"
+
+    /// Under the preview while Alert me is Never, which stops real full-screen alerts only.
+    public static let alertMeNeverNote = "Alert me is set to Never in Full-Screen Alert. Show Demo still works."
+
+    /// Restore Defaults' help tag, at the bottom right of the pane: it restores the look only.
+    public static let restoreAppearanceHelp = "Goes back to the Dark style. Your own style stays on the Custom card."
+
+    // MARK: Menu bar
+
+    /// The General pane's section for the menu bar item and its starting-soon pill.
+    public static let menuBarSectionTitle = "Menu bar"
+    /// The section's first row, a pop-up of `MenuBarDisplay` choices.
+    public static let menuBarShowsTitle = "Shows"
 
     // MARK: Starting soon
+
+    /// The Menu bar section's row with the pill's preview and when it appears.
+    public static let startingSoonRowTitle = "Starting soon"
+    public static let startingSoonHelp = "The menu bar shows the event like this from then on. The panel highlights it at the same time."
+    /// VoiceOver names for the row's custom minutes field and its preview.
+    public static let startingSoonFieldLabel = "Minutes before the event"
+    public static let menuBarPreviewLabel = "Preview of the menu bar before an event"
+
+    /// The pill's color row (`StartingSoonPill.colorChoice`), a sibling of Starting soon, and the VoiceOver
+    /// names of its pop-up and well, and of the legacy Text row's.
+    public static let menuBarColorTitle = "Color"
+    public static let menuBarColorAccessibilityTitle = "Menu bar fill"
+    public static let menuBarColorWellLabel = "Menu bar fill color"
+    public static let menuBarTextAccessibilityTitle = "Menu bar text"
+    public static let menuBarTextWellLabel = "Menu bar text color"
 
     /// How long before a meeting the menu bar pill appears, in minutes. Anything else shows as Custom,
     /// within `StartingSoonPill.minuteRange`.

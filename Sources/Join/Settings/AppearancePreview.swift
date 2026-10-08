@@ -1,32 +1,34 @@
 import SwiftUI
 import JoinCore
 
-/// What the Settings preview draws behind the alert, standing in for the user's screen.
+/// What the Settings preview draws behind the alert, standing in for the user's screen: "Preview over".
 enum AppearancePreviewBackdrop: String, CaseIterable, Identifiable {
     case wallpaper
-    case lightApp
-    case darkApp
+    case lightWindow
+    case darkWindow
 
     var id: String { rawValue }
 
     var title: String {
         switch self {
         case .wallpaper: return "Wallpaper"
-        case .lightApp: return "Light app"
-        case .darkApp: return "Dark app"
+        case .lightWindow: return "Light window"
+        case .darkWindow: return "Dark window"
         }
     }
 }
 
 /// The real alert content, zoomed in, over a sample screen. A window can't blur what's behind it
 /// inside itself, so the sample screen is drawn already blurred and the material is a plain layer.
+/// Cropped close to the alert's content, which leaves about 12 pt of backdrop above and below it.
 @MainActor
 struct AppearancePreview: View {
     let appearance: AlertAppearance
     let backdrop: AppearancePreviewBackdrop
     let snoozeDurations: [TimeInterval]
 
-    private static let scale: CGFloat = 0.52
+    private static let scale: CGFloat = 0.56
+    private static let height: CGFloat = 236
 
     var body: some View {
         let shape = RoundedRectangle(cornerRadius: 10, style: .continuous)
@@ -38,13 +40,13 @@ struct AppearancePreview: View {
                     Color(material)
                 }
                 AlertTintAndScrim(appearance: appearance, scrimSize: CGSize(width: 560, height: 340))
-                AlertContentView(session: session, now: Self.sampleNow, isInteractive: false)
+                AlertContentView(session: session, now: Self.sampleNow, isInteractive: false, verticalPadding: 0)
                     .frame(width: size.width / Self.scale, height: size.height / Self.scale)
                     .scaleEffect(Self.scale)
                     .frame(width: size.width, height: size.height)
             }
         }
-        .frame(height: 320)
+        .frame(height: Self.height)
         .clipShape(shape)
         .overlay(shape.strokeBorder(Color(nsColor: .separatorColor), lineWidth: 0.5))
         .allowsHitTesting(false)
@@ -71,7 +73,7 @@ struct AppearancePreview: View {
     private static var sampleMeeting: Meeting {
         Meeting(
             id: "preview",
-            title: "Hello, I’m a demo event",
+            title: MenuBarPresenter.demoEventTitle,
             start: sampleStart,
             end: sampleStart.addingTimeInterval(3600),
             calendarTitle: "Work",
@@ -103,8 +105,8 @@ private struct AppearancePreviewScreen: View {
     private var base: Color {
         switch backdrop {
         case .wallpaper: return Color(RGBA(rgb: 0x2A1640))
-        case .lightApp: return Color(RGBA(rgb: 0xECECF0))
-        case .darkApp: return Color(RGBA(rgb: 0x17181C))
+        case .lightWindow: return Color(RGBA(rgb: 0xECECF0))
+        case .darkWindow: return Color(RGBA(rgb: 0x17181C))
         }
     }
 
@@ -121,7 +123,7 @@ private struct AppearancePreviewScreen: View {
             .frame(width: 800, height: 440, alignment: .topLeading)
             .offset(x: -60, y: -60)
             .blur(radius: 44)
-        case .lightApp:
+        case .lightWindow:
             ZStack(alignment: .topLeading) {
                 block(50, 26, 580, 290, 0xFFFFFF, radius: 10)
                     .shadow(color: .black.opacity(0.15), radius: 15, y: 8)
@@ -134,7 +136,7 @@ private struct AppearancePreviewScreen: View {
                 block(320, 200, 120, 24, 0x2F7CF6, radius: 6)
             }
             .blur(radius: 12)
-        case .darkApp:
+        case .darkWindow:
             ZStack(alignment: .topLeading) {
                 block(40, 20, 600, 300, 0x282C34, radius: 10)
                 block(70, 50, 180, 8, 0xC678DD)

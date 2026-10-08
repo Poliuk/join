@@ -22,7 +22,7 @@ Join! watches the calendars on your Mac and, a few minutes before each meeting, 
 - **One-click Join** for Google Meet, Zoom, Microsoft Teams and Webex links found in the event, and **Directions** in Apple Maps for in-person meetings.
 - **Choose what counts**: tick the calendars Join! watches, and decide what happens to events nobody else is invited to (focus time, reminders you add for yourself) and to out-of-office events: show and alert, show in the list only, or exclude.
 - **Pause full-screen alerts** for an hour, until tomorrow, or until you resume. Or set **Alert me** to **Never** to turn them off and keep just the menu bar item and its panel.
-- **Configurable** lead time, snooze durations, auto-close, sound, and the full-screen alert's look: four presets, backdrop, tint, text and button colors (automatic by default), with contrast warnings, a live preview and a demo. The starting-soon pill's colors, and how long before a meeting it appears, are configurable too.
+- **Configurable** lead time, snooze durations, auto-close and sound, and the full-screen alert's look: four styles plus a Custom one that keeps your own, a light or dark backdrop, and tint, event text and button colors picked from named swatches or any color, with contrast warnings, a live preview and a demo. The starting-soon pill's color, and how long before a meeting it appears, are configurable too.
 - **Updates in the app**: once a day Join! asks GitHub whether there's a new release. When there is, the menu bar panel says so, and **Install** downloads it, checks it, replaces the app and relaunches. A switch in Settings turns the daily check off.
 
 Works with any calendar your Mac knows about (Google, iCloud, Exchange, Outlook, CalDAV) through macOS Calendar. Native Swift and SwiftUI, no third-party dependencies.
@@ -32,7 +32,7 @@ Works with any calendar your Mac knows about (Google, iCloud, Exchange, Outlook,
   <img src="docs/screenshots/panel-dark.jpg" alt="The same menu bar panel in dark mode" width="49%">
 </p>
 <p align="center">
-  <img src="docs/screenshots/settings.jpg" alt="The Appearance settings: a live preview of the full-screen alert, the four style presets, and its backdrop, tint, text and button colors" width="60%">
+  <img src="docs/screenshots/settings.jpg" alt="The Appearance settings: a live preview of the full-screen alert, five style cards (the four presets and Custom), and the Colors box with its backdrop, tint, event text and button colors" width="60%">
 </p>
 <p align="center"><sub>Screenshots show sample meetings, not a real calendar.</sub></p>
 
@@ -82,7 +82,7 @@ This builds `build/Join.app` for your Mac and opens it. Move it to `/Application
 
 1. macOS asks for calendar access. Approve it. If you miss the prompt, grant it in System Settings › Privacy & Security › Calendars.
 2. Click the menu bar item → the gear → **Settings** → **Calendars** and untick the calendars you don't want Join! to watch (holidays, birthdays). To leave out events nobody else is invited to, such as focus time, set **Events with no participants** to **Exclude** under **General** › **Events**.
-3. The full-screen alert appears 3 minutes before each meeting. Change that with **Alert me** under **General** › **Full-screen alert**.
+3. The full-screen alert appears 3 minutes before each meeting. Change that with **Alert me** under **Full-Screen Alert**.
 
 ### Google Calendar
 
@@ -111,7 +111,7 @@ If a meeting starts while its full-screen alert is due (the Mac was asleep, the 
 
 To take a break, click the bell in the menu bar panel and pick **Pause for 1 hour**, **Pause until tomorrow** or **Pause until I resume**. While full-screen alerts are paused, the menu bar shows a crossed-out bell and the panel says until when, with **Resume**. The pause survives a relaunch.
 
-To turn full-screen alerts off altogether, set **Alert me** to **Never** under **Settings › General › Full-screen alert**. The menu bar item, its starting-soon pill and the panel keep working, and **Show Demo** still shows one. **Show on** and **Sound** stay as they were, dimmed until you pick a time again to turn alerts back on.
+To turn full-screen alerts off altogether, set **Alert me** to **Never** under **Settings › Full-Screen Alert**. The menu bar item, its starting-soon pill and the panel keep working, and **Show Demo** still shows one. **Show on** and **Sound** stay as they were, dimmed until you pick a time again to turn alerts back on.
 
 ## Development
 

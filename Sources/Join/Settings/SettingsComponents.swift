@@ -15,6 +15,10 @@ enum SettingsPalette {
                                               dark: NSColor(srgbRed: 0x1E / 255, green: 0x1E / 255, blue: 0x20 / 255, alpha: 1)))
     static let fieldBorder = Color(nsColor: dynamic(light: NSColor(white: 0, alpha: 0.14), dark: NSColor(white: 1, alpha: 0.08)))
     static let connector = Color(nsColor: dynamic(light: NSColor(white: 0, alpha: 0.22), dark: NSColor(white: 1, alpha: 0.24)))
+    /// A warning's words: an orange that keeps 4.5:1 on the window and the boxes, darker than the system
+    /// orange in light mode, the system orange itself in dark mode.
+    static let warning = Color(nsColor: dynamic(light: NSColor(srgbRed: 0xA1 / 255, green: 0x4C / 255, blue: 0, alpha: 1),
+                                                dark: .systemOrange))
 
     private static func dynamic(light: NSColor, dark: NSColor) -> NSColor {
         NSColor(name: nil) { appearance in
@@ -160,16 +164,35 @@ struct SettingsSwitchRow: View {
     }
 }
 
-/// A small rounded label, as in "The full-screen alert offers 1 min · 5 min".
-struct SettingsChip: View {
-    let text: String
+/// A line that reads as an alert: an orange warning sign, then the message in orange. Contrast warnings
+/// sit directly under the row that causes them; Appearance's Never note sits under the preview.
+struct SettingsWarning: View {
+    let message: String
 
     var body: some View {
-        Text(text)
-            .font(.subheadline)
-            .padding(.horizontal, 8)
-            .frame(height: 20)
-            .background(SettingsPalette.chip, in: RoundedRectangle(cornerRadius: 5, style: .continuous))
+        HStack(alignment: .firstTextBaseline, spacing: 6) {
+            Image(systemName: "exclamationmark.triangle.fill")
+                .foregroundStyle(Color(nsColor: .systemOrange))
+                .accessibilityHidden(true)
+            Text(message)
+                .foregroundStyle(SettingsPalette.warning)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        .font(.system(size: 11))
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .accessibilityElement(children: .combine)
+    }
+}
+
+extension View {
+    /// A help tag, or none for nil.
+    @ViewBuilder
+    func helpTag(_ text: String?) -> some View {
+        if let text {
+            help(text)
+        } else {
+            self
+        }
     }
 }
 
@@ -288,6 +311,10 @@ struct SettingsMinutesChoice: View {
     /// Alert me only: the item after the presets, and whether it is chosen. `minutes` keeps the last
     /// time meanwhile. A preset or Custom… turns it off at once, Custom… with the kept time in its field.
     var never: (title: String, isChosen: Binding<Bool>)? = nil
+    /// Drawn before the pop-up, as General's Starting soon row draws the menu bar's preview.
+    var accessory: AnyView? = nil
+    /// The row's help tag.
+    var help: String? = nil
 
     @State private var customChosen = false
     @State private var draft = 0
@@ -297,19 +324,23 @@ struct SettingsMinutesChoice: View {
 
     var body: some View {
         SettingsRow(title: title, separator: separator) {
-            Picker(title, selection: selection) {
-                ForEach(presets, id: \.self) { minutes in
-                    Text(presetTitle(minutes)).tag(MinutesChoice.Item.preset(minutes))
+            HStack(spacing: 10) {
+                if let accessory { accessory }
+                Picker(title, selection: selection) {
+                    ForEach(presets, id: \.self) { minutes in
+                        Text(presetTitle(minutes)).tag(MinutesChoice.Item.preset(minutes))
+                    }
+                    if let never {
+                        Text(never.title).tag(MinutesChoice.Item.never)
+                    }
+                    Divider()
+                    Text("Custom…").tag(MinutesChoice.Item.custom)
                 }
-                if let never {
-                    Text(never.title).tag(MinutesChoice.Item.never)
-                }
-                Divider()
-                Text("Custom…").tag(MinutesChoice.Item.custom)
+                .labelsHidden()
+                .fixedSize()
             }
-            .labelsHidden()
-            .fixedSize()
         }
+        .helpTag(help)
         .onAppear {
             draft = minutes
             customChosen = rule.opensAsCustom(minutes: minutes, neverChosen: isNever)

@@ -3,6 +3,8 @@ import ServiceManagement
 import SwiftUI
 import JoinCore
 
+/// The app and its menu bar item: Open at login, the Menu bar section with the starting-soon pill, which
+/// events count, and updates. The full-screen alert has its own pane.
 @MainActor
 struct GeneralTab: View {
     @Environment(AppModel.self) private var model
@@ -10,6 +12,9 @@ struct GeneralTab: View {
     /// approving Join! in System Settings clears the hint. Never read or written in a fixture run.
     @State private var launchAtLogin = false
     @State private var launchAtLoginError: String?
+
+    /// Whether the menu bar item's contrast warning has been announced, or was already shown.
+    @State private var announcedPillWarning = false
 
     var body: some View {
         @Bindable var preferences = model.preferences
@@ -24,8 +29,13 @@ struct GeneralTab: View {
                         .fixedSize(horizontal: false, vertical: true)
                         .padding(.bottom, 8)
                 }
-                SettingsRow(title: "Menu bar") {
-                    Picker("Menu bar", selection: $preferences.menuBarDisplay) {
+            }
+
+            // What the menu bar item shows, and how it looks once an event is starting soon. The preview
+            // follows Shows, right above it.
+            SettingsSection(title: SettingsOptions.menuBarSectionTitle) {
+                SettingsRow(title: SettingsOptions.menuBarShowsTitle, separator: false) {
+                    Picker(SettingsOptions.menuBarShowsTitle, selection: $preferences.menuBarDisplay) {
                         ForEach(MenuBarDisplay.allCases, id: \.self) { display in
                             Text(display.title).tag(display)
                         }
@@ -33,64 +43,7 @@ struct GeneralTab: View {
                     .labelsHidden()
                     .fixedSize()
                 }
-            }
-
-            SettingsSection(title: SettingsOptions.fullScreenAlertSectionTitle) {
-                // Custom lead times save on Return or when the field loses focus, so editing
-                // "3" → "35" → "5" can't briefly mean 35 minutes and fire alerts early. Never leaves the
-                // rows below in view but dims and disables them, by the user's choice; their values stay
-                // as they were, and picking a time brings them back.
-                let alertsOn = preferences.fullScreenAlertsEnabled
-                SettingsMinutesChoice(
-                    title: "Alert me",
-                    separator: false,
-                    presets: SettingsOptions.leadTimeMinutes,
-                    range: SettingsOptions.customLeadTimeRange,
-                    presetTitle: SettingsOptions.leadTimeTitle(minutes:),
-                    unit: SettingsOptions.minutesBeforeUnit,
-                    fieldLabel: "Minutes before the event",
-                    minutes: leadMinutes(preferences),
-                    never: (SettingsOptions.leadTimeNeverTitle, alertsOff(preferences))
-                )
-                SettingsRow(title: "Show on", tone: alertsOn ? .primary : .disabled) {
-                    Picker("Show on", selection: $preferences.alertScreens) {
-                        ForEach(AlertScreens.allCases, id: \.self) { choice in
-                            Text(choice.displayName).tag(choice)
-                        }
-                    }
-                    .labelsHidden()
-                    .fixedSize()
-                    .disabled(!alertsOn)
-                }
-                SettingsRow(title: "Sound", tone: alertsOn ? .primary : .disabled) {
-                    HStack(spacing: 8) {
-                        Button {
-                            playSound(preferences.soundName)
-                        } label: {
-                            Image(systemName: "play.fill")
-                                .font(.system(size: 9))
-                                .frame(width: 12)
-                        }
-                        .help("Play the sound")
-                        .accessibilityLabel("Play the sound")
-                        .disabled(preferences.soundName == nil)
-                        Picker("Sound", selection: soundSelection(preferences)) {
-                            Text("None").tag("")
-                            Divider()
-                            ForEach(soundNames(including: preferences.soundName), id: \.self) { name in
-                                Text(name).tag(name)
-                            }
-                        }
-                        .labelsHidden()
-                        .fixedSize()
-                    }
-                    .disabled(!alertsOn)
-                }
-                // Only while a sound is chosen. Hiding it keeps the stored choice, so picking a
-                // sound again brings the switch back as it was.
-                if preferences.soundName != nil {
-                    SettingsSwitchRow(title: "Repeat until it's closed", isOn: $preferences.soundRepeats, indented: true, enabled: alertsOn)
-                }
+                startingSoonRows
             }
 
             EventsSection()
@@ -103,7 +56,11 @@ struct GeneralTab: View {
             }
         }
         .padding(SettingsMetrics.panePadding)
-        .onAppear { refreshLaunchAtLogin() }
+        .onAppear {
+            refreshLaunchAtLogin()
+            announcedPillWarning = pill.contrastWarning(accent: accent) != nil
+        }
+        .task(id: pill) { await announcePillWarning() }
         .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
             refreshLaunchAtLogin()
         }
@@ -149,41 +106,76 @@ struct GeneralTab: View {
         }
     }
 
-    // MARK: Lead time
+    // MARK: Menu bar
 
-    private func leadMinutes(_ preferences: Preferences) -> Binding<Int> {
-        Binding(
-            get: { Int(preferences.leadTime) / 60 },
-            set: { preferences.leadTime = TimeInterval($0 * 60) }
+    private var pill: StartingSoonPill { model.preferences.startingSoonPill }
+
+    /// The system accent as the pill draws it now.
+    private var accent: RGBA { NSColor.controlAccentColor.rgba }
+
+    private func updatePill(_ change: (inout StartingSoonPill) -> Void) {
+        var updated = model.preferences.startingSoonPill
+        change(&updated)
+        model.preferences.startingSoonPill = updated
+    }
+
+    /// When the pill replaces the countdown, with the menu bar's preview beside it; its color, a sibling
+    /// row since it doesn't depend on the time; and a Text row only while an earlier build's text color is
+    /// stored. The contrast warning sits under them.
+    @ViewBuilder
+    private var startingSoonRows: some View {
+        SettingsMinutesChoice(
+            title: SettingsOptions.startingSoonRowTitle,
+            presets: SettingsOptions.startingSoonMinutes,
+            range: StartingSoonPill.minuteRange,
+            presetTitle: SettingsOptions.startingSoonTitle(minutes:),
+            unit: SettingsOptions.minutesBeforeUnit,
+            fieldLabel: SettingsOptions.startingSoonFieldLabel,
+            minutes: Binding(get: { pill.minutes }, set: { minutes in updatePill { $0.minutes = minutes } }),
+            accessory: AnyView(MenuBarPillPreview(pill: pill, display: model.preferences.menuBarDisplay)),
+            help: SettingsOptions.startingSoonHelp
         )
+
+        SettingsRow(title: SettingsOptions.menuBarColorTitle) {
+            SettingsColorChoice(
+                title: SettingsOptions.menuBarColorAccessibilityTitle,
+                wellLabel: SettingsOptions.menuBarColorWellLabel,
+                choice: StartingSoonPill.colorChoice,
+                automaticDot: .accent,
+                stored: { model.preferences.startingSoonPill.fill },
+                shown: { model.preferences.startingSoonPill.resolvedFill(accent: accent) },
+                pick: { item in updatePill { $0.pickColor(item, accent: accent) } },
+                setColor: { color in updatePill { $0.setFillColor(color) } }
+            )
+        }
+
+        if pill.showsLegacyText, let text = pill.text {
+            SettingsRow(title: LegacyTextRow.title) {
+                SettingsLegacyTextChoice(
+                    title: SettingsOptions.menuBarTextAccessibilityTitle,
+                    wellLabel: SettingsOptions.menuBarTextWellLabel,
+                    color: text,
+                    clear: { updatePill { $0.setTextCustom(false, accent: accent) } },
+                    setColor: { color in updatePill { $0.text = color.withAlpha(1) } }
+                )
+            }
+        }
+
+        if let warning = pill.contrastWarning(accent: accent) {
+            SettingsWarning(message: warning)
+                .padding(.bottom, 10)
+        }
     }
 
-    /// True while Alert me is set to Never.
-    private func alertsOff(_ preferences: Preferences) -> Binding<Bool> {
-        Binding(
-            get: { !preferences.fullScreenAlertsEnabled },
-            set: { preferences.fullScreenAlertsEnabled = !$0 }
-        )
-    }
-
-    // MARK: Menu bar and sound
-
-    private func soundSelection(_ preferences: Preferences) -> Binding<String> {
-        Binding(
-            get: { preferences.soundName ?? "" },
-            set: { preferences.soundName = $0.isEmpty ? nil : $0 }
-        )
-    }
-
-    private func soundNames(including current: String?) -> [String] {
-        guard let current, !SystemSounds.names.contains(current) else { return SystemSounds.names }
-        return (SystemSounds.names + [current]).sorted()
-    }
-
-    private func playSound(_ name: String?) {
-        guard let sound = SystemSounds.sound(named: name) else { return }
-        sound.stop()
-        sound.play()
+    /// Tells VoiceOver when the menu bar item's contrast warning appears. Debounced, so dragging in the
+    /// color panel is read out once, with the ratio it settles on.
+    private func announcePillWarning() async {
+        try? await Task.sleep(for: .seconds(1))
+        guard !Task.isCancelled else { return }
+        let warning = pill.contrastWarning(accent: accent)
+        defer { announcedPillWarning = warning != nil }
+        guard let warning, !announcedPillWarning else { return }
+        AccessibilityNotification.Announcement(warning).post()
     }
 
     // MARK: Updates
@@ -241,5 +233,22 @@ struct GeneralTab: View {
                 .fixedSize(horizontal: false, vertical: true)
                 .padding(.bottom, 8)
         }
+    }
+}
+
+/// The menu bar item once an event is starting soon, as the menu bar draws it: the pill, with the text
+/// that Shows asks for, composed as the menu bar composes it.
+@MainActor
+private struct MenuBarPillPreview: View {
+    let pill: StartingSoonPill
+    let display: MenuBarDisplay
+
+    var body: some View {
+        let text = MenuBarPresenter.startingSoonPreviewText(display: display, pill: pill)
+        Image(nsImage: StatusItemImages.pill(text: text, style: pill))
+            .accessibilityElement()
+            .accessibilityLabel(SettingsOptions.menuBarPreviewLabel)
+            .accessibilityValue(text ?? "")
+            .accessibilityAddTraits(.isImage)
     }
 }

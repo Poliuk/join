@@ -40,10 +40,17 @@ public struct RGBA: Codable, Hashable, Sendable {
     }
 
     public var hexString: String {
-        func byte(_ component: Double) -> Int { Int((min(max(component, 0), 1) * 255).rounded()) }
-        let base = String(format: "#%02X%02X%02X", byte(red), byte(green), byte(blue))
-        return alpha < 1 ? base + String(format: "%02X", byte(alpha)) : base
+        let base = String(format: "#%02X%02X%02X", Self.byte(red), Self.byte(green), Self.byte(blue))
+        return alpha < 1 ? base + String(format: "%02X", Self.byte(alpha)) : base
     }
+
+    /// The color at 8 bits a channel, alpha always included, so two colors with equal keys look the same
+    /// (an alpha of 0.999 and one of 1 included, which `hexString` tells apart).
+    var eightBitKey: String {
+        String(format: "%02X%02X%02X%02X", Self.byte(red), Self.byte(green), Self.byte(blue), Self.byte(alpha))
+    }
+
+    private static func byte(_ component: Double) -> Int { Int((min(max(component, 0), 1) * 255).rounded()) }
 
     public static let white = RGBA(red: 1, green: 1, blue: 1)
     public static let black = RGBA(red: 0, green: 0, blue: 0)

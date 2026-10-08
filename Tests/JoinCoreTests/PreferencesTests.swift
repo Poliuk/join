@@ -24,6 +24,7 @@ final class PreferencesTests: XCTestCase {
         XCTAssertNil(preferences.enabledCalendarIDs)
         XCTAssertEqual(preferences.eventsWithoutParticipants, .showAndAlert)
         XCTAssertEqual(preferences.appearance, .default)
+        XCTAssertNil(preferences.customAppearance)
         XCTAssertEqual(preferences.outOfOfficeEvents, .listOnly)
         XCTAssertEqual(preferences.outOfOfficeKeywords, OutOfOfficeDetector.defaultKeywords)
         XCTAssertEqual(preferences.startingSoonPill, .default)
@@ -197,68 +198,107 @@ final class PreferencesTests: XCTestCase {
         XCTAssertEqual(preferences.snoozeDurations, [120, 600])
     }
 
+    /// Appearance's Restore Defaults puts back the look only: since 1.2.0 snooze, auto-close and the pill
+    /// live on other panes, and the Custom card keeps the user's look.
     @MainActor
-    func testResetAppearance() {
+    func testRestoreDefaultsRestoresTheLookOnly() {
         let preferences = Preferences(defaults: defaults)
-        preferences.appearance.textColor = .black
-        preferences.resetAppearance()
-        XCTAssertEqual(preferences.appearance, .default)
-    }
-
-    @MainActor
-    func testAnyAppearancePaneSettingEnablesRestoreDefaults() {
-        let preferences = Preferences(defaults: defaults)
-        XCTAssertTrue(preferences.appearancePaneIsDefault)
-
-        let changes: [(String, @MainActor (Preferences) -> Void)] = [
-            ("appearance", { $0.appearance.textColor = .black }),
-            ("first snooze button", { $0.snoozeDurations = [180, 300] }),
-            ("second snooze button", { $0.snoozeDurations = [60, 600] }),
-            ("auto-close off", { $0.autoCloseEnabled = false }),
-            ("auto-close time", { $0.autoCloseAfter = 30 * 60 }),
-            ("starting-soon pill", { $0.startingSoonPill.minutes = 10 }),
-        ]
-        for (name, change) in changes {
-            change(preferences)
-            XCTAssertFalse(preferences.appearancePaneIsDefault, name)
-            preferences.resetAppearancePane()
-            XCTAssertTrue(preferences.appearancePaneIsDefault, name)
-        }
-    }
-
-    @MainActor
-    func testRestoringTheAppearancePaneLeavesTheOtherPanes() {
-        let preferences = Preferences(defaults: defaults)
-        preferences.appearance = AlertAppearancePreset.midnight.appearance
+        let custom = AlertAppearance(blurMode: .light, join: AlertButtonColors(fill: RGBA(rgb: 0x2563EB)))
+        let pill = StartingSoonPill(minutes: 10, fill: RGBA(rgb: 0xFFD60A), text: .black)
+        preferences.appearance = custom
         preferences.snoozeDurations = [180, 600]
         preferences.autoCloseAfter = 30 * 60
         preferences.autoCloseEnabled = false
-        preferences.startingSoonPill = StartingSoonPill(minutes: 10, fill: RGBA(rgb: 0xFFD60A), text: .black)
+        preferences.startingSoonPill = pill
         preferences.leadTime = 5 * 60
         preferences.fullScreenAlertsEnabled = false
-        preferences.alertScreens = .pointer
         preferences.soundName = "Glass"
-        preferences.soundRepeats = true
-        preferences.outOfOfficeEvents = .exclude
-        preferences.outOfOfficeKeywords = ["away"]
+        XCTAssertFalse(preferences.appearance.isDefault)
 
-        preferences.resetAppearancePane()
+        preferences.resetAppearance()
+        XCTAssertTrue(preferences.appearance.isDefault)
 
         let reopened = Preferences(defaults: defaults)
         XCTAssertEqual(reopened.appearance, .default)
-        XCTAssertEqual(reopened.snoozeDurations, Preferences.defaultSnoozeDurations)
-        XCTAssertTrue(reopened.autoCloseEnabled)
-        XCTAssertEqual(reopened.autoCloseAfter, Preferences.defaultAutoCloseAfter)
-        XCTAssertEqual(reopened.startingSoonPill, .default)
-        XCTAssertTrue(reopened.appearancePaneIsDefault)
-
+        XCTAssertTrue(reopened.appearance.isDefault)
+        XCTAssertEqual(reopened.customAppearance, custom, "the Custom card keeps the look")
+        XCTAssertEqual(reopened.snoozeDurations, [180, 600])
+        XCTAssertFalse(reopened.autoCloseEnabled)
+        XCTAssertEqual(reopened.autoCloseAfter, 30 * 60)
+        XCTAssertEqual(reopened.startingSoonPill, pill)
         XCTAssertEqual(reopened.leadTime, 5 * 60)
         XCTAssertFalse(reopened.fullScreenAlertsEnabled)
-        XCTAssertEqual(reopened.alertScreens, .pointer)
         XCTAssertEqual(reopened.soundName, "Glass")
-        XCTAssertTrue(reopened.soundRepeats)
-        XCTAssertEqual(reopened.outOfOfficeEvents, .exclude)
-        XCTAssertEqual(reopened.outOfOfficeKeywords, ["away"])
+    }
+
+    @MainActor
+    func testTheCustomCardKeepsTheLastLookOfTheUsersOwn() {
+        let preferences = Preferences(defaults: defaults)
+        preferences.applyCustomAppearance()
+        XCTAssertEqual(preferences.appearance, .default, "nothing to restore yet")
+
+        preferences.appearance.blurMode = .light
+        XCTAssertNil(preferences.customAppearance, "the Light preset isn't a look of one's own")
+        preferences.appearance.pick(.swatch(AlertColorRow.joinChoice.swatches[2]), for: .joinButton)
+        let blueOnLight = preferences.appearance
+        XCTAssertEqual(blueOnLight.style, .custom)
+        XCTAssertEqual(preferences.customAppearance, blueOnLight, "editing a color saves it to the Custom card")
+
+        preferences.appearance = AlertAppearancePreset.midnight.appearance
+        XCTAssertEqual(preferences.customAppearance, blueOnLight, "a preset click leaves it")
+        preferences.applyCustomAppearance()
+        XCTAssertEqual(preferences.appearance, blueOnLight, "clicking the card restores it")
+
+        preferences.appearance.pick(.swatch(AlertColorRow.tintChoice.swatches[3]), for: .tint)
+        let plum = preferences.appearance
+        XCTAssertEqual(preferences.customAppearance, plum)
+        XCTAssertEqual(Preferences(defaults: defaults).customAppearance, plum, "persisted")
+    }
+
+    /// The user's blue Join on Light blur, saved by 1.1, opens on the Custom card.
+    @MainActor
+    func testTheCustomCardIsSeededFromAStoredLookOfTheUsersOwn() throws {
+        let stored = #"{"version":2,"blurMode":"light","tintStrength":0.35,"join":{"fill":{"red":0.1450980392156863,"green":0.38823529411764707,"blue":0.9215686274509803,"alpha":1},"fillOpacity":1},"dismissAndSnooze":{"fillOpacity":1}}"#
+        defaults.set(Data(stored.utf8), forKey: Preferences.Keys.appearance)
+        let preferences = Preferences(defaults: defaults)
+        XCTAssertEqual(preferences.appearance.style, .custom)
+        XCTAssertEqual(preferences.customAppearance, preferences.appearance)
+        XCTAssertNotNil(defaults.data(forKey: Preferences.Keys.customAppearance), "saved at once, so a preset click can't lose it")
+
+        preferences.appearance = AlertAppearancePreset.dark.appearance
+        XCTAssertEqual(Preferences(defaults: defaults).customAppearance?.join.fill, RGBA(rgb: 0x2563EB))
+    }
+
+    /// 1.1's Fill opacity at 97 % on Dark is a look of the user's own, one 8-bit step from Dark's buttons.
+    @MainActor
+    func testTheCustomCardIsSeededFromAStoredTranslucentAutomaticFill() throws {
+        var stored = try JSONSerialization.jsonObject(with: JSONEncoder().encode(AlertAppearance.default)) as? [String: Any] ?? [:]
+        stored["version"] = 2
+        stored["dismissAndSnooze"] = ["fillOpacity": 0.97]
+        defaults.set(try JSONSerialization.data(withJSONObject: stored), forKey: Preferences.Keys.appearance)
+        let preferences = Preferences(defaults: defaults)
+        XCTAssertEqual(preferences.appearance.style, .custom)
+        XCTAssertEqual(preferences.appearance.palette.buttonFill.hexString, "#FFFFFF28")
+        XCTAssertEqual(preferences.customAppearance, preferences.appearance)
+    }
+
+    @MainActor
+    func testNoCustomLookWhileTheStoredLookIsAPreset() throws {
+        var oldHighContrast = try JSONSerialization.jsonObject(
+            with: JSONEncoder().encode(AlertAppearancePreset.earlierDefinitions[0].appearance)
+        ) as? [String: Any] ?? [:]
+        oldHighContrast["version"] = 2
+        defaults.set(try JSONSerialization.data(withJSONObject: oldHighContrast), forKey: Preferences.Keys.appearance)
+        let preferences = Preferences(defaults: defaults)
+        XCTAssertEqual(preferences.appearance, AlertAppearancePreset.highContrast.appearance)
+        XCTAssertNil(preferences.customAppearance)
+        XCTAssertNil(defaults.object(forKey: Preferences.Keys.customAppearance))
+    }
+
+    @MainActor
+    func testAStoredCustomLookThatMatchesAPresetIsIgnored() throws {
+        defaults.set(try JSONEncoder().encode(AlertAppearancePreset.light.appearance), forKey: Preferences.Keys.customAppearance)
+        XCTAssertNil(Preferences(defaults: defaults).customAppearance)
     }
 
     @MainActor

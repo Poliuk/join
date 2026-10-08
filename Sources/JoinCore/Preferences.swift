@@ -24,6 +24,8 @@ public final class Preferences {
         public static let legacyShowsEventsWithoutParticipants = "showsEventsWithoutParticipants"
         public static let menuBarShowsNextEvent = "menuBarShowsNextEvent"
         public static let appearance = "appearance"
+        /// The look on Appearance's Custom card, absent until there's one.
+        public static let customAppearance = "customAppearance"
         public static let outOfOfficeEvents = "outOfOfficeEvents"
         /// 1.0 and 1.1 stored two switches for out-of-office events, read into `outOfOfficeEvents` until it
         /// is set: whether they alert, and whether the panel lists them.
@@ -59,6 +61,7 @@ public final class Preferences {
     @ObservationIgnored private var _eventsWithoutParticipants: EventVisibility
     @ObservationIgnored private var _menuBarShowsNextEvent: Bool
     @ObservationIgnored private var _appearance: AlertAppearance
+    @ObservationIgnored private var _customAppearance: AlertAppearance?
     @ObservationIgnored private var _outOfOfficeEvents: EventVisibility
     @ObservationIgnored private var _outOfOfficeKeywords: [String]
     @ObservationIgnored private var _startingSoonPill: StartingSoonPill
@@ -92,6 +95,16 @@ public final class Preferences {
         _menuBarShowsNextEvent = defaults.object(forKey: Keys.menuBarShowsNextEvent) as? Bool ?? true
         _appearance = defaults.data(forKey: Keys.appearance)
             .flatMap { try? JSONDecoder().decode(AlertAppearance.self, from: $0) } ?? .default
+        if let stored = defaults.data(forKey: Keys.customAppearance)
+            .flatMap({ try? JSONDecoder().decode(AlertAppearance.self, from: $0) }) {
+            _customAppearance = stored.matchingPreset == nil ? stored : nil
+        } else if _appearance.matchingPreset == nil {
+            // A look of the user's own, saved before the Custom card existed, becomes the card's.
+            _customAppearance = _appearance
+            defaults.set(try? JSONEncoder().encode(_appearance), forKey: Keys.customAppearance)
+        } else {
+            _customAppearance = nil
+        }
         _outOfOfficeEvents = defaults.string(forKey: Keys.outOfOfficeEvents).flatMap(EventVisibility.init(rawValue:))
             ?? Self.legacyOutOfOfficeEvents(in: defaults)
         _outOfOfficeKeywords = defaults.array(forKey: Keys.outOfOfficeKeywords) as? [String] ?? OutOfOfficeDetector.defaultKeywords
@@ -268,12 +281,32 @@ public final class Preferences {
         }
     }
 
+    /// How the full-screen alert looks. A look that matches no preset is kept as `customAppearance` too.
     public var appearance: AlertAppearance {
         get { access(keyPath: \.appearance); return _appearance }
         set {
             withMutation(keyPath: \.appearance) {
                 _appearance = newValue
                 defaults.set(try? JSONEncoder().encode(newValue), forKey: Keys.appearance)
+            }
+            if newValue.matchingPreset == nil, newValue != _customAppearance { customAppearance = newValue }
+        }
+    }
+
+    /// The look on Appearance's Custom card: the last one that matched no preset. A preset or Restore Defaults
+    /// leaves it as it is, so clicking the card brings it back (`applyCustomAppearance`). nil until there's
+    /// one, while the card shows a placeholder. Seeded on the first load from a stored look that matches no
+    /// preset; a stored one that matches a preset is ignored.
+    public var customAppearance: AlertAppearance? {
+        get { access(keyPath: \.customAppearance); return _customAppearance }
+        set {
+            withMutation(keyPath: \.customAppearance) {
+                _customAppearance = newValue
+                if let newValue {
+                    defaults.set(try? JSONEncoder().encode(newValue), forKey: Keys.customAppearance)
+                } else {
+                    defaults.removeObject(forKey: Keys.customAppearance)
+                }
             }
         }
     }
@@ -390,28 +423,16 @@ public final class Preferences {
         enabledCalendarIDs = set
     }
 
+    /// Appearance's Restore Defaults, disabled while `appearance.isDefault`: the Dark style and its default
+    /// colors. Only the look: the Custom card's saved look, the snooze buttons, auto-close and the menu bar
+    /// pill stay as they are.
     public func resetAppearance() {
         appearance = .default
     }
 
-    /// Whether everything the Appearance pane sets is at its default: the full-screen alert's look,
-    /// both snooze durations, auto-close and the starting-soon pill. That pane's Restore Defaults is
-    /// disabled while this holds.
-    public var appearancePaneIsDefault: Bool {
-        appearance.isDefault
-            && snoozeDurations == Self.defaultSnoozeDurations
-            && autoCloseEnabled
-            && autoCloseAfter == Self.defaultAutoCloseAfter
-            && startingSoonPill.isDefault
-    }
-
-    /// The Appearance pane's Restore Defaults: puts back everything `appearancePaneIsDefault` checks,
-    /// and nothing the other panes set.
-    public func resetAppearancePane() {
-        resetAppearance()
-        snoozeDurations = Self.defaultSnoozeDurations
-        autoCloseEnabled = true
-        autoCloseAfter = Self.defaultAutoCloseAfter
-        startingSoonPill = .default
+    /// The Custom card's click: puts its saved look back. Does nothing while there's none.
+    public func applyCustomAppearance() {
+        guard let customAppearance else { return }
+        appearance = customAppearance
     }
 }

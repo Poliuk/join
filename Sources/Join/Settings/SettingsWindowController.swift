@@ -2,24 +2,30 @@ import AppKit
 import SwiftUI
 import JoinCore
 
+/// The toolbar's panes, one subject each. The raw values are what the `openSettings` script hook takes.
 enum SettingsPane: String, CaseIterable {
     case general
     case calendars
+    case fullScreenAlert
     case appearance
 
+    /// Title-style, as macOS toolbar labels are.
     var title: String {
         switch self {
         case .general: return "General"
         case .calendars: return "Calendars"
+        case .fullScreenAlert: return "Full-Screen Alert"
         case .appearance: return "Appearance"
         }
     }
 
+    /// The bell is the panel's Pause full-screen alerts symbol.
     var symbolName: String {
         switch self {
         case .general: return "gearshape"
         case .calendars: return "calendar"
-        case .appearance: return "circle.righthalf.filled"
+        case .fullScreenAlert: return "bell"
+        case .appearance: return "paintpalette"
         }
     }
 }
@@ -66,6 +72,8 @@ final class SettingsWindowController: NSObject, NSWindowDelegate {
     func windowWillClose(_ notification: Notification) {
         // Ends editing, so a half-typed value is committed the same way as when the field loses focus.
         window?.makeFirstResponder(nil)
+        // The shared color panel, opened from a color well in Settings, would outlive the window.
+        if NSColorPanel.sharedColorPanelExists { NSColorPanel.shared.close() }
     }
 }
 
@@ -124,6 +132,9 @@ private final class SettingsTabViewController: NSTabViewController {
     override func tabView(_ tabView: NSTabView, willSelect tabViewItem: NSTabViewItem?) {
         // Commits a field being edited and keeps focus from jumping to the next pane's first field.
         view.window?.makeFirstResponder(nil)
+        // A pane keeps its views while hidden, but its color well stops taking the shared panel's colors, so
+        // the panel would stay open changing nothing.
+        if NSColorPanel.sharedColorPanelExists { NSColorPanel.shared.close() }
         super.tabView(tabView, willSelect: tabViewItem)
     }
 
@@ -205,6 +216,7 @@ private final class SettingsPaneController: NSViewController {
         switch pane {
         case .general: GeneralTab()
         case .calendars: CalendarsTab()
+        case .fullScreenAlert: FullScreenAlertTab()
         case .appearance: AppearanceTab()
         }
     }

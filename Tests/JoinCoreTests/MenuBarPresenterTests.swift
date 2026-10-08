@@ -24,6 +24,17 @@ final class MenuBarPresenterTests: XCTestCase {
         return status
     }
 
+    /// General's Starting soon preview reads as the menu bar would, for each Shows choice.
+    func testStartingSoonPreviewText() {
+        XCTAssertNil(MenuBarPresenter.startingSoonPreviewText(display: .iconOnly, pill: .default))
+        XCTAssertEqual(MenuBarPresenter.startingSoonPreviewText(display: .time, pill: .default), "Next in 4 min")
+        XCTAssertEqual(MenuBarPresenter.startingSoonPreviewText(display: .titleAndTime, pill: .default), "Hello, I’m a demo event · in 4 min")
+        XCTAssertEqual(MenuBarPresenter.startingSoonPreviewText(display: .time, pill: StartingSoonPill(minutes: 3)), "Next in 3 min",
+                       "within the pill's own window")
+        XCTAssertEqual(MenuBarPresenter.startingSoonPreviewText(display: .time, pill: StartingSoonPill(minutes: 60)), "Next in 4 min")
+        XCTAssertLessThanOrEqual(MenuBarPresenter.demoEventTitle.count, MenuBarPresenter.maxTitleLength, "shown whole, like a short title")
+    }
+
     func testLaterTodayCountsDown() {
         let today = status(at: F.date(6, 10, 45))
         XCTAssertEqual(today.kind, .later)

@@ -50,8 +50,16 @@ final class AlertCountdownTests: XCTestCase {
             XCTAssertEqual(AlertCountdown.snoozeAccessibilityLabel(c.seconds), c.spoken, "\(c.seconds)s")
         }
         let presets = SettingsOptions.snoozeMinutes.map { TimeInterval($0 * 60) }
-        XCTAssertEqual(Array(SettingsOptions.alertOffers(snoozeDurations: presets).dropLast()),
-                       presets.map(AlertCountdown.snoozeLabel), "Settings' chips preview the alert's buttons")
+        XCTAssertEqual(presets.map(AlertCountdown.snoozeLabel), SettingsOptions.snoozeMinutes.map(SettingsOptions.shortDurationTitle(minutes:)))
+    }
+
+    /// Both snooze buttons set to the same time would show two identical buttons.
+    func testSnoozeChoicesShowEachDurationOnce() {
+        XCTAssertEqual(AlertCountdown.snoozeChoices([60, 300]), [60, 300])
+        XCTAssertEqual(AlertCountdown.snoozeChoices([300, 60]), [300, 60], "in Settings' order")
+        XCTAssertEqual(AlertCountdown.snoozeChoices([300, 300]), [300])
+        XCTAssertEqual(AlertCountdown.snoozeChoices([60, 89]), [60], "both read \"1 min\"")
+        XCTAssertEqual(AlertCountdown.snoozeChoices([]), [])
     }
 
     func testSnoozeUntilStartLabels() {

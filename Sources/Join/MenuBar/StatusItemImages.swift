@@ -2,7 +2,8 @@ import AppKit
 import JoinCore
 
 /// Images for the menu bar item. Plain states use template images so the menu bar tints them;
-/// the "starting soon" pill is drawn in full color, the system accent unless Settings changes it.
+/// the "starting soon" pill is drawn in full color, the system accent unless Settings › General ›
+/// Menu bar › Color picks another.
 @MainActor
 enum StatusItemImages {
     static let iconConfiguration = NSImage.SymbolConfiguration(pointSize: 14, weight: .regular)
@@ -82,8 +83,9 @@ enum StatusItemImages {
         return image
     }
 
-    /// The pill in the colors `pill` asks for, with the system accent for its automatic fill. The
-    /// label is worked out when the pill is drawn, against the accent as drawn in that appearance.
+    /// The pill in the colors `pill` asks for, with the system accent for its automatic fill. The label
+    /// is automatic, unless an earlier build stored a text color: worked out when the pill is drawn,
+    /// against the accent as drawn in that appearance. General's Starting soon row draws its preview here.
     static func pill(text: String?, style pill: StartingSoonPill) -> NSImage {
         let label = NSColor(name: nil) { appearance in
             var accent = RGBA.white

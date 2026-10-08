@@ -33,10 +33,31 @@ public struct MenuBarStatus: Equatable, Sendable {
 
 /// Pure presentation logic for the menu bar item and the shared wording of the menu bar panel.
 public enum MenuBarPresenter {
-    /// The default starting-soon window; Settings › Appearance can change it.
+    /// The default starting-soon window; Settings › General › Menu bar › Starting soon can change it.
     public static let startingSoonWindow: TimeInterval = 5 * 60
     public static let withinHourWindow: TimeInterval = 60 * 60
     public static let maxTitleLength = 24
+
+    /// The demo event's title, on Show Demo's full-screen alert and in Settings' previews.
+    public static let demoEventTitle = "Hello, I’m a demo event"
+
+    /// What General's Starting soon preview shows beside the pill's icon: the demo event starting in 4 minutes,
+    /// or sooner when the pill appears later than that, composed by `status` the way the menu bar composes it
+    /// ("Next in 4 min", or the title, truncated as there, and "· in 4 min"). nil when the menu bar shows the
+    /// icon only.
+    public static func startingSoonPreviewText(display: MenuBarDisplay, pill: StartingSoonPill) -> String? {
+        let now = Date(timeIntervalSinceReferenceDate: 0)
+        let start = now.addingTimeInterval(TimeInterval(min(4, pill.minutes) * 60))
+        let demo = Meeting(id: "demo", title: demoEventTitle, start: start, end: start.addingTimeInterval(60 * 60))
+        return status(
+            meetings: [demo],
+            now: now,
+            pauseState: .active,
+            showsNextEvent: display.showsNextEvent,
+            showsTitles: display.showsTitles,
+            startingSoonWindow: pill.window
+        ).text
+    }
 
     /// Precedence: paused > starting soon > in a meeting > within the hour > later, among the meetings
     /// in `focus`: a Maybe or unanswered meeting in progress steps aside for one you're attending inside it.

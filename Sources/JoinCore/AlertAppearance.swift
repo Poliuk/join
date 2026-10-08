@@ -41,13 +41,30 @@ public enum AlertButtonKind: String, CaseIterable, Sendable {
         }
     }
 
+    /// "Join", "Snooze & Dismiss": named in the order the alert stacks the snooze row and Dismiss.
     public var displayName: String {
         switch self {
         case .join: return "Join"
-        case .dismissAndSnooze: return "Dismiss & Snooze"
+        case .dismissAndSnooze: return "Snooze & Dismiss"
         }
     }
 
+    /// The Colors row that picks this kind's fill, with the kind's legacy Text row under it.
+    public var colorRow: AlertColorRow {
+        switch self {
+        case .join: return .joinButton
+        case .dismissAndSnooze: return .buttons
+        }
+    }
+
+    /// The legacy Text row's pop-up, for VoiceOver: "Join button text", "Snooze and Dismiss buttons text".
+    public var legacyTextAccessibilityTitle: String { colorRow.accessibilityTitle + " text" }
+
+    /// The legacy Text row's well: "Join button text color", "Snooze and Dismiss buttons text color".
+    public var legacyTextWellLabel: String { colorRow.accessibilityTitle + " text color" }
+
+    /// What the kind's fill opacity is clamped to. Settings now picks Join's fill at 100 %, so its range only
+    /// matters for a look saved by an earlier build; the Snooze and Dismiss buttons' swatches and well set theirs.
     public var fillOpacityRange: ClosedRange<Double> {
         switch self {
         case .join: return 0.4...1
@@ -88,6 +105,8 @@ public struct AlertAppearance: Hashable, Sendable {
 
     public static let defaultJoinFill = RGBA(rgb: 0xF5A524)
     public static let defaultTint = RGBA.black
+    /// Where Tint's Other… starts from None: a color none of the swatches has, so the well shows something new.
+    public static let otherTintSeed = RGBA(rgb: 0x7A5AF8)
     public static let minimumContrast = 4.5
 
     public subscript(button kind: AlertButtonKind) -> AlertButtonColors {
@@ -126,7 +145,7 @@ public enum AlertAppearancePreset: String, CaseIterable, Identifiable, Sendable 
                 blurMode: .dark,
                 tint: .black,
                 tintStrength: 0.7,
-                join: AlertButtonColors(text: .black, fill: RGBA(rgb: 0xFFD60A)),
+                join: AlertButtonColors(fill: RGBA(rgb: 0xFFD60A)),
                 dismissAndSnooze: AlertButtonColors(fill: .white, fillOpacity: 0.22)
             )
         case .midnight:
@@ -148,32 +167,108 @@ public enum AlertAppearancePreset: String, CaseIterable, Identifiable, Sendable 
         case .midnight: return (RGBA(rgb: 0x1C2754), .white, RGBA(rgb: 0x2563EB))
         }
     }
+
+    /// Preset definitions earlier builds saved, each loaded as today's preset: until 1.2.0, High contrast
+    /// stored a pure black Join label, where Automatic now gives near-black.
+    static let earlierDefinitions: [(appearance: AlertAppearance, preset: AlertAppearancePreset)] = [
+        (
+            AlertAppearance(
+                blurMode: .dark,
+                tint: .black,
+                tintStrength: 0.7,
+                join: AlertButtonColors(text: .black, fill: RGBA(rgb: 0xFFD60A)),
+                dismissAndSnooze: AlertButtonColors(fill: .white, fillOpacity: 0.22)
+            ),
+            .highContrast
+        ),
+    ]
+}
+
+/// The Style section's cards: the four presets, then Custom, which holds the user's own look.
+public enum AlertStyle: Hashable, Sendable, Identifiable {
+    case preset(AlertAppearancePreset)
+    case custom
+
+    public static let allCases: [AlertStyle] = AlertAppearancePreset.allCases.map(AlertStyle.preset) + [.custom]
+
+    public var id: String {
+        switch self {
+        case .preset(let preset): return preset.rawValue
+        case .custom: return "custom"
+        }
+    }
+
+    public var name: String {
+        switch self {
+        case .preset(let preset): return preset.name
+        case .custom: return "Custom"
+        }
+    }
+
+    /// The card's help tag: Dark says it's the default, and Custom explains itself until a custom look exists.
+    public func help(hasCustomLook: Bool) -> String? {
+        switch self {
+        case .preset(.dark): return "The default style."
+        case .preset: return nil
+        case .custom: return hasCustomLook ? nil : "Change any color below to make your own style."
+        }
+    }
 }
 
 extension AlertAppearance {
-    /// Equal as far as anyone can see: colors compared at 8 bits, opacities in whole percent, and
-    /// the tint strength ignored while there's no tint.
+    /// Equal as far as anyone can see: the same backdrop, and the same resolved colors (surface, event text,
+    /// Join label and fill, button label and fill) at 8 bits, alpha included. What's stored doesn't count, so
+    /// a custom color equal to the automatic one, or a tint strength while there's no tint, changes nothing.
+    /// Matching never rewrites what's stored: switching a pop-up to Other… starts from the color shown, which
+    /// would otherwise snap straight back to Automatic.
     public func isEquivalent(to other: AlertAppearance) -> Bool {
         fingerprint == other.fingerprint
     }
 
-    /// The preset this appearance looks like, or nil for a custom style.
+    /// The preset this appearance looks like, or nil for a look of the user's own.
     public var matchingPreset: AlertAppearancePreset? {
         AlertAppearancePreset.allCases.first { isEquivalent(to: $0.appearance) }
     }
 
-    public var isDefault: Bool { isEquivalent(to: .default) }
+    /// The Style card outlined: the matching preset's, or Custom while the look matches none.
+    public var style: AlertStyle {
+        matchingPreset.map(AlertStyle.preset) ?? .custom
+    }
+
+    /// Whether Appearance's Restore Defaults has nothing to put back, so it's disabled: the look is the Dark
+    /// style's, with no legacy Text row and no Colors row on Other… left over, except Join's: its Other…
+    /// stores the default Orange, which isn't checked, since the Join button shows Orange either way.
+    public var isDefault: Bool {
+        isEquivalent(to: .default)
+            && tint == nil
+            && textColor == nil
+            && join.text == nil
+            && dismissAndSnooze.text == nil
+            && dismissAndSnooze.fill == nil
+    }
 
     private var fingerprint: [String] {
-        func color(_ value: RGBA?) -> String { value?.hexString ?? "auto" }
-        func percent(_ value: Double) -> String { String(Int((value * 100).rounded())) }
-        return [
-            blurMode.rawValue,
-            tint.map { $0.hexString + "/" + percent(tintStrength) } ?? "none",
-            color(textColor),
-            color(join.text), color(join.fill), percent(Self.clamped(join.fillOpacity, to: .join)),
-            color(dismissAndSnooze.text), color(dismissAndSnooze.fill), percent(Self.clamped(dismissAndSnooze.fillOpacity, to: .dismissAndSnooze)),
-        ]
+        let palette = self.palette
+        return [blurMode.rawValue] + [
+            palette.surface, palette.text, palette.joinText, palette.joinFill, palette.buttonText, palette.buttonFill,
+        ].map(\.eightBitKey)
+    }
+
+    /// The Custom card's miniature, drawn like the presets' (`AlertAppearancePreset.swatch`): the backdrop
+    /// with its tint, the event text's color for the lines, and the Join fill for the bar.
+    public var swatch: (background: RGBA, line: RGBA, join: RGBA) {
+        var background = blurMode == .light ? RGBA(rgb: 0xE9E9EE) : RGBA(rgb: 0x2B2B30)
+        if let tint {
+            background = background.mixed(with: tint, amount: tintStrength * tint.alpha)
+        }
+        let palette = self.palette
+        return (background, palette.text.composited(over: background), palette.joinFill.composited(over: background))
+    }
+
+    /// The Backdrop control's segments: Dark blur and Light blur, and No blur only while a look saved by an
+    /// earlier build has it.
+    public var backdropChoices: [BlurMode] {
+        blurMode == .none ? [.dark, .light, .none] : [.dark, .light]
     }
 
     static func clamped(_ opacity: Double, to kind: AlertButtonKind) -> Double {
@@ -276,6 +371,9 @@ public struct AlertContrastWarning: Hashable, Sendable, Identifiable {
     }
 
     public var subject: Subject
+    /// The Colors row it shows directly under: Tint (below its Strength row) when the tint makes the automatic
+    /// event text hard to read, otherwise the subject's own row (a button's after its legacy Text row).
+    public var row: AlertColorRow
     public var ratio: Double
     public var message: String
 
@@ -285,36 +383,60 @@ public struct AlertContrastWarning: Hashable, Sendable, Identifiable {
     public static func format(_ ratio: Double) -> String {
         String(format: "%.1f:1", (ratio * 10).rounded(.down) / 10)
     }
+
+    /// The one template every contrast warning uses, the alert's and the menu bar's: "Event text may be hard
+    /// to read (3.2:1). Aim for 4.5:1, or choose Automatic." The advice names the fix, or, when the row is
+    /// already Automatic, what to try instead.
+    public static func message(subject: String, ratio: Double, advice: String) -> String {
+        "\(subject) may be hard to read (\(format(ratio))). \(advice)"
+    }
 }
 
 extension AlertAppearance {
-    /// Warnings for text that falls below WCAG's 4.5:1 for body text.
+    /// Warnings for text that falls below WCAG's 4.5:1 for body text, each worded for the row it shows under.
     public var contrastWarnings: [AlertContrastWarning] {
         let palette = self.palette
         var warnings: [AlertContrastWarning] = []
+
         let textRatio = palette.textContrast
         if textRatio < Self.minimumContrast {
-            let advice = textColor == nil ? "Aim for at least 4.5:1." : "Aim for at least 4.5:1, or set Text color to Automatic."
+            // Automatic text always reads on an untinted backdrop, so with Automatic the tint is the cause.
+            let (row, advice): (AlertColorRow, String) =
+                if textColor != nil { (.eventText, "Aim for 4.5:1, or choose Automatic.") }
+                else if tint != nil { (.tint, "Try a different tint strength.") }
+                else { (.eventText, "Aim for 4.5:1.") }
             warnings.append(AlertContrastWarning(
                 subject: .text,
+                row: row,
                 ratio: textRatio,
-                message: "Event text contrast is \(AlertContrastWarning.format(textRatio)) on this backdrop. \(advice)"
+                message: AlertContrastWarning.message(subject: "Event text", ratio: textRatio, advice: advice)
             ))
         }
+
+        // Every Join swatch reads with its automatic label, so only a legacy label or an Other… fill gets here.
         let joinRatio = palette.joinContrast
         if joinRatio < Self.minimumContrast {
+            let advice = join.text != nil ? "Aim for 4.5:1, or set its Text to Automatic." : "Try another color."
             warnings.append(AlertContrastWarning(
                 subject: .button(.join),
+                row: .joinButton,
                 ratio: joinRatio,
-                message: "The Join label contrast is \(AlertContrastWarning.format(joinRatio)). It may be hard to read; aim for at least 4.5:1."
+                message: AlertContrastWarning.message(subject: "The Join button", ratio: joinRatio, advice: advice)
             ))
         }
+
+        // The buttons' swatches are translucent, so on a swatch it's the tint behind them that falls short.
         let buttonRatio = palette.buttonContrast
         if buttonRatio < Self.minimumContrast {
+            let advice =
+                if dismissAndSnooze.text != nil { "Aim for 4.5:1, or set their Text to Automatic." }
+                else if tint != nil, selection(for: .buttons, otherPicked: false) != .other { "Try a different tint strength." }
+                else { "Try another color." }
             warnings.append(AlertContrastWarning(
                 subject: .button(.dismissAndSnooze),
+                row: .buttons,
                 ratio: buttonRatio,
-                message: "Dismiss and Snooze label contrast is \(AlertContrastWarning.format(buttonRatio)). It may be hard to read; aim for at least 4.5:1."
+                message: AlertContrastWarning.message(subject: "Snooze and Dismiss", ratio: buttonRatio, advice: advice)
             ))
         }
         return warnings
@@ -354,7 +476,7 @@ extension AlertAppearance {
         }
     }
 
-    /// Like the text, a fill switched to Custom keeps its look: the automatic Dismiss & Snooze fill
+    /// Like the text, a fill switched to Custom keeps its look: the automatic Snooze & Dismiss fill
     /// is a translucent white or black, so it becomes that color at the matching opacity, and the
     /// opacity is scaled back when switching to Automatic again.
     public mutating func setButtonFillCustom(_ custom: Bool, for kind: AlertButtonKind) {
@@ -393,12 +515,13 @@ extension AlertAppearance: Codable {
         case dismissAndSnooze
     }
 
-    private static let currentVersion = 2
+    /// 3 since 1.2.0's swatches; 2 is the same shape, loaded through `migratedToVersion3`.
+    private static let currentVersion = 3
 
     public init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         guard container.contains(.version) else {
-            self = try LegacyAlertAppearance(from: decoder).migrated
+            self = try LegacyAlertAppearance(from: decoder).migrated.migratedToVersion3()
             return
         }
         let fallback = AlertAppearance.default
@@ -410,6 +533,9 @@ extension AlertAppearance: Codable {
             join: try container.decodeIfPresent(AlertButtonColors.self, forKey: .join) ?? fallback.join,
             dismissAndSnooze: try container.decodeIfPresent(AlertButtonColors.self, forKey: .dismissAndSnooze) ?? fallback.dismissAndSnooze
         )
+        if ((try? container.decode(Int.self, forKey: .version)) ?? 0) < Self.currentVersion {
+            self = migratedToVersion3()
+        }
     }
 
     public func encode(to encoder: Encoder) throws {
@@ -421,6 +547,35 @@ extension AlertAppearance: Codable {
         try container.encodeIfPresent(textColor, forKey: .textColor)
         try container.encode(join, forKey: .join)
         try container.encode(dismissAndSnooze, forKey: .dismissAndSnooze)
+    }
+}
+
+extension AlertAppearance {
+    /// A look saved before 1.2.0's swatches (version 2, or the shape before it), as the Colors box can show it. First, a look that matches a preset,
+    /// by today's definition or an earlier build's, becomes today's preset exactly: otherwise High contrast's
+    /// old black Join label would leave a stray Text row. Then an automatic fill below 100 %, which the
+    /// Colors box can't show now that Fill opacity is gone, becomes Other… at the same visible alpha. Custom
+    /// label colors stay, each on its legacy Text row.
+    func migratedToVersion3() -> AlertAppearance {
+        if let preset = matchingPreset { return preset.appearance }
+        if let earlier = AlertAppearancePreset.earlierDefinitions.first(where: { isEquivalent(to: $0.appearance) }) {
+            return earlier.preset.appearance
+        }
+        var migrated = self
+        for kind in AlertButtonKind.allCases where migrated[button: kind].fill == nil
+            && Self.roundedPercent(Self.clamped(migrated[button: kind].fillOpacity, to: kind)) < 1 {
+            switch kind {
+            case .join:
+                migrated.setButtonFillCustom(true, for: .join)
+            case .dismissAndSnooze:
+                // Unrounded, unlike `setButtonFillCustom`: a whole percent of the automatic fill's 16 % or 7 %
+                // can change the alpha, and even round a look of the user's own into a preset's.
+                let automatic = Self.automaticButtonFill(isDark: migrated.palette.isDark)
+                migrated.dismissAndSnooze.fill = automatic.withAlpha(1)
+                migrated.dismissAndSnooze.fillOpacity = Self.clamped(migrated.dismissAndSnooze.fillOpacity, to: kind) * automatic.alpha
+            }
+        }
+        return migrated
     }
 }
 
