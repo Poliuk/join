@@ -2,10 +2,14 @@ import Foundation
 import Testing
 @testable import JoinCore
 
+/// The menu bar's starting-soon pill: its window, its colors and how it's stored.
 struct StartingSoonPillTests {
-    private let blueAccent = RGBA(rgb: 0x007AFF)
-    private let yellow = RGBA(rgb: 0xFFD60A)
-    private let navy = RGBA(rgb: 0x1E3A8A)
+    static let blueAccent = RGBA(rgb: 0x007AFF)
+    static let yellowAccent = RGBA(rgb: 0xFFC600)
+    static let yellow = RGBA(rgb: 0xFFD60A)
+    static let green = RGBA(rgb: 0x34C759)
+    static let navy = RGBA(rgb: 0x1E3A8A)
+    static let darkText = StartingSoonPill.darkText
 
     @Test func defaultIsFiveMinutesInTheAccentColorWithWhiteText() {
         let pill = StartingSoonPill.default
@@ -13,46 +17,53 @@ struct StartingSoonPillTests {
         #expect(pill.window == 300)
         #expect(pill.fill == nil)
         #expect(pill.text == nil)
-        #expect(pill.resolvedFill(accent: blueAccent) == blueAccent)
-        #expect(pill.resolvedText(accent: blueAccent) == .white)
-        #expect(pill.contrastWarning(accent: blueAccent) == nil, "the accent with white text is never flagged")
+        #expect(pill.resolvedFill(accent: Self.blueAccent) == Self.blueAccent)
+        #expect(pill.resolvedText(accent: Self.blueAccent) == .white)
+        #expect(pill.contrastWarning(accent: Self.blueAccent) == nil, "the accent with white text is never flagged")
     }
 
-    @Test func minutesStayWithinRange() {
-        #expect(StartingSoonPill(minutes: 0).minutes == 1)
-        #expect(StartingSoonPill(minutes: 500).minutes == 60)
+    /// Clamped to 1...60 both when the pill is made (a stored value) and when the minutes are set.
+    @Test(arguments: [(0, 1), (-3, 1), (10, 10), (500, 60)])
+    func minutesStayWithinRange(minutes: Int, clamped: Int) {
+        #expect(StartingSoonPill(minutes: minutes).minutes == clamped)
         var pill = StartingSoonPill.default
-        pill.minutes = -3
-        #expect(pill.minutes == 1)
-        pill.minutes = 10
-        #expect(pill.window == 600)
-        #expect(!pill.isDefault)
+        pill.minutes = minutes
+        #expect(pill.minutes == clamped)
+        #expect(pill.window == TimeInterval(clamped * 60))
     }
 
-    @Test func automaticTextReadsOnACustomFill() {
-        #expect(StartingSoonPill(fill: yellow).resolvedText(accent: blueAccent) == StartingSoonPill.darkText)
-        #expect(StartingSoonPill(fill: navy).resolvedText(accent: blueAccent) == .white)
-        #expect(StartingSoonPill(fill: blueAccent).resolvedText(accent: blueAccent) == .white, "white stays while it reaches 3:1")
-        #expect(StartingSoonPill(fill: RGBA(rgb: 0x34C759)).resolvedText(accent: blueAccent) == StartingSoonPill.darkText)
-        #expect(StartingSoonPill(fill: yellow, text: navy).resolvedText(accent: blueAccent) == navy)
+    /// Automatic text stays white while white reaches 3:1 on the fill, and turns near-black below; a text color
+    /// stored by an earlier build wins.
+    @Test(arguments: [
+        ("white on navy", StartingSoonPill(fill: navy), RGBA.white),
+        ("white on a custom copy of the blue accent, at about 4:1", StartingSoonPill(fill: blueAccent), .white),
+        ("near-black on yellow", StartingSoonPill(fill: yellow), darkText),
+        ("near-black on green", StartingSoonPill(fill: green), darkText),
+        ("a legacy text color", StartingSoonPill(fill: yellow, text: navy), navy),
+    ])
+    func automaticTextReadsOnACustomFill(_ name: String, pill: StartingSoonPill, text: RGBA) {
+        #expect(pill.resolvedText(accent: Self.blueAccent) == text)
     }
 
-    @Test func contrastWarningOnlyForUnreadableCustomColors() {
-        #expect(StartingSoonPill(fill: yellow).contrastWarning(accent: blueAccent) == nil)
-        #expect(StartingSoonPill(fill: blueAccent).contrastWarning(accent: blueAccent) == nil, "a custom copy of the accent isn't flagged")
-        #expect(StartingSoonPill(text: .black).contrastWarning(accent: yellow) == nil)
-        let warning = StartingSoonPill(fill: yellow, text: .white).contrastWarning(accent: blueAccent)
-        #expect(warning == "The menu bar item may be hard to read (1.4:1). Aim for 3:1, or set Text to Automatic.")
+    /// Only custom colors that leave the label under 3:1 are flagged, in the alert's template.
+    @Test(arguments: [
+        ("a custom copy of the accent", StartingSoonPill(fill: blueAccent), blueAccent, nil),
+        ("a legacy black text on a yellow accent", StartingSoonPill(text: .black), yellow, nil),
+        ("a legacy white text on yellow", StartingSoonPill(fill: yellow, text: .white), blueAccent,
+         "The menu bar item may be hard to read (1.4:1). Aim for 3:1, or set Text to Automatic."),
+    ] as [(String, StartingSoonPill, RGBA, String?)])
+    func contrastWarningOnlyForUnreadableCustomColors(_ name: String, pill: StartingSoonPill, accent: RGBA, warning: String?) {
+        #expect(pill.contrastWarning(accent: accent) == warning)
     }
 
     /// Automatic text reaches 3:1 on any fill, so a fill alone, swatch or Other…, is never flagged.
     @Test func automaticTextReadsOnEveryFill() {
         for value in 0...255 {
             let gray = RGBA(red: Double(value) / 255, green: Double(value) / 255, blue: Double(value) / 255)
-            #expect(StartingSoonPill(fill: gray).contrastWarning(accent: blueAccent) == nil, "\(gray.hexString)")
+            #expect(StartingSoonPill(fill: gray).contrastWarning(accent: Self.blueAccent) == nil, "\(gray.hexString)")
         }
         for swatch in StartingSoonPill.colorChoice.swatches {
-            #expect(StartingSoonPill(fill: swatch.color).contrastWarning(accent: blueAccent) == nil, "\(swatch.name)")
+            #expect(StartingSoonPill(fill: swatch.color).contrastWarning(accent: Self.blueAccent) == nil, "\(swatch.name)")
         }
     }
 
@@ -64,67 +75,60 @@ struct StartingSoonPillTests {
 
     @Test func colorSelection() {
         func shown(_ pill: StartingSoonPill, otherPicked: Bool = false) -> String {
-            switch pill.colorSelection(accent: blueAccent, otherPicked: otherPicked) {
+            switch pill.colorSelection(accent: Self.blueAccent, otherPicked: otherPicked) {
             case .swatch(let swatch): return swatch.name
             case .other: return "Other…"
             }
         }
         #expect(shown(.default) == "Accent color")
-        #expect(shown(StartingSoonPill(fill: RGBA(rgb: 0x34C759))) == "Green")
-        #expect(shown(StartingSoonPill(fill: navy)) == "Other…")
-        #expect(shown(.default, otherPicked: true) == "Other…")
+        #expect(shown(StartingSoonPill(fill: Self.green)) == "Green")
+        #expect(shown(StartingSoonPill(fill: Self.navy)) == "Other…")
 
         var pill = StartingSoonPill.default
-        pill.pickColor(.other, accent: blueAccent)
-        #expect(pill.fill == blueAccent, "Other… starts from the accent shown")
+        pill.pickColor(.other, accent: Self.blueAccent)
+        #expect(pill.fill == Self.blueAccent, "Other… starts from the accent shown")
         #expect(shown(pill, otherPicked: true) == "Other…")
         #expect(shown(pill) == "Blue", "reopened, the color is a swatch's")
 
-        pill.pickColor(.swatch(StartingSoonPill.colorChoice.swatches[1]), accent: blueAccent)
+        pill.pickColor(.swatch(StartingSoonPill.colorChoice.swatches[1]), accent: Self.blueAccent)
         #expect(pill.fill == RGBA(rgb: 0xFF3B30))
         pill.setFillColor(RGBA(rgb: 0x123456, alpha: 0.4))
         #expect(pill.fill == RGBA(rgb: 0x123456), "always opaque")
-        pill.pickColor(.swatch(StartingSoonPill.colorChoice.swatches[0]), accent: blueAccent)
+        pill.pickColor(.swatch(StartingSoonPill.colorChoice.swatches[0]), accent: Self.blueAccent)
         #expect(pill.isDefault)
     }
 
-    @Test func legacyTextRow() {
-        #expect(!StartingSoonPill.default.showsLegacyText)
-        var pill = StartingSoonPill(fill: yellow, text: navy)
-        #expect(pill.showsLegacyText)
-        pill.setTextCustom(false, accent: blueAccent)
-        #expect(!pill.showsLegacyText, "Automatic hides the row")
-    }
+    /// Other… changes nothing visible: the fill becomes the color shown and the text reads as before (white on
+    /// the blue accent, near-black on a yellow one). A pill saved by an earlier build keeps its fill and shows
+    /// the legacy Text row, whose Automatic clears the text color; Accent color then brings back the default.
+    @Test(arguments: [
+        ("the blue accent", StartingSoonPill.default, blueAccent, RGBA.white, false),
+        ("a yellow accent", StartingSoonPill.default, yellowAccent, darkText, false),
+        ("an earlier build's fill and text", StartingSoonPill(fill: yellow, text: navy), blueAccent, navy, true),
+    ])
+    func pickingOtherKeepsTheColorsShown(_ name: String, pill: StartingSoonPill, accent: RGBA, text: RGBA, showsLegacyText: Bool) {
+        var pill = pill
+        let fill = pill.resolvedFill(accent: accent)
+        #expect(pill.resolvedText(accent: accent) == text)
+        pill.pickColor(.other, accent: accent)
+        #expect(pill.fill == fill)
+        #expect(pill.resolvedText(accent: accent) == text)
+        #expect(pill.contrastWarning(accent: accent) == nil)
+        #expect(pill.showsLegacyText == showsLegacyText)
 
-    @Test func switchingToCustomKeepsTheColorsShown() {
-        // White text on the blue accent; under 3:1 on a yellow accent, so dark text.
-        for (accent, text) in [(blueAccent, RGBA.white), (RGBA(rgb: 0xFFC600), StartingSoonPill.darkText)] {
-            var pill = StartingSoonPill.default
-            #expect(pill.resolvedText(accent: accent) == text, "\(accent.hexString)")
-            pill.setFillCustom(true, accent: accent)
-            #expect(pill.fill == accent, "\(accent.hexString)")
-            #expect(pill.resolvedText(accent: accent) == text, "\(accent.hexString)")
-            pill.setTextCustom(true, accent: accent)
-            #expect(pill.text == text, "\(accent.hexString)")
-            #expect(pill.contrastWarning(accent: accent) == nil, "\(accent.hexString)")
-        }
-
-        var pill = StartingSoonPill(fill: yellow, text: navy)
-        pill.setFillCustom(true, accent: blueAccent)
-        #expect(pill.fill == yellow, "already custom: the picked color stays")
-        pill.setFillCustom(false, accent: blueAccent)
-        pill.setTextCustom(false, accent: blueAccent)
+        pill.clearLegacyText()
+        #expect(!pill.showsLegacyText)
+        pill.pickColor(.swatch(StartingSoonPill.colorChoice.swatches[0]), accent: accent)
         #expect(pill.isDefault)
     }
 
-    @Test func codingRoundTripsAndFillsInMissingValues() throws {
-        let pill = StartingSoonPill(minutes: 10, fill: yellow, text: navy)
-        let decoded = try JSONDecoder().decode(StartingSoonPill.self, from: JSONEncoder().encode(pill))
-        #expect(decoded == pill)
-
-        let empty = try JSONDecoder().decode(StartingSoonPill.self, from: Data("{}".utf8))
-        #expect(empty == .default)
-        let outOfRange = try JSONDecoder().decode(StartingSoonPill.self, from: Data(#"{"minutes": 0}"#.utf8))
-        #expect(outOfRange.minutes == 1)
+    /// A pill stored without some keys gets the defaults, and minutes out of range are clamped on loading.
+    @Test(arguments: [
+        ("{}", StartingSoonPill.default),
+        (#"{"minutes": 0}"#, StartingSoonPill(minutes: 1)),
+        (#"{"minutes": 90, "text": {"red": 1, "green": 1, "blue": 1, "alpha": 1}}"#, StartingSoonPill(minutes: 60, text: .white)),
+    ])
+    func decodingFillsInMissingValues(json: String, expected: StartingSoonPill) throws {
+        #expect(try JSONDecoder().decode(StartingSoonPill.self, from: Data(json.utf8)) == expected)
     }
 }

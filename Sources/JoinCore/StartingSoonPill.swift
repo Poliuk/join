@@ -56,24 +56,6 @@ public struct StartingSoonPill: Hashable, Sendable {
         return AlertContrastWarning.message(subject: "The menu bar item", ratio: ratio, advice: advice)
     }
 
-    /// Switching to Custom starts from the color currently shown, so nothing changes until the
-    /// user picks a new one.
-    public mutating func setFillCustom(_ custom: Bool, accent: RGBA) {
-        if custom {
-            if fill == nil { fill = accent.withAlpha(1) }
-        } else {
-            fill = nil
-        }
-    }
-
-    public mutating func setTextCustom(_ custom: Bool, accent: RGBA) {
-        if custom {
-            if text == nil { text = resolvedText(accent: accent) }
-        } else {
-            text = nil
-        }
-    }
-
     // MARK: Color
 
     /// General › Menu bar › Color: the system accent, five system colors, then Other….
@@ -92,11 +74,11 @@ public struct StartingSoonPill: Hashable, Sendable {
     }
 
     /// Accent color clears the fill and a named color sets it; Other… starts from the color shown, so
-    /// nothing changes until another one is picked in the well.
+    /// nothing changes until another one is picked in the well. A fill already stored stays as it is.
     public mutating func pickColor(_ item: ColorChoice.Item, accent: RGBA) {
         switch item {
         case .swatch(let swatch): fill = swatch.color?.withAlpha(1)
-        case .other: setFillCustom(true, accent: accent)
+        case .other: if fill == nil { fill = accent.withAlpha(1) }
         }
     }
 
@@ -106,8 +88,13 @@ public struct StartingSoonPill: Hashable, Sendable {
     }
 
     /// Whether General shows the legacy Text row under Color: only while a text color is stored, which
-    /// only an earlier build could save. Its Automatic (`setTextCustom(false, accent:)`) clears it.
+    /// only an earlier build could save. Its Automatic (`clearLegacyText()`) clears it, and the row goes.
     public var showsLegacyText: Bool { text != nil }
+
+    /// The legacy Text row's Automatic: the label follows the fill again.
+    public mutating func clearLegacyText() {
+        text = nil
+    }
 
     private static func clamped(_ minutes: Int) -> Int {
         min(max(minutes, minuteRange.lowerBound), minuteRange.upperBound)

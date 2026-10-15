@@ -154,7 +154,7 @@ struct GeneralTab: View {
                     title: SettingsOptions.menuBarTextAccessibilityTitle,
                     wellLabel: SettingsOptions.menuBarTextWellLabel,
                     color: text,
-                    clear: { updatePill { $0.setTextCustom(false, accent: accent) } },
+                    clear: { updatePill { $0.clearLegacyText() } },
                     setColor: { color in updatePill { $0.text = color.withAlpha(1) } }
                 )
             }

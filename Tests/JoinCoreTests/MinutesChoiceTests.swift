@@ -1,109 +1,128 @@
 import Testing
 @testable import JoinCore
 
+/// The rule behind Settings' minutes pop-ups: **Alert me**, the only one with Never, and the snooze buttons'
+/// (Starting soon has the same presets as Snooze, and no Never either).
 struct MinutesChoiceTests {
-    private let alertMe = MinutesChoice(presets: SettingsOptions.leadTimeMinutes, offersNever: true)
-    private let snooze = MinutesChoice(presets: SettingsOptions.snoozeMinutes)
-    private let appears = MinutesChoice(presets: SettingsOptions.startingSoonMinutes)
+    static let alertMe = MinutesChoice(presets: SettingsOptions.leadTimeMinutes, offersNever: true)
+    static let snooze = MinutesChoice(presets: SettingsOptions.snoozeMinutes)
 
-    // MARK: Alert me
+    /// A pop-up's stored state, and the item it shows.
+    struct Shown: Sendable, CustomTestStringConvertible {
+        let testDescription: String
+        let rule: MinutesChoice
+        let minutes: Int
+        let neverChosen: Bool
+        let customPicked: Bool
+        let selection: MinutesChoice.Item
 
-    @Test func alertMeShowsAPresetWhileAlertsAreOn() {
-        for minutes in SettingsOptions.leadTimeMinutes {
-            #expect(alertMe.selection(minutes: minutes, neverChosen: false, customPicked: false) == .preset(minutes))
-            #expect(!alertMe.opensAsCustom(minutes: minutes, neverChosen: false), "\(minutes) min is a preset")
-            #expect(!alertMe.showsCustomRow(minutes: minutes, neverChosen: false, customPicked: false))
+        init(_ name: String, _ rule: MinutesChoice, minutes: Int, never: Bool = false, customPicked: Bool = false, shows selection: MinutesChoice.Item) {
+            testDescription = name
+            self.rule = rule
+            self.minutes = minutes
+            neverChosen = never
+            self.customPicked = customPicked
+            self.selection = selection
         }
     }
 
-    @Test func alertMeShowsNeverWhileAlertsAreOffWhateverTheTime() {
-        for minutes in [0, 1, 2, 3, 5, 10, 120] {
-            #expect(alertMe.selection(minutes: minutes, neverChosen: true, customPicked: false) == .never, "\(minutes) min")
-            #expect(!alertMe.opensAsCustom(minutes: minutes, neverChosen: true), "\(minutes) min")
-            #expect(!alertMe.showsCustomRow(minutes: minutes, neverChosen: true, customPicked: false), "\(minutes) min")
+    static let shown: [Shown] = [
+        // Alert me with alerts on: a preset, or Custom… for a lead time of 2 or 10 minutes from before 1.2.0.
+        Shown("When the event starts isn't Never", alertMe, minutes: 0, shows: .preset(0)),
+        Shown("1 minute", alertMe, minutes: 1, shows: .preset(1)),
+        Shown("3 minutes", alertMe, minutes: 3, shows: .preset(3)),
+        Shown("5 minutes", alertMe, minutes: 5, shows: .preset(5)),
+        Shown("a stored 2", alertMe, minutes: 2, shows: .custom),
+        Shown("a stored 10", alertMe, minutes: 10, shows: .custom),
+        // Alerts off: Never, whatever time is kept.
+        Shown("Never, keeping When the event starts", alertMe, minutes: 0, never: true, shows: .never),
+        Shown("Never, keeping 3", alertMe, minutes: 3, never: true, shows: .never),
+        Shown("Never, keeping a stored 2", alertMe, minutes: 2, never: true, shows: .never),
+        Shown("Never, keeping a stored 10", alertMe, minutes: 10, never: true, shows: .never),
+        // Custom… picked keeps showing, even when its value matches a preset or Never is still set.
+        Shown("Custom… picked, at a preset's value", alertMe, minutes: 3, customPicked: true, shows: .custom),
+        Shown("Custom… picked from Never", alertMe, minutes: 3, never: true, customPicked: true, shows: .custom),
+        // Snooze: a preset or Custom…, with no Never to be on.
+        Shown("Snooze at a preset", snooze, minutes: 5, shows: .preset(5)),
+        Shown("Snooze at 30, not a preset", snooze, minutes: 30, shows: .custom),
+        Shown("Snooze, Custom… picked at a preset's value", snooze, minutes: 5, customPicked: true, shows: .custom),
+        Shown("Snooze at a preset, with Never stored", snooze, minutes: 5, never: true, shows: .preset(5)),
+        Shown("Snooze at 30, with Never stored", snooze, minutes: 30, never: true, shows: .custom),
+    ]
+
+    /// The custom row shows exactly while the pop-up shows Custom…, and with Custom… not picked, the pane
+    /// opens on the same item.
+    @Test(arguments: shown)
+    func popUpShows(_ state: Shown) {
+        let rule = state.rule
+        #expect(rule.selection(minutes: state.minutes, neverChosen: state.neverChosen, customPicked: state.customPicked) == state.selection)
+        #expect(rule.showsCustomRow(minutes: state.minutes, neverChosen: state.neverChosen, customPicked: state.customPicked)
+                == (state.selection == .custom))
+        if !state.customPicked {
+            #expect(rule.opensAsCustom(minutes: state.minutes, neverChosen: state.neverChosen) == (state.selection == .custom))
         }
     }
 
-    @Test func aStored2Or10ShowsAsCustomOnlyWhileAlertsAreOn() {
-        for minutes in [2, 10] {
-            #expect(alertMe.opensAsCustom(minutes: minutes, neverChosen: false), "\(minutes) min")
-            #expect(alertMe.selection(minutes: minutes, neverChosen: false, customPicked: false) == .custom, "\(minutes) min")
-            #expect(alertMe.showsCustomRow(minutes: minutes, neverChosen: false, customPicked: false), "\(minutes) min")
-            #expect(alertMe.selection(minutes: minutes, neverChosen: true, customPicked: false) == .never, "\(minutes) min")
-        }
+    /// A preset saves its minutes and turns Never off; Never keeps the time; Custom… keeps it too and turns Never
+    /// off at once. A pop-up without Never leaves it alone.
+    @Test(arguments: [
+        ("Alert me, a preset", alertMe, .preset(5), MinutesChoice.Pick(customPicked: false, minutes: 5, neverChosen: false)),
+        ("Alert me, When the event starts", alertMe, .preset(0), MinutesChoice.Pick(customPicked: false, minutes: 0, neverChosen: false)),
+        ("Alert me, Never", alertMe, .never, MinutesChoice.Pick(customPicked: false, minutes: nil, neverChosen: true)),
+        ("Alert me, Custom…", alertMe, .custom, MinutesChoice.Pick(customPicked: true, minutes: nil, neverChosen: false)),
+        ("Snooze, a preset", snooze, .preset(3), MinutesChoice.Pick(customPicked: false, minutes: 3, neverChosen: nil)),
+        ("Snooze, Custom…", snooze, .custom, MinutesChoice.Pick(customPicked: true, minutes: nil, neverChosen: nil)),
+        ("Snooze, Never, which it doesn't offer", snooze, .never, MinutesChoice.Pick(customPicked: false, minutes: nil, neverChosen: nil)),
+    ] as [(String, MinutesChoice, MinutesChoice.Item, MinutesChoice.Pick)])
+    func picking(_ name: String, rule: MinutesChoice, item: MinutesChoice.Item, expected: MinutesChoice.Pick) {
+        #expect(rule.picking(item) == expected)
     }
 
-    @Test func neverIsKeptApartFromWhenTheEventStartsAndCustom() {
-        #expect(MinutesChoice.Item.never != .preset(0))
-        #expect(MinutesChoice.Item.never != .custom)
-        #expect(MinutesChoice.Item.custom != .preset(0))
-        #expect(alertMe.selection(minutes: 0, neverChosen: false, customPicked: false) == .preset(0), "When the event starts isn't Never")
-        #expect(alertMe.selection(minutes: 0, neverChosen: true, customPicked: false) == .never)
-        let items: Set<MinutesChoice.Item> = Set(SettingsOptions.leadTimeMinutes.map(MinutesChoice.Item.preset) + [.never, .custom])
-        #expect(items.count == SettingsOptions.leadTimeMinutes.count + 2, "every item has a tag of its own")
+    /// Minutes the pop-up saved keep Custom… picked, even at a preset's value, and minutes that aren't a preset
+    /// pick it. A change from elsewhere (Restore Defaults) shows as on opening the pane.
+    @Test(arguments: [
+        ("saved here, Custom… at a preset's value", 5, false, true, true, true),
+        ("saved here, not a preset", 7, false, false, true, true),
+        ("saved here, a preset picked", 5, false, false, true, false),
+        ("from elsewhere, a preset", 3, false, true, false, false),
+        ("from elsewhere, not a preset", 7, false, false, false, true),
+        ("from elsewhere, with Never chosen", 7, true, true, false, false),
+    ])
+    func customPickedAfterAChange(_ name: String, minutes: Int, neverChosen: Bool, customPicked: Bool, savedHere: Bool, expected: Bool) {
+        #expect(Self.alertMe.customPicked(afterChangeTo: minutes, neverChosen: neverChosen, customPicked: customPicked, savedHere: savedHere)
+                == expected)
     }
 
-    @Test func customPickedKeepsShowingWhenItsValueMatchesAPresetOrNeverStillHolds() {
-        #expect(alertMe.selection(minutes: 3, neverChosen: false, customPicked: true) == .custom)
-        #expect(alertMe.showsCustomRow(minutes: 3, neverChosen: false, customPicked: true))
-        #expect(alertMe.selection(minutes: 3, neverChosen: true, customPicked: true) == .custom, "Custom… picked from Never")
-        #expect(alertMe.showsCustomRow(minutes: 3, neverChosen: true, customPicked: true))
-    }
-
-    @Test func pickingAPresetSavesItAndTurnsNeverOff() {
-        #expect(alertMe.picking(.preset(5)) == MinutesChoice.Pick(customPicked: false, minutes: 5, neverChosen: false))
-        #expect(alertMe.picking(.preset(0)) == MinutesChoice.Pick(customPicked: false, minutes: 0, neverChosen: false))
-    }
-
-    @Test func pickingNeverKeepsTheTime() {
-        #expect(alertMe.picking(.never) == MinutesChoice.Pick(customPicked: false, minutes: nil, neverChosen: true))
-    }
-
-    @Test func pickingCustomKeepsTheTimeAndTurnsNeverOffAtOnce() {
-        #expect(alertMe.picking(.custom) == MinutesChoice.Pick(customPicked: true, minutes: nil, neverChosen: false))
-        #expect(snooze.picking(.custom) == MinutesChoice.Pick(customPicked: true, minutes: nil, neverChosen: nil),
-                "a pop-up without Never leaves it alone")
-    }
-
-    @Test func customPickedAfterAChange() {
-        // Saved by the pop-up: Custom… stays picked, and a value that isn't a preset picks it.
-        #expect(alertMe.customPicked(afterChangeTo: 5, neverChosen: false, customPicked: true, savedHere: true),
-                "a custom value that matches a preset stays Custom…")
-        #expect(alertMe.customPicked(afterChangeTo: 7, neverChosen: false, customPicked: false, savedHere: true))
-        #expect(!alertMe.customPicked(afterChangeTo: 5, neverChosen: false, customPicked: false, savedHere: true), "a preset picked")
-        // From elsewhere (Restore Defaults): as on opening the pane.
-        #expect(!alertMe.customPicked(afterChangeTo: 3, neverChosen: false, customPicked: true, savedHere: false))
-        #expect(alertMe.customPicked(afterChangeTo: 7, neverChosen: false, customPicked: false, savedHere: false))
-        #expect(!alertMe.customPicked(afterChangeTo: 7, neverChosen: true, customPicked: true, savedHere: false))
-    }
+    // MARK: Stories
 
     /// The pop-up's own steps, as `SettingsMinutesChoice` takes them.
-    private struct PopUp {
+    struct PopUp {
         let rule: MinutesChoice
         var minutes: Int
         var neverChosen: Bool
         var customPicked: Bool
 
-        init(rule: MinutesChoice, minutes: Int, neverChosen: Bool = false) {
+        init(rule: MinutesChoice, minutes: Int, neverChosen: Bool) {
             self.rule = rule
             self.minutes = minutes
             self.neverChosen = neverChosen
             customPicked = rule.opensAsCustom(minutes: minutes, neverChosen: neverChosen)
         }
 
-        var selection: MinutesChoice.Item {
-            rule.selection(minutes: minutes, neverChosen: neverChosen, customPicked: customPicked)
+        var state: Story.State {
+            Story.State(rule.selection(minutes: minutes, neverChosen: neverChosen, customPicked: customPicked), minutes, never: neverChosen)
         }
 
-        mutating func pick(_ item: MinutesChoice.Item) {
-            let pick = rule.picking(item)
-            customPicked = pick.customPicked
-            if let value = pick.minutes { save(value) }
-            if let never = pick.neverChosen { neverChosen = never }
-        }
-
-        mutating func saveCustom(_ value: Int) {
-            save(value)
+        mutating func take(_ step: Story.Step) {
+            switch step {
+            case .pick(let item):
+                let pick = rule.picking(item)
+                customPicked = pick.customPicked
+                if let value = pick.minutes { save(value) }
+                if let never = pick.neverChosen { neverChosen = never }
+            case .saveCustom(let value):
+                save(value)
+            }
         }
 
         private mutating func save(_ value: Int) {
@@ -113,78 +132,71 @@ struct MinutesChoiceTests {
         }
     }
 
-    @Test func customFromNeverTurnsAlertsBackOnAtOnceWithTheKeptTime() {
-        var popUp = PopUp(rule: alertMe, minutes: 3, neverChosen: true)
-        #expect(popUp.selection == .never)
-        popUp.pick(.custom)
-        #expect(popUp.selection == .custom)
-        #expect(!popUp.neverChosen, "what the pop-up shows is what's in effect")
-        #expect(popUp.minutes == 3, "the field starts at the kept time")
-        popUp.pick(.never)
-        popUp.saveCustom(popUp.minutes)   // the row's save as it disappears
-        #expect(popUp.selection == .never)
-        #expect(popUp.neverChosen)
-        #expect(popUp.minutes == 3)
-    }
-
-    @Test func savingACustomValueFromNeverTurnsAlertsBackOnWithIt() {
-        var popUp = PopUp(rule: alertMe, minutes: 3, neverChosen: true)
-        popUp.pick(.custom)
-        popUp.saveCustom(7)
-        #expect(!popUp.neverChosen)
-        #expect(popUp.minutes == 7)
-        #expect(popUp.selection == .custom)
-    }
-
-    @Test func pickingAPresetFromNeverTurnsAlertsBackOnWithIt() {
-        var popUp = PopUp(rule: alertMe, minutes: 10, neverChosen: true)
-        #expect(popUp.selection == .never)
-        popUp.pick(.preset(1))
-        #expect(!popUp.neverChosen)
-        #expect(popUp.minutes == 1)
-        #expect(popUp.selection == .preset(1))
-    }
-
-    @Test func pickingNeverKeepsAStored10ForLater() {
-        var popUp = PopUp(rule: alertMe, minutes: 10)
-        #expect(popUp.selection == .custom)
-        popUp.pick(.never)
-        #expect(popUp.selection == .never)
-        #expect(popUp.minutes == 10)
-        popUp.pick(.custom)
-        #expect(!popUp.neverChosen, "Custom… turns alerts back on with the kept 10 minutes")
-        #expect(popUp.minutes == 10)
-        #expect(popUp.selection == .custom)
-    }
-
-    // MARK: Snooze and Starting soon, which have no Never
-
-    @Test func popUpsWithoutNeverShowAPresetOrCustom() {
-        for rule in [snooze, appears] {
-            #expect(!rule.offersNever)
-            #expect(rule.selection(minutes: 5, neverChosen: false, customPicked: false) == .preset(5))
-            #expect(rule.selection(minutes: 30, neverChosen: false, customPicked: false) == .custom, "30 isn't a preset")
-            #expect(rule.selection(minutes: 5, neverChosen: false, customPicked: true) == .custom)
-            #expect(rule.selection(minutes: 5, neverChosen: true, customPicked: false) == .preset(5), "no Never to be on")
-            #expect(rule.opensAsCustom(minutes: 30, neverChosen: true))
+    /// Steps through a pop-up, from the state the pane opens on: what it shows after each one.
+    struct Story: Sendable, CustomTestStringConvertible {
+        enum Step: Sendable {
+            case pick(MinutesChoice.Item)
+            case saveCustom(Int)
         }
-    }
 
-    @Test func popUpsWithoutNeverNeverTouchIt() {
-        for rule in [snooze, appears] {
-            #expect(rule.picking(.preset(3)) == MinutesChoice.Pick(customPicked: false, minutes: 3, neverChosen: nil))
-            #expect(rule.picking(.custom) == MinutesChoice.Pick(customPicked: true, minutes: nil, neverChosen: nil))
-            #expect(rule.picking(.never).neverChosen == nil)
+        struct State: Equatable, Sendable {
+            let selection: MinutesChoice.Item
+            let minutes: Int
+            let neverChosen: Bool
+
+            init(_ selection: MinutesChoice.Item, _ minutes: Int, never: Bool = false) {
+                self.selection = selection
+                self.minutes = minutes
+                neverChosen = never
+            }
         }
+
+        let testDescription: String
+        let rule: MinutesChoice
+        let opening: State
+        let steps: [(Step, State)]
     }
 
-    @Test func aSnoozeSavedByAnEarlierBuildShowsAsCustomAndStaysCustomOnceSaved() {
-        var popUp = PopUp(rule: snooze, minutes: 30)
-        #expect(popUp.selection == .custom)
-        popUp.saveCustom(5)
-        #expect(popUp.selection == .custom, "a custom value matching a preset keeps Custom…")
-        popUp.pick(.preset(10))
-        #expect(popUp.selection == .preset(10))
-        #expect(popUp.minutes == 10)
+    static let stories: [Story] = [
+        // What the pop-up shows is what's in effect: Custom… turns alerts back on at once, with the kept time in
+        // its field, and then with the time saved.
+        Story(
+            testDescription: "Never, then Custom…, then 7 saved",
+            rule: alertMe,
+            opening: Story.State(.never, 3, never: true),
+            steps: [
+                (.pick(.custom), Story.State(.custom, 3)),
+                (.saveCustom(7), Story.State(.custom, 7)),
+            ]
+        ),
+        // The lead time is kept while alerts are off.
+        Story(
+            testDescription: "a stored 10, then Never, then Custom…",
+            rule: alertMe,
+            opening: Story.State(.custom, 10),
+            steps: [
+                (.pick(.never), Story.State(.never, 10, never: true)),
+                (.pick(.custom), Story.State(.custom, 10)),
+            ]
+        ),
+        Story(
+            testDescription: "a snooze of 30 from an earlier build, then 5 saved, then the 10 preset",
+            rule: snooze,
+            opening: Story.State(.custom, 30),
+            steps: [
+                (.saveCustom(5), Story.State(.custom, 5)),
+                (.pick(.preset(10)), Story.State(.preset(10), 10)),
+            ]
+        ),
+    ]
+
+    @Test(arguments: stories)
+    func popUpStories(_ story: Story) {
+        var popUp = PopUp(rule: story.rule, minutes: story.opening.minutes, neverChosen: story.opening.neverChosen)
+        #expect(popUp.state == story.opening)
+        for (step, expected) in story.steps {
+            popUp.take(step)
+            #expect(popUp.state == expected, "after \(step)")
+        }
     }
 }
