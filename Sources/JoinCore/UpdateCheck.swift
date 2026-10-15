@@ -97,6 +97,24 @@ public enum UpdateCheck {
         return sinceSuccess < 0 || sinceSuccess >= checkInterval
     }
 
+    /// At launch, whether to check at once, due or not: automatic checks are on and the last successful
+    /// check offered `offeredVersion` ("1.1.0"), newer than `current`, so the offer comes back without
+    /// waiting a day. Until that check succeeds, `isDue` is asked as if there had been no success, so a
+    /// failure is retried after `retryInterval` rather than at the next daily check.
+    public static func rechecksAtLaunch(enabled: Bool, offeredVersion: String?, current: AppVersion) -> Bool {
+        guard enabled, let offered = offeredVersion.flatMap(AppVersion.init) else { return false }
+        return offered > current
+    }
+
+    /// Whether macOS `system` is `minimum` or later, an app's `LSMinimumSystemVersion`: "15.0", "26" or
+    /// "14.2.1". One that can't be read doesn't stop an install, so it counts as met.
+    public static func system(_ system: OperatingSystemVersion, isAtLeast minimum: String) -> Bool {
+        let parts = minimum.split(separator: ".", omittingEmptySubsequences: false).map { Int($0) }
+        guard (1...3).contains(parts.count), parts.allSatisfy({ $0 != nil }) else { return true }
+        let numbers = parts.compactMap { $0 } + [0, 0]
+        return (system.majorVersion, system.minorVersion, system.patchVersion) >= (numbers[0], numbers[1], numbers[2])
+    }
+
     /// "sha256:<64 hex digits>", in either case, to lowercase hex.
     private static func sha256(fromDigest digest: String) -> String? {
         let prefix = "sha256:"
@@ -123,6 +141,72 @@ public struct UnsupportedUpdate: Codable, Equatable, Sendable {
         self.version = version
         self.minimumSystem = minimumSystem
     }
+
+    /// This release, while this Mac still can't run it: it's newer than `current`, and macOS `system` is
+    /// older than it needs. nil once either has been updated, and for a version that can't be read.
+    public func stillUnsupported(current: AppVersion, system: OperatingSystemVersion) -> (version: AppVersion, minimumSystem: String)? {
+        guard let version = AppVersion(self.version), version > current,
+              !UpdateCheck.system(system, isAtLeast: minimumSystem)
+        else { return nil }
+        return (version, minimumSystem)
+    }
+}
+
+/// What a successful check changes (`UpdateChecker`), from what it found and where the offer stands.
+///
+/// A release this Mac can't run isn't offered again while checks keep finding it; anything else the check
+/// finds forgets it. An install in progress carries on with its own update. Otherwise the update found
+/// becomes the offer, and when that changes (a newer release, or none any more) the download made for the
+/// old one goes and the bar starts again from Install (`UpdateInstallState.afterCheck(offerChanged:)`).
+public struct UpdateCheckOutcome: Equatable, Sendable {
+    /// What Settings says: the update found, up to date, or the release this Mac can't run.
+    public let status: UpdateStatus
+    /// The update this check offers: the one found, unless it's the release this Mac can't run. Its version
+    /// is remembered, so a relaunch checks again at once and brings the offer back (`rechecksAtLaunch`).
+    public let offer: AvailableUpdate?
+    /// The update on offer from now on, which the update bar shows and Install installs: `offer`, unless
+    /// an install in progress keeps its own.
+    public let offeredUpdate: AvailableUpdate?
+    public let install: UpdateInstallState
+    /// The download made for the previous offer goes: the offer changed.
+    public let discardsDownload: Bool
+    /// The release found unsupported earlier is forgotten: the check found something else.
+    public let forgetsUnsupported: Bool
+}
+
+extension UpdateCheckOutcome {
+    /// - Parameters:
+    ///   - found: what the check found (`UpdateCheck.update(current:release:)`).
+    ///   - unsupported: the release an earlier install found this Mac can't run, while it still can't
+    ///     (`UnsupportedUpdate.stillUnsupported(current:system:)`).
+    ///   - offeredUpdate: the update on offer before the check.
+    ///   - install: where installing it has got to.
+    public init(
+        found: AvailableUpdate?,
+        unsupported: (version: AppVersion, minimumSystem: String)?,
+        offeredUpdate: AvailableUpdate?,
+        install: UpdateInstallState
+    ) {
+        if let found, let unsupported, found.version == unsupported.version {
+            status = .unsupported(unsupported.version, minimumSystem: unsupported.minimumSystem)
+            offer = nil
+            forgetsUnsupported = false
+        } else {
+            status = found.map(UpdateStatus.available) ?? .upToDate
+            offer = found
+            forgetsUnsupported = true
+        }
+        if install.isInProgress {
+            self.offeredUpdate = offeredUpdate
+            self.install = install
+            discardsDownload = false
+        } else {
+            let offerChanged = offer != offeredUpdate
+            self.offeredUpdate = offer
+            self.install = install.afterCheck(offerChanged: offerChanged)
+            discardsDownload = offerChanged
+        }
+    }
 }
 
 /// What the last update check found.
@@ -135,11 +219,6 @@ public enum UpdateStatus: Equatable, Sendable {
     /// to install.
     case unsupported(AppVersion, minimumSystem: String)
     case failed
-
-    public var availableUpdate: AvailableUpdate? {
-        if case .available(let update) = self { return update }
-        return nil
-    }
 }
 
 /// Why installing an update stopped. `UpdateCopy.failureReason` has the words for the user.

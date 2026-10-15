@@ -92,11 +92,8 @@ final class UpdateChecker {
 
     /// `unsupportedUpdate`, while it's newer than this copy and this Mac's macOS is still too old for it.
     private var stillUnsupported: (version: AppVersion, minimumSystem: String)? {
-        guard let unsupportedUpdate, let currentVersion,
-              let version = AppVersion(unsupportedUpdate.version), version > currentVersion,
-              !UpdateInstaller.systemIsAtLeast(unsupportedUpdate.minimumSystem)
-        else { return nil }
-        return (version, unsupportedUpdate.minimumSystem)
+        guard let currentVersion else { return nil }
+        return unsupportedUpdate?.stillUnsupported(current: currentVersion, system: ProcessInfo.processInfo.operatingSystemVersion)
     }
 
     var isChecking: Bool { status == .checking }
@@ -113,8 +110,8 @@ final class UpdateChecker {
         if canInstall, !simulatesInstall {
             Task.detached(priority: .utility) { UpdateInstaller.removeLeftovers() }
         }
-        if preferences.checksForUpdates, let currentVersion,
-           let offered = offeredVersion.flatMap(AppVersion.init), offered > currentVersion {
+        if let currentVersion,
+           UpdateCheck.rechecksAtLaunch(enabled: preferences.checksForUpdates, offeredVersion: offeredVersion, current: currentVersion) {
             recheckingOffer = true
             check()
         } else {
@@ -155,28 +152,20 @@ final class UpdateChecker {
         }
     }
 
+    /// What the check found decides the rest (`UpdateCheckOutcome`): a release this Mac can't run isn't
+    /// offered again, an install under way carries on with its own update, and a changed offer discards
+    /// the download made for the old one.
     private func finishCheck(with found: AvailableUpdate?) {
         lastCheck = Date()
         lastFailure = nil
         recheckingOffer = false
-        // A release this Mac can't run isn't offered again. Any other result (a newer release, say)
-        // forgets it.
-        var update = found
-        if let found, let unsupported = stillUnsupported, found.version == unsupported.version {
-            status = .unsupported(unsupported.version, minimumSystem: unsupported.minimumSystem)
-            update = nil
-        } else {
-            unsupportedUpdate = nil
-            status = found.map(UpdateStatus.available) ?? .upToDate
-        }
-        offeredVersion = update?.version.description
-        // An install under way carries on with the update it started with.
-        guard !isInstalling else { return }
-        let offerChanged = update != offeredUpdate
-        // A newer release, or none any more: a copy downloaded for the old offer goes.
-        if offerChanged { discardDownload() }
-        install = install.afterCheck(offerChanged: offerChanged)
-        offeredUpdate = update
+        let outcome = UpdateCheckOutcome(found: found, unsupported: stillUnsupported, offeredUpdate: offeredUpdate, install: install)
+        status = outcome.status
+        if outcome.forgetsUnsupported { unsupportedUpdate = nil }
+        offeredVersion = outcome.offer?.version.description
+        if outcome.discardsDownload { discardDownload() }
+        install = outcome.install
+        offeredUpdate = outcome.offeredUpdate
     }
 
     /// Install: downloads and verifies the offered update, which then waits, ready, for Install and

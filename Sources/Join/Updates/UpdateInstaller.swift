@@ -257,7 +257,8 @@ nonisolated struct UpdateInstaller: UpdateInstalling {
               let bundleIdentifier, info["CFBundleIdentifier"] as? String == bundleIdentifier,
               info["CFBundleShortVersionString"] as? String == update.version.description
         else { throw UpdateFailure.notJoin }
-        if let minimum = info["LSMinimumSystemVersion"] as? String, !Self.systemIsAtLeast(minimum) {
+        if let minimum = info["LSMinimumSystemVersion"] as? String,
+           !UpdateCheck.system(ProcessInfo.processInfo.operatingSystemVersion, isAtLeast: minimum) {
             throw UpdateFailure.unsupportedSystem(minimum)
         }
         guard Self.hasCodeForThisProcessor(app) else { throw UpdateFailure.wrongArchitecture }
@@ -273,15 +274,6 @@ nonisolated struct UpdateInstaller: UpdateInstalling {
             logger.error("The downloaded app's signature failed validation: \(status, privacy: .public)")
             throw UpdateFailure.signature
         }
-    }
-
-    /// "14.0" against the running macOS. One that can't be read doesn't stop the install.
-    static func systemIsAtLeast(_ minimum: String) -> Bool {
-        let parts = minimum.split(separator: ".", omittingEmptySubsequences: false).map { Int($0) }
-        guard (1...3).contains(parts.count), parts.allSatisfy({ $0 != nil }) else { return true }
-        let numbers = parts.compactMap { $0 } + [0, 0]
-        let version = OperatingSystemVersion(majorVersion: numbers[0], minorVersion: numbers[1], patchVersion: numbers[2])
-        return ProcessInfo.processInfo.isOperatingSystemAtLeast(version)
     }
 
     /// Whether the app's executable has a slice for the processor this copy runs on. Signature checks

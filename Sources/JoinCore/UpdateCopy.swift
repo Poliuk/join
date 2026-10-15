@@ -12,9 +12,8 @@ public enum UpdateCopy {
     /// The button once the new copy is downloaded and verified: only this click replaces the app and
     /// relaunches it, in the words macOS uses for it.
     public static let installAndRelaunchTitle = "Install and Relaunch"
-    /// Under Install in a fixture run (unless JOIN_FIXTURE_UPDATE is live or ready), in the same words as
-    /// Open at login's note.
-    public static let installFixtureNote = "Not available in fixture mode."
+    /// Under Install in a fixture run (unless JOIN_FIXTURE_UPDATE is live or ready): Open at login's note.
+    public static let installFixtureNote = SettingsOptions.openAtLoginFixtureNote
 
     /// The line beside Check Now: "Join! 1.0.0 · Checked 5 minutes ago", "Join! 1.0.0 · Checking…",
     /// "Join! 1.0.0 · Couldn't check for updates", "Join! 1.0.0" before the first check,

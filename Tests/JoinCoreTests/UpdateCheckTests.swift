@@ -3,13 +3,13 @@ import Testing
 @testable import JoinCore
 
 struct UpdateCheckTests {
-    private let current = AppVersion(major: 1, minor: 0, patch: 0)
-    private let hex = "5b6a8afae5540e126ed053255720da7325c4532d7b802ba7878df823a5deaec7"
-    private let now = Date(timeIntervalSince1970: 1_800_000_000)
+    static let current = AppVersion(major: 1, minor: 0, patch: 0)
+    static let hex = "5b6a8afae5540e126ed053255720da7325c4532d7b802ba7878df823a5deaec7"
+    static let now = Date(timeIntervalSince1970: 1_800_000_000)
 
     /// Shaped like api.github.com/repos/Poliuk/join/releases/latest, with the keys Join! doesn't read
     /// left in (some trimmed).
-    private let latestResponse = """
+    static let latestResponse = """
     {
       "url": "https://api.github.com/repos/Poliuk/join/releases/404967724",
       "assets_url": "https://api.github.com/repos/Poliuk/join/releases/404967724/assets",
@@ -73,7 +73,7 @@ struct UpdateCheckTests {
     }
     """
 
-    private func release(
+    static func release(
         tag: String = "v1.1.0",
         draft: Bool = false,
         prerelease: Bool = false,
@@ -83,194 +83,294 @@ struct UpdateCheckTests {
             tagName: tag,
             draft: draft,
             prerelease: prerelease,
-            assets: assets ?? [GitHubRelease.Asset(name: "Join.zip", size: 2_486_395, digest: "sha256:" + hex)]
+            assets: assets ?? [joinZip(size: 2_486_395, digest: "sha256:" + hex)]
         )
+    }
+
+    static func joinZip(size: Int, digest: String? = nil) -> GitHubRelease.Asset {
+        GitHubRelease.Asset(name: "Join.zip", size: size, digest: digest)
     }
 
     // MARK: Decoding
 
     @Test func decodesTheLatestReleaseResponse() throws {
-        let decoded = try UpdateCheck.decodeRelease(Data(latestResponse.utf8))
+        let decoded = try UpdateCheck.decodeRelease(Data(Self.latestResponse.utf8))
         #expect(decoded.tagName == "v1.1.0")
         #expect(!decoded.draft)
         #expect(!decoded.prerelease)
         #expect(decoded.assets == [
-            GitHubRelease.Asset(name: "Join.zip", size: 2_486_395, digest: "sha256:" + hex),
+            GitHubRelease.Asset(name: "Join.zip", size: 2_486_395, digest: "sha256:" + Self.hex),
             GitHubRelease.Asset(name: "Join.dSYM.zip", size: 1_048_576, digest: nil),
         ])
     }
 
-    @Test func decodingRejectsOtherResponses() {
-        let responses = [
-            "",
-            "not json",
-            "[]",
-            #"{"message": "API rate limit exceeded", "documentation_url": "https://docs.github.com/rest"}"#,
-            #"{"tag_name": "v1.1.0", "draft": false, "prerelease": false}"#,
-            #"{"tag_name": "v1.1.0", "draft": "no", "prerelease": false, "assets": []}"#,
-            #"{"tag_name": "v1.1.0", "draft": false, "prerelease": false, "assets": [{"name": "Join.zip"}]}"#,
-        ]
-        for response in responses {
-            #expect(throws: (any Error).self, "\(response)") {
-                try UpdateCheck.decodeRelease(Data(response.utf8))
-            }
+    /// Other answers GitHub gives count as a failed check, retried within the hour, never as up to date.
+    @Test(arguments: [
+        ("a rate limit", #"{"message": "API rate limit exceeded", "documentation_url": "https://docs.github.com/rest"}"#),
+        ("a release without assets", #"{"tag_name": "v1.1.0", "draft": false, "prerelease": false}"#),
+        ("an asset without a size", #"{"tag_name": "v1.1.0", "draft": false, "prerelease": false, "assets": [{"name": "Join.zip"}]}"#),
+    ])
+    func decodingRejectsOtherResponses(_ name: String, response: String) {
+        #expect(throws: (any Error).self) {
+            try UpdateCheck.decodeRelease(Data(response.utf8))
         }
-    }
-
-    @Test func decodesAnAssetWithoutADigest() throws {
-        let json = #"{"tag_name": "v1.1.0", "draft": false, "prerelease": false, "assets": [{"name": "Join.zip", "size": 10}]}"#
-        let decoded = try UpdateCheck.decodeRelease(Data(json.utf8))
-        #expect(decoded.assets == [GitHubRelease.Asset(name: "Join.zip", size: 10, digest: nil)])
     }
 
     // MARK: Update
 
+    /// The URLs are built from the validated tag, never taken from the response (its download URL points
+    /// at example.com).
     @Test func newerReleaseIsAnUpdateWithURLsBuiltFromTheTag() throws {
-        let decoded = try UpdateCheck.decodeRelease(Data(latestResponse.utf8))
-        let update = try #require(UpdateCheck.update(current: current, release: decoded))
+        #expect(UpdateCheck.latestReleaseURL.absoluteString == "https://api.github.com/repos/Poliuk/join/releases/latest")
+        let decoded = try UpdateCheck.decodeRelease(Data(Self.latestResponse.utf8))
+        let update = try #require(UpdateCheck.update(current: Self.current, release: decoded))
         #expect(update.version == AppVersion(major: 1, minor: 1, patch: 0))
         #expect(update.pageURL.absoluteString == "https://github.com/Poliuk/join/releases/tag/v1.1.0")
         #expect(update.downloadURL.absoluteString == "https://github.com/Poliuk/join/releases/download/v1.1.0/Join.zip")
-        #expect(update.sha256 == hex)
+        #expect(update.sha256 == Self.hex)
         #expect(update.size == 2_486_395)
     }
 
-    @Test func onlyANewerVersionIsAnUpdate() {
-        #expect(UpdateCheck.update(current: current, release: release(tag: "v1.0.0")) == nil, "equal")
-        #expect(UpdateCheck.update(current: current, release: release(tag: "v0.9.9")) == nil, "older")
-        #expect(UpdateCheck.update(current: current, release: release(tag: "v1.0.1")) != nil)
-        #expect(UpdateCheck.update(current: current, release: release(tag: "v2.0.0")) != nil)
-        #expect(UpdateCheck.update(current: AppVersion(major: 1, minor: 10, patch: 0), release: release(tag: "v1.9.0")) == nil)
+    /// An update is a newer, published release tagged exactly vX.Y.Z (`AppVersionTests` has the other tags
+    /// it rejects) with a Join.zip of 1 byte to 100 MB: the zip's size, or nil when the release isn't one.
+    @Test(arguments: [
+        ("the same version", release(tag: "v1.0.0"), nil),
+        ("an older version", release(tag: "v0.9.9"), nil),
+        ("a patch", release(tag: "v1.0.1"), 2_486_395),
+        ("a major version", release(tag: "v2.0.0"), 2_486_395),
+        ("a draft", release(draft: true), nil),
+        ("a prerelease", release(prerelease: true), nil),
+        ("a tag without its v", release(tag: "1.1.0"), nil),
+        ("a tag that is a path", release(tag: "v1.1.0/../../evil"), nil),
+        ("no assets", release(assets: []), nil),
+        ("no asset named exactly Join.zip", release(assets: [
+            GitHubRelease.Asset(name: "Join-1.1.0.zip", size: 1000), GitHubRelease.Asset(name: "join.zip", size: 1000),
+        ]), nil),
+        ("an empty Join.zip", release(assets: [joinZip(size: 0)]), nil),
+        ("a Join.zip over 100 MB", release(assets: [joinZip(size: UpdateCheck.maximumDownloadSize + 1)]), nil),
+        ("a Join.zip of exactly 100 MB", release(assets: [joinZip(size: UpdateCheck.maximumDownloadSize)]), UpdateCheck.maximumDownloadSize),
+        ("Join.zip after another asset", release(assets: [GitHubRelease.Asset(name: "Join.dSYM.zip", size: 5000), joinZip(size: 1234)]), 1234),
+    ] as [(String, GitHubRelease, Int?)])
+    func releaseIsAnUpdate(_ name: String, release: GitHubRelease, size: Int?) {
+        #expect(UpdateCheck.update(current: Self.current, release: release)?.size == size)
     }
 
-    @Test func draftsAndPrereleasesAreNotUpdates() {
-        #expect(UpdateCheck.update(current: current, release: release(draft: true)) == nil)
-        #expect(UpdateCheck.update(current: current, release: release(prerelease: true)) == nil)
-    }
-
-    @Test func tagMustBeExactlyVMajorMinorPatch() {
-        for tag in ["1.1.0", "v1.1", "v1.1.0.1", "v1.1.0-beta", "V1.1.0", "release-1.1.0", "v01.1.0", "v1.1.0/../../evil", ""] {
-            #expect(UpdateCheck.update(current: current, release: release(tag: tag)) == nil, "\(tag)")
-        }
-    }
-
-    @Test func needsAJoinZipAssetOfAnAcceptableSize() {
-        #expect(UpdateCheck.update(current: current, release: release(assets: [])) == nil, "no assets")
-        #expect(UpdateCheck.update(current: current, release: release(assets: [
-            GitHubRelease.Asset(name: "Join-1.1.0.zip", size: 1000, digest: nil),
-            GitHubRelease.Asset(name: "join.zip", size: 1000, digest: nil),
-        ])) == nil, "no asset named exactly Join.zip")
-        let oversized = GitHubRelease.Asset(name: "Join.zip", size: UpdateCheck.maximumDownloadSize + 1, digest: nil)
-        #expect(UpdateCheck.update(current: current, release: release(assets: [oversized])) == nil, "oversized")
-        let empty = GitHubRelease.Asset(name: "Join.zip", size: 0, digest: nil)
-        #expect(UpdateCheck.update(current: current, release: release(assets: [empty])) == nil, "empty")
-        let largest = GitHubRelease.Asset(name: "Join.zip", size: UpdateCheck.maximumDownloadSize, digest: nil)
-        #expect(UpdateCheck.update(current: current, release: release(assets: [largest]))?.size == UpdateCheck.maximumDownloadSize)
-
-        let others = GitHubRelease.Asset(name: "Join.dSYM.zip", size: 5000, digest: nil)
-        let join = GitHubRelease.Asset(name: "Join.zip", size: 1234, digest: nil)
-        #expect(UpdateCheck.update(current: current, release: release(assets: [others, join]))?.size == 1234)
-    }
-
-    @Test func digestBecomesLowercaseHexOrNil() {
-        func sha256(_ digest: String?) -> String?? {
-            let asset = GitHubRelease.Asset(name: "Join.zip", size: 1000, digest: digest)
-            return UpdateCheck.update(current: current, release: release(assets: [asset])).map(\.sha256)
-        }
-        #expect(sha256("sha256:" + hex) == hex)
-        #expect(sha256("sha256:" + hex.uppercased()) == hex)
-        #expect(sha256(nil) == .some(nil), "absent: still an update, without a checksum")
-        let short = String(hex.dropLast())
-        let malformed: [String] = [
-            "", "sha256:", hex, "sha256:" + short, "sha256:" + hex + "0", "sha256:" + short + "g", "sha256: " + short,
-            "sha512:" + hex, "SHA256:" + hex, "md5:d41d8cd98f00b204e9800998ecf8427e",
-        ]
-        for digest in malformed {
-            #expect(sha256(digest) == .some(nil), "\(digest)")
-        }
-    }
-
-    @Test func fixedURLsAndLimits() {
-        #expect(UpdateCheck.latestReleaseURL.absoluteString == "https://api.github.com/repos/Poliuk/join/releases/latest")
-        #expect(UpdateCheck.releasesPageURL.absoluteString == "https://github.com/Poliuk/join/releases")
-        #expect(UpdateCheck.assetName == "Join.zip")
-        #expect(UpdateCheck.checkInterval == 24 * 60 * 60)
-        #expect(UpdateCheck.retryInterval == 60 * 60)
-        #expect(UpdateCheck.maximumDownloadSize == 104_857_600)
+    /// Only "sha256:" and exactly 64 hex digits give a checksum, in lowercase. A release without one, or
+    /// with one that can't be read, is still an update, without a checksum.
+    @Test(arguments: [
+        ("sha256:" + hex, hex),
+        ("sha256:" + hex.uppercased(), hex),
+        (nil, nil),
+        ("sha512:" + hex, nil),
+        ("SHA256:" + hex, nil),
+        ("sha256:" + hex.dropLast(), nil),
+        ("sha256:" + hex + "0", nil),
+        ("sha256:" + hex.dropLast() + "g", nil),
+        ("sha256: " + hex.dropLast(), nil),
+    ] as [(String?, String?)])
+    func digestBecomesLowercaseHexOrNil(_ digest: String?, sha256: String?) throws {
+        let release = Self.release(assets: [Self.joinZip(size: 1000, digest: digest)])
+        let update = try #require(UpdateCheck.update(current: Self.current, release: release))
+        #expect(update.sha256 == sha256)
     }
 
     // MARK: Schedule
 
-    @Test func isDue() {
-        func due(enabled: Bool = true, success: TimeInterval?, failure: TimeInterval? = nil) -> Bool {
-            UpdateCheck.isDue(
-                enabled: enabled,
-                lastSuccess: success.map { now.addingTimeInterval(-$0) },
-                lastFailure: failure.map { now.addingTimeInterval(-$0) },
-                now: now
-            )
+    /// Daily, an hour after a failure, and at once when the clock moved back. In hours ago; nil is never.
+    @Test(arguments: [
+        ("off", false, nil, nil, false),
+        ("never checked", true, nil, nil, true),
+        ("checked just under a day ago", true, 24 - 1.0 / 3600, nil, false),
+        ("checked a day ago", true, 24, nil, true),
+        ("checked in the future: the clock moved back", true, -1, nil, true),
+        // Never checked is also how a launch's re-check of an offer asks (`rechecksAtLaunch`) until it succeeds.
+        ("never checked, failed 10 min ago", true, nil, 10.0 / 60, false),
+        ("failed just under an hour ago", true, 25, 1 - 1.0 / 3600, false),
+        ("failed an hour ago", true, 25, 1, true),
+        ("never checked, failed 2 h ago", true, nil, 2, true),
+        ("failed 2 h ago, checked 1 h ago", true, 1, 2, false),
+        ("failed in the future: the clock moved back", true, nil, -1, true),
+    ] as [(String, Bool, Double?, Double?, Bool)])
+    func isDue(_ name: String, enabled: Bool, hoursSinceSuccess: Double?, hoursSinceFailure: Double?, due: Bool) {
+        func hoursAgo(_ hours: Double?) -> Date? {
+            hours.map { Self.now.addingTimeInterval(-$0 * 3600) }
         }
-        let hour: TimeInterval = 60 * 60
-        #expect(!due(enabled: false, success: nil), "disabled")
-        #expect(!due(enabled: false, success: 25 * hour), "disabled")
-        #expect(due(success: nil), "never checked")
-        #expect(!due(success: hour), "1 h ago")
-        #expect(!due(success: 24 * hour - 1), "just under a day ago")
-        #expect(due(success: 24 * hour), "a day ago")
-        #expect(due(success: 25 * hour), "25 h ago")
-        #expect(due(success: -hour), "in the future: the clock moved back")
-        #expect(!due(success: nil, failure: 10 * 60), "never checked, failed 10 min ago")
-        #expect(!due(success: 25 * hour, failure: hour - 1), "failed just under an hour ago")
-        #expect(due(success: 25 * hour, failure: hour), "failed an hour ago")
-        #expect(due(success: nil, failure: 2 * hour), "old failure")
-        #expect(!due(success: hour, failure: 2 * hour), "old failure, recent success")
-        #expect(due(success: nil, failure: -hour), "failure in the future: the clock moved back")
+        let isDue = UpdateCheck.isDue(
+            enabled: enabled, lastSuccess: hoursAgo(hoursSinceSuccess), lastFailure: hoursAgo(hoursSinceFailure), now: Self.now
+        )
+        #expect(isDue == due)
     }
 
-    // MARK: Status
-
-    @Test func availableUpdateComesOnlyFromAvailable() throws {
-        let update = try #require(UpdateCheck.update(current: current, release: release()))
-        #expect(UpdateStatus.available(update).availableUpdate == update)
-        let unsupported = UpdateStatus.unsupported(AppVersion(major: 1, minor: 1, patch: 0), minimumSystem: "15.0")
-        for status in [UpdateStatus.unknown, .checking, .upToDate, unsupported, .failed] {
-            #expect(status.availableUpdate == nil, "\(status)")
-        }
+    /// At launch, a remembered offer newer than this copy is checked again at once, so it comes back without
+    /// waiting a day.
+    @Test(arguments: [
+        ("an offer of 1.1.0", true, "1.1.0", true),
+        ("automatic checks off", false, "1.1.0", false),
+        ("no offer", true, nil, false),
+        ("an offer of this version: updated by hand", true, "1.0.0", false),
+        ("an offer of an older version", true, "0.9.0", false),
+        ("an offer that can't be read", true, "1.1", false),
+    ] as [(String, Bool, String?, Bool)])
+    func rechecksAtLaunch(_ name: String, enabled: Bool, offeredVersion: String?, rechecks: Bool) {
+        #expect(UpdateCheck.rechecksAtLaunch(enabled: enabled, offeredVersion: offeredVersion, current: Self.current) == rechecks)
     }
 
-    @Test func unsupportedUpdateRoundTripsAsJSON() throws {
-        let unsupported = UnsupportedUpdate(version: "1.2.0", minimumSystem: "15.0")
-        let data = try JSONEncoder().encode(unsupported)
-        let object = try #require(JSONSerialization.jsonObject(with: data) as? [String: String])
-        #expect(object == ["version": "1.2.0", "minimumSystem": "15.0"])
-        #expect(try JSONDecoder().decode(UnsupportedUpdate.self, from: data) == unsupported)
+    // MARK: A release this Mac can't run
+
+    /// An app's LSMinimumSystemVersion against macOS 14.6.1. One that can't be read doesn't stop an install.
+    @Test(arguments: [
+        ("14.0", true),
+        ("14", true),
+        ("14.6.1", true),
+        ("14.6.2", false),
+        ("15.0", false),
+        ("26", false),
+        ("13.5", true),
+        ("", true),
+        ("fifteen", true),
+        ("15.x", true),
+        ("15..0", true),
+        ("15.0.0.1", true),
+    ])
+    func systemIsAtLeast(_ minimum: String, met: Bool) {
+        let system = OperatingSystemVersion(majorVersion: 14, minorVersion: 6, patchVersion: 1)
+        #expect(UpdateCheck.system(system, isAtLeast: minimum) == met)
+    }
+
+    /// A release an install found this Mac can't run stays so until this copy or macOS catches up.
+    @Test(arguments: [
+        ("needs macOS 15.0, on 14.6", "1.2.0", "15.0", 14, current, true),
+        ("macOS updated to 15.6", "1.2.0", "15.0", 15, current, false),
+        ("this copy updated to 1.2.0", "1.2.0", "15.0", 14, AppVersion(major: 1, minor: 2, patch: 0), false),
+        ("a version that can't be read", "1.2", "15.0", 14, current, false),
+        ("a minimum that can't be read", "1.2.0", "fifteen", 14, current, false),
+    ] as [(String, String, String, Int, AppVersion, Bool)])
+    func stillUnsupported(_ name: String, version: String, minimumSystem: String, macOS: Int, current: AppVersion, unsupported: Bool) {
+        let stored = UnsupportedUpdate(version: version, minimumSystem: minimumSystem)
+        let system = OperatingSystemVersion(majorVersion: macOS, minorVersion: 6, patchVersion: 0)
+        let still = stored.stillUnsupported(current: current, system: system)
+        #expect(still?.version == (unsupported ? AppVersion(version) : nil))
+        #expect(still?.minimumSystem == (unsupported ? minimumSystem : nil))
     }
 
     // MARK: Install state
 
-    private var everyInstallState: [UpdateInstallState] {
-        [.idle, .downloading(nil), .downloading(0.5), .verifying, .ready, .installing,
-         .revealed(URL(fileURLWithPath: "/tmp/Join 1.1.0/Join.app")), .failed(.checksum)]
-    }
-
-    @Test func inProgressFromInstallUntilReadyAndFromInstallAndRelaunchOn() {
-        let inProgress = everyInstallState.filter(\.isInProgress)
-        #expect(inProgress == [.downloading(nil), .downloading(0.5), .verifying, .installing])
-        #expect(!UpdateInstallState.ready.isInProgress, "checks go on while a copy is ready")
-    }
-
-    @Test func aChangedOfferStartsAgainFromInstall() {
-        for state in everyInstallState where !state.isInProgress {
-            #expect(state.afterCheck(offerChanged: true) == .idle, "\(state)")
+    /// From Install until the copy is ready, and from Install and Relaunch on, nothing changes the offer. The
+    /// other states, after a check: a changed offer starts again from Install; the same offer keeps a ready
+    /// or revealed copy, and gets Install back after a failure.
+    @Test(arguments: [
+        (.idle, false, .idle, .idle),
+        (.downloading(0.5), true, nil, nil),
+        (.verifying, true, nil, nil),
+        (.ready, false, .idle, .ready),
+        (.installing, true, nil, nil),
+        (.revealed(revealedCopy), false, .idle, .revealed(revealedCopy)),
+        (.failed(.download), false, .idle, .idle),
+    ] as [(UpdateInstallState, Bool, UpdateInstallState?, UpdateInstallState?)])
+    func installState(_ state: UpdateInstallState, isInProgress: Bool, afterChangedOffer: UpdateInstallState?, afterSameOffer: UpdateInstallState?) {
+        #expect(state.isInProgress == isInProgress)
+        if let afterChangedOffer, let afterSameOffer {
+            #expect(state.afterCheck(offerChanged: true) == afterChangedOffer)
+            #expect(state.afterCheck(offerChanged: false) == afterSameOffer)
         }
     }
 
-    @Test func theSameOfferKeepsAReadyOrRevealedCopyAndOffersInstallAgainAfterAFailure() {
-        #expect(UpdateInstallState.idle.afterCheck(offerChanged: false) == .idle)
-        #expect(UpdateInstallState.ready.afterCheck(offerChanged: false) == .ready)
-        let revealed = UpdateInstallState.revealed(URL(fileURLWithPath: "/tmp/Join 1.1.0/Join.app"))
-        #expect(revealed.afterCheck(offerChanged: false) == revealed)
-        #expect(UpdateInstallState.failed(.download).afterCheck(offerChanged: false) == .idle)
-        #expect(UpdateInstallState.failed(.relaunch).afterCheck(offerChanged: false) == .idle)
+    static let revealedCopy = URL(fileURLWithPath: "/tmp/Join 1.1.0/Join.app")
+
+    // MARK: After a check
+
+    /// Join! 1.`minor`.0.
+    static func update(_ minor: Int) -> AvailableUpdate {
+        let version = AppVersion(major: 1, minor: minor, patch: 0)
+        return AvailableUpdate(
+            version: version,
+            pageURL: UpdateCheck.releasesPageURL.appending(components: "tag", version.tag),
+            downloadURL: UpdateCheck.releasesPageURL.appending(components: "download", version.tag, UpdateCheck.assetName),
+            sha256: nil,
+            size: 2_486_395
+        )
+    }
+
+    /// What a check found, where the offer stood, and what the check makes of it (`UpdateChecker`).
+    struct Check: Sendable, CustomTestStringConvertible {
+        let testDescription: String
+        let found: AvailableUpdate?
+        /// The version of the release this Mac can't run, which needs macOS 15.0.
+        let unsupported: AppVersion?
+        let offeredUpdate: AvailableUpdate?
+        let install: UpdateInstallState
+        let outcome: UpdateCheckOutcome
+
+        init(
+            _ name: String,
+            found: AvailableUpdate?,
+            unsupported: AppVersion? = nil,
+            offered offeredUpdate: AvailableUpdate?,
+            install: UpdateInstallState = .idle,
+            _ outcome: UpdateCheckOutcome
+        ) {
+            testDescription = name
+            self.found = found
+            self.unsupported = unsupported
+            self.offeredUpdate = offeredUpdate
+            self.install = install
+            self.outcome = outcome
+        }
+    }
+
+    static let checks: [Check] = [
+        Check("1.1.0 found", found: update(1), offered: nil, UpdateCheckOutcome(
+            status: .available(update(1)), offer: update(1), offeredUpdate: update(1), install: .idle,
+            discardsDownload: true, forgetsUnsupported: true
+        )),
+        Check("up to date", found: nil, offered: nil, UpdateCheckOutcome(
+            status: .upToDate, offer: nil, offeredUpdate: nil, install: .idle, discardsDownload: false, forgetsUnsupported: true
+        )),
+        Check("the same release keeps a ready copy", found: update(1), offered: update(1), install: .ready, UpdateCheckOutcome(
+            status: .available(update(1)), offer: update(1), offeredUpdate: update(1), install: .ready,
+            discardsDownload: false, forgetsUnsupported: true
+        )),
+        Check("the same release gets Install back after a failure", found: update(1), offered: update(1), install: .failed(.checksum),
+              UpdateCheckOutcome(
+                  status: .available(update(1)), offer: update(1), offeredUpdate: update(1), install: .idle,
+                  discardsDownload: false, forgetsUnsupported: true
+              )),
+        Check("a newer release discards a ready copy", found: update(2), offered: update(1), install: .ready, UpdateCheckOutcome(
+            status: .available(update(2)), offer: update(2), offeredUpdate: update(2), install: .idle,
+            discardsDownload: true, forgetsUnsupported: true
+        )),
+        Check("the release is gone, and so is the ready copy", found: nil, offered: update(1), install: .ready, UpdateCheckOutcome(
+            status: .upToDate, offer: nil, offeredUpdate: nil, install: .idle, discardsDownload: true, forgetsUnsupported: true
+        )),
+        // Checks that were under way when Install, or Install and Relaunch, was clicked.
+        Check("a download under way keeps its update", found: update(2), offered: update(1), install: .downloading(0.5),
+              UpdateCheckOutcome(
+                  status: .available(update(2)), offer: update(2), offeredUpdate: update(1), install: .downloading(0.5),
+                  discardsDownload: false, forgetsUnsupported: true
+              )),
+        Check("an install under way keeps its update", found: nil, offered: update(1), install: .installing, UpdateCheckOutcome(
+            status: .upToDate, offer: nil, offeredUpdate: update(1), install: .installing, discardsDownload: false, forgetsUnsupported: true
+        )),
+        Check("the release this Mac can't run isn't offered again", found: update(2), unsupported: update(2).version, offered: nil,
+              UpdateCheckOutcome(
+                  status: .unsupported(update(2).version, minimumSystem: "15.0"), offer: nil, offeredUpdate: nil, install: .idle,
+                  discardsDownload: false, forgetsUnsupported: false
+              )),
+        Check("a newer release than the one this Mac can't run", found: update(3), unsupported: update(2).version, offered: nil,
+              UpdateCheckOutcome(
+                  status: .available(update(3)), offer: update(3), offeredUpdate: update(3), install: .idle,
+                  discardsDownload: true, forgetsUnsupported: true
+              )),
+        Check("up to date after a release this Mac can't run", found: nil, unsupported: update(2).version, offered: nil,
+              UpdateCheckOutcome(
+                  status: .upToDate, offer: nil, offeredUpdate: nil, install: .idle, discardsDownload: false, forgetsUnsupported: true
+              )),
+    ]
+
+    @Test(arguments: checks)
+    func afterACheck(_ check: Check) {
+        let unsupported = check.unsupported.map { (version: $0, minimumSystem: "15.0") }
+        let outcome = UpdateCheckOutcome(found: check.found, unsupported: unsupported, offeredUpdate: check.offeredUpdate, install: check.install)
+        #expect(outcome == check.outcome)
     }
 }

@@ -3,189 +3,187 @@ import Testing
 @testable import JoinCore
 
 struct UpdateCopyTests {
-    private let current = AppVersion(major: 1, minor: 0, patch: 0)
-    private let newer = AppVersion(major: 1, minor: 1, patch: 0)
-    private let checked = Date(timeIntervalSinceReferenceDate: 800_000_000)
+    static let current = AppVersion(major: 1, minor: 0, patch: 0)
+    static let newer = AppVersion(major: 1, minor: 1, patch: 0)
+    static let checked = Date(timeIntervalSinceReferenceDate: 800_000_000)
 
-    private var update: AvailableUpdate {
-        AvailableUpdate(
-            version: newer,
-            pageURL: URL(string: "https://github.com/Poliuk/join/releases/tag/v1.1.0")!,
-            downloadURL: URL(string: "https://github.com/Poliuk/join/releases/download/v1.1.0/Join.zip")!,
+    /// Join! 1.`minor`.0.
+    static func update(_ minor: Int) -> AvailableUpdate {
+        let version = AppVersion(major: 1, minor: minor, patch: 0)
+        return AvailableUpdate(
+            version: version,
+            pageURL: URL(string: "https://github.com/Poliuk/join/releases/tag/\(version.tag)")!,
+            downloadURL: URL(string: "https://github.com/Poliuk/join/releases/download/\(version.tag)/Join.zip")!,
             sha256: nil,
             size: 2_486_395
         )
     }
 
-    private var available: UpdateStatus { .available(update) }
-    private var unsupported: UpdateStatus { .unsupported(AppVersion(major: 1, minor: 2, patch: 0), minimumSystem: "15.0") }
+    struct Copy: Sendable, CustomTestStringConvertible {
+        let testDescription: String
+        let actual: String
+        let expected: String
 
-    @Test func settingsTitles() {
-        #expect(UpdateCopy.sectionTitle == "Updates")
-        #expect(UpdateCopy.automaticChecksTitle == "Check for updates automatically")
-        #expect(UpdateCopy.checkNowTitle == "Check Now")
-        #expect(UpdateCopy.installTitle == "Install")
-        #expect(UpdateCopy.installAndRelaunchTitle == "Install and Relaunch")
-    }
-
-    @Test func installFixtureNoteMatchesOpenAtLogins() {
-        #expect(UpdateCopy.installFixtureNote == "Not available in fixture mode.")
-        #expect(UpdateCopy.installFixtureNote == SettingsOptions.openAtLoginFixtureNote)
-    }
-
-    @Test func statusLineAfterChecks() {
-        func line(_ status: UpdateStatus, after seconds: TimeInterval) -> String {
-            UpdateCopy.statusLine(current: current, status: status, offered: nil, lastCheck: checked, now: checked.addingTimeInterval(seconds))
-        }
-        #expect(line(.upToDate, after: 10) == "Join! 1.0.0 · Checked just now")
-        #expect(line(.upToDate, after: 60) == "Join! 1.0.0 · Checked 1 minute ago")
-        #expect(line(.upToDate, after: 5 * 60) == "Join! 1.0.0 · Checked 5 minutes ago")
-        #expect(line(.upToDate, after: 3600) == "Join! 1.0.0 · Checked 1 hour ago")
-        #expect(line(.upToDate, after: 3 * 3600 + 59 * 60) == "Join! 1.0.0 · Checked 3 hours ago")
-        #expect(line(.upToDate, after: 24 * 3600) == "Join! 1.0.0 · Checked 1 day ago")
-        #expect(line(.upToDate, after: 50 * 3600) == "Join! 1.0.0 · Checked 2 days ago")
-        #expect(line(.upToDate, after: -3600) == "Join! 1.0.0 · Checked just now", "the clock moved back")
-        #expect(line(.unknown, after: 5 * 60) == "Join! 1.0.0 · Checked 5 minutes ago", "a check stored by an earlier run")
-    }
-
-    @Test func statusLineWhileCheckingFailedNeverCheckedAvailableAndUnsupported() {
-        func line(_ status: UpdateStatus, lastCheck: Date? = nil) -> String {
-            UpdateCopy.statusLine(current: current, status: status, offered: nil, lastCheck: lastCheck, now: checked)
-        }
-        #expect(line(.checking) == "Join! 1.0.0 · Checking…")
-        #expect(line(.checking, lastCheck: checked) == "Join! 1.0.0 · Checking…")
-        #expect(line(.failed) == "Join! 1.0.0 · Couldn't check for updates")
-        #expect(line(.failed, lastCheck: checked) == "Join! 1.0.0 · Couldn't check for updates")
-        #expect(line(.unknown) == "Join! 1.0.0")
-        #expect(line(.upToDate) == "Join! 1.0.0")
-        #expect(line(available) == "Join! 1.1.0 is available")
-        #expect(line(available, lastCheck: checked) == "Join! 1.1.0 is available")
-        #expect(line(unsupported) == "Join! 1.2.0 needs macOS 15.0 or later")
-        #expect(line(unsupported, lastCheck: checked) == "Join! 1.2.0 needs macOS 15.0 or later")
-    }
-
-    @Test func statusLineNamesTheOfferWhateverTheStatus() {
-        func line(_ status: UpdateStatus, lastCheck: Date? = nil) -> String {
-            UpdateCopy.statusLine(current: current, status: status, offered: update, lastCheck: lastCheck, now: checked)
-        }
-        #expect(line(.checking) == "Join! 1.1.0 is available", "a recheck under way")
-        #expect(line(.failed) == "Join! 1.1.0 is available", "a recheck that failed")
-        #expect(line(.unknown) == "Join! 1.1.0 is available", "remembered from an earlier run")
-        #expect(line(.upToDate, lastCheck: checked) == "Join! 1.1.0 is available", "an older check")
-        #expect(line(available) == "Join! 1.1.0 is available")
-        let later = AvailableUpdate(
-            version: AppVersion(major: 1, minor: 2, patch: 0),
-            pageURL: URL(string: "https://github.com/Poliuk/join/releases/tag/v1.2.0")!,
-            downloadURL: URL(string: "https://github.com/Poliuk/join/releases/download/v1.2.0/Join.zip")!,
-            sha256: nil,
-            size: 2_500_000
-        )
-        #expect(line(.available(later)) == "Join! 1.1.0 is available", "the offer, which Install installs, wins")
-    }
-
-    @Test func statusLineWithoutAReadableVersion() {
-        #expect(UpdateCopy.statusLine(current: nil, status: .unknown, offered: nil, lastCheck: nil, now: checked) == "Join!")
-        #expect(UpdateCopy.statusLine(current: nil, status: .failed, offered: nil, lastCheck: nil, now: checked) == "Join! · Couldn't check for updates")
-    }
-
-    @Test func unsupportedMessage() {
-        #expect(
-            UpdateCopy.unsupported(AppVersion(major: 1, minor: 2, patch: 0), minimumSystem: "15.0")
-                == "Join! 1.2.0 needs macOS 15.0 or later"
-        )
-        #expect(UpdateCopy.unsupported(AppVersion(major: 2, minor: 0, patch: 0), minimumSystem: "26") == "Join! 2.0.0 needs macOS 26 or later")
-    }
-
-    @Test func failureReasons() {
-        let reasons: [(UpdateFailure, String)] = [
-            (.download, "The download didn't finish."),
-            (.tooLarge, "The download is larger than 100 MB."),
-            (.checksum, "The download doesn't match the release's checksum."),
-            (.unzip, "The download couldn't be unzipped."),
-            (.notJoin, "The downloaded app doesn't match the release."),
-            (.wrongArchitecture, "This version doesn't run on this Mac's processor."),
-            (.unsupportedSystem("15.0"), "This version needs macOS 15.0 or later."),
-            (.unsupportedSystem("26"), "This version needs macOS 26 or later."),
-            (.signature, "The downloaded app's code signature isn't valid."),
-            (.save, "The new copy couldn't be saved."),
-            (.relaunch, "Join! couldn't reopen itself. Quit it and open it again to finish."),
-        ]
-        for (failure, reason) in reasons {
-            #expect(UpdateCopy.failureReason(failure) == reason, "\(failure)")
+        init(_ name: String, _ actual: String, _ expected: String) {
+            testDescription = name
+            self.actual = actual
+            self.expected = expected
         }
     }
 
-    @Test func checkedLabel() {
-        #expect(UpdateCopy.checkedLabel(lastChecked: checked, now: checked) == "Checked just now")
-        #expect(UpdateCopy.checkedLabel(lastChecked: checked, now: checked.addingTimeInterval(14 * 60 + 30)) == "Checked 14 minutes ago")
+    /// Settings › General › Updates. "Check Now" is recorded in the product brief (#10), and "Install and
+    /// Relaunch" is the user's choice (2026-10-15).
+    @Test(arguments: [
+        Copy("section", UpdateCopy.sectionTitle, "Updates"),
+        Copy("automatic checks switch", UpdateCopy.automaticChecksTitle, "Check for updates automatically"),
+        Copy("Check Now", UpdateCopy.checkNowTitle, "Check Now"),
+        Copy("Install", UpdateCopy.installTitle, "Install"),
+        Copy("Install and Relaunch", UpdateCopy.installAndRelaunchTitle, "Install and Relaunch"),
+    ])
+    func settingsCopy(_ copy: Copy) {
+        #expect(copy.actual == copy.expected)
     }
 
-    @Test func barMessages() {
-        func message(_ install: UpdateInstallState) -> String {
-            UpdateCopy.barMessage(version: newer, install: install)
+    // MARK: Status line
+
+    /// The line beside Check Now, from this copy's version, the check's status, the update on offer and the
+    /// last successful check. An offer names the line whatever the status, so Install never sits beside a
+    /// line without a version.
+    struct StatusLine: Sendable, CustomTestStringConvertible {
+        let testDescription: String
+        let current: AppVersion?
+        let status: UpdateStatus
+        let offered: AvailableUpdate?
+        let lastCheck: Date?
+        let line: String
+
+        init(_ name: String, current: AppVersion? = UpdateCopyTests.current, _ status: UpdateStatus, offered: AvailableUpdate? = nil,
+             lastCheck: Date? = nil, _ line: String) {
+            testDescription = name
+            self.current = current
+            self.status = status
+            self.offered = offered
+            self.lastCheck = lastCheck
+            self.line = line
         }
-        #expect(UpdateCopy.available(newer) == "Join! 1.1.0 is available")
-        #expect(message(.idle) == "Join! 1.1.0 is available")
-        #expect(message(.downloading(0.45)) == "Downloading Join! 1.1.0… 45%")
-        #expect(message(.downloading(0)) == "Downloading Join! 1.1.0… 0%")
-        #expect(message(.downloading(1)) == "Downloading Join! 1.1.0… 100%")
-        #expect(message(.downloading(0.294)) == "Downloading Join! 1.1.0… 29%")
-        #expect(message(.downloading(1.5)) == "Downloading Join! 1.1.0… 100%")
-        #expect(message(.downloading(nil)) == "Downloading Join! 1.1.0…")
-        #expect(message(.downloading(.nan)) == "Downloading Join! 1.1.0…")
-        #expect(message(.verifying) == "Verifying Join! 1.1.0…")
-        #expect(UpdateCopy.ready(newer) == "Install 1.1.0")
-        #expect(message(.ready) == "Install 1.1.0")
-        #expect(message(.installing) == "Installing Join! 1.1.0…")
-        #expect(message(.failed(.checksum)) == "Couldn't install Join! 1.1.0")
-        #expect(message(.failed(.unsupportedSystem("15.0"))) == "Couldn't install Join! 1.1.0")
-        #expect(
-            message(.revealed(URL(fileURLWithPath: "/Users/me/Downloads/Join 1.1.0/Join.app")))
-                == "Quit Join!, then move Join! 1.1.0 to Applications"
-        )
     }
 
-    @Test func barButtons() {
-        #expect(UpdateCopy.barButtonTitle(install: .idle) == "Install")
-        #expect(UpdateCopy.barButtonTitle(install: .downloading(0.5)) == nil)
-        #expect(UpdateCopy.barButtonTitle(install: .downloading(nil)) == nil)
-        #expect(UpdateCopy.barButtonTitle(install: .verifying) == nil)
-        #expect(UpdateCopy.barButtonTitle(install: .ready) == "Install and Relaunch")
-        #expect(UpdateCopy.barButtonTitle(install: .installing) == nil)
-        #expect(UpdateCopy.barButtonTitle(install: .failed(.download)) == "Download Page")
-        #expect(UpdateCopy.barButtonTitle(install: .revealed(URL(fileURLWithPath: "/tmp/Join.app"))) == "Show in Finder")
+    /// Five minutes before `checked`.
+    static let fiveMinutesAgo = checked.addingTimeInterval(-5 * 60)
+
+    @Test(arguments: [
+        StatusLine("up to date", .upToDate, lastCheck: fiveMinutesAgo, "Join! 1.0.0 · Checked 5 minutes ago"),
+        StatusLine("a check stored by an earlier run", .unknown, lastCheck: fiveMinutesAgo, "Join! 1.0.0 · Checked 5 minutes ago"),
+        StatusLine("never checked", .unknown, "Join! 1.0.0"),
+        StatusLine("checking", .checking, lastCheck: fiveMinutesAgo, "Join! 1.0.0 · Checking…"),
+        StatusLine("failed", .failed, lastCheck: fiveMinutesAgo, "Join! 1.0.0 · Couldn't check for updates"),
+        StatusLine("available", .available(update(1)), lastCheck: fiveMinutesAgo, "Join! 1.1.0 is available"),
+        StatusLine("unsupported", .unsupported(AppVersion(major: 1, minor: 2, patch: 0), minimumSystem: "15.0"), lastCheck: fiveMinutesAgo,
+                   "Join! 1.2.0 needs macOS 15.0 or later"),
+        StatusLine("an offer while a check runs", .checking, offered: update(1), "Join! 1.1.0 is available"),
+        StatusLine("an offer after a check failed", .failed, offered: update(1), "Join! 1.1.0 is available"),
+        StatusLine("an offer from an earlier run", .unknown, offered: update(1), "Join! 1.1.0 is available"),
+        StatusLine("an offer beside an older check", .upToDate, offered: update(1), lastCheck: fiveMinutesAgo, "Join! 1.1.0 is available"),
+        // The offer is what Install installs.
+        StatusLine("an offer beside a newer release found", .available(update(2)), offered: update(1), "Join! 1.1.0 is available"),
+        StatusLine("no readable version", current: nil, .unknown, "Join!"),
+        StatusLine("no readable version, failed", current: nil, .failed, "Join! · Couldn't check for updates"),
+    ])
+    func statusLine(_ row: StatusLine) {
+        let line = UpdateCopy.statusLine(current: row.current, status: row.status, offered: row.offered, lastCheck: row.lastCheck, now: Self.checked)
+        #expect(line == row.line)
     }
 
-    @Test func barButtonEnabled() {
-        func enabled(_ install: UpdateInstallState, canInstall: Bool = true, isChecking: Bool = false) -> Bool {
-            UpdateCopy.barButtonEnabled(install: install, canInstall: canInstall, isChecking: isChecking)
+    // MARK: Install
+
+    @Test(arguments: [
+        (.download, "The download didn't finish."),
+        (.tooLarge, "The download is larger than 100 MB."),
+        (.checksum, "The download doesn't match the release's checksum."),
+        (.unzip, "The download couldn't be unzipped."),
+        (.notJoin, "The downloaded app doesn't match the release."),
+        (.wrongArchitecture, "This version doesn't run on this Mac's processor."),
+        (.unsupportedSystem("15.0"), "This version needs macOS 15.0 or later."),
+        (.signature, "The downloaded app's code signature isn't valid."),
+        (.save, "The new copy couldn't be saved."),
+        (.relaunch, "Join! couldn't reopen itself. Quit it and open it again to finish."),
+    ] as [(UpdateFailure, String)])
+    func failureReason(_ failure: UpdateFailure, reason: String) {
+        #expect(UpdateCopy.failureReason(failure) == reason)
+    }
+
+    /// The update bar's message for 1.1.0. "Install 1.1.0" is the user's wording (2026-10-15). The percent is
+    /// rounded and kept between 0 and 100, and left out while the size is unknown.
+    @Test(arguments: [
+        (.idle, "Join! 1.1.0 is available"),
+        (.downloading(0.45), "Downloading Join! 1.1.0… 45%"),
+        (.downloading(0.294), "Downloading Join! 1.1.0… 29%"),
+        (.downloading(0), "Downloading Join! 1.1.0… 0%"),
+        (.downloading(1), "Downloading Join! 1.1.0… 100%"),
+        (.downloading(1.5), "Downloading Join! 1.1.0… 100%"),
+        (.downloading(-0.2), "Downloading Join! 1.1.0… 0%"),
+        (.downloading(nil), "Downloading Join! 1.1.0…"),
+        (.downloading(.nan), "Downloading Join! 1.1.0…"),
+        (.downloading(.infinity), "Downloading Join! 1.1.0…"),
+        (.verifying, "Verifying Join! 1.1.0…"),
+        (.ready, "Install 1.1.0"),
+        (.installing, "Installing Join! 1.1.0…"),
+        (.failed(.checksum), "Couldn't install Join! 1.1.0"),
+        (.failed(.unsupportedSystem("15.0")), "Couldn't install Join! 1.1.0"),
+        (.revealed(URL(fileURLWithPath: "/Users/me/Downloads/Join 1.1.0/Join.app")), "Quit Join!, then move Join! 1.1.0 to Applications"),
+    ] as [(UpdateInstallState, String)])
+    func barMessage(_ install: UpdateInstallState, message: String) {
+        #expect(UpdateCopy.barMessage(version: Self.newer, install: install) == message)
+    }
+
+    /// The update bar's button, also in Settings: its title, whether it can be clicked and its tooltip.
+    struct BarButton: Sendable, CustomTestStringConvertible {
+        let testDescription: String
+        let install: UpdateInstallState
+        let canInstall: Bool
+        let isChecking: Bool
+        let title: String?
+        let isEnabled: Bool
+        let help: String?
+
+        init(_ name: String, _ install: UpdateInstallState, canInstall: Bool = true, isChecking: Bool = false,
+             title: String?, isEnabled: Bool, help: String? = nil) {
+            testDescription = name
+            self.install = install
+            self.canInstall = canInstall
+            self.isChecking = isChecking
+            self.title = title
+            self.isEnabled = isEnabled
+            self.help = help
         }
-        #expect(enabled(.idle))
-        #expect(!enabled(.idle, isChecking: true), "Install waits for a check, which may change the offer")
-        #expect(!enabled(.idle, canInstall: false), "a fixture run that can't install")
-        #expect(enabled(.ready))
-        #expect(!enabled(.ready, isChecking: true), "a check may find a newer release, which replaces the ready one")
-        #expect(!enabled(.downloading(0.5)))
-        #expect(!enabled(.verifying))
-        #expect(!enabled(.installing))
-        #expect(enabled(.failed(.download)))
-        #expect(enabled(.failed(.download), canInstall: false, isChecking: true), "Download Page only opens a page")
-        #expect(enabled(.revealed(URL(fileURLWithPath: "/tmp/Join.app")), isChecking: true))
     }
 
-    @Test func barButtonHelp() {
-        func help(_ install: UpdateInstallState, canInstall: Bool = true) -> String? {
-            UpdateCopy.barButtonHelp(version: newer, install: install, canInstall: canInstall)
-        }
-        #expect(help(.idle) == nil)
-        #expect(help(.idle, canInstall: false) == "Not available in fixture mode.")
-        #expect(help(.ready) == "Replaces Join! with version 1.1.0 and opens it again.")
-        #expect(UpdateCopy.installAndRelaunchHelp(newer) == "Replaces Join! with version 1.1.0 and opens it again.")
-        #expect(help(.failed(.checksum)) == "The download doesn't match the release's checksum.")
-        #expect(help(.failed(.relaunch)) == "Join! couldn't reopen itself. Quit it and open it again to finish.")
-        #expect(help(.downloading(nil)) == nil)
-        #expect(help(.verifying) == nil)
-        #expect(help(.installing) == nil)
-        #expect(help(.revealed(URL(fileURLWithPath: "/tmp/Join.app"))) == nil)
+    @Test(arguments: [
+        BarButton("an offer", .idle, title: "Install", isEnabled: true),
+        // A check may change the offer.
+        BarButton("an offer while a check runs", .idle, isChecking: true, title: "Install", isEnabled: false),
+        // In the same words as Open at login's note.
+        BarButton("an offer in a fixture run", .idle, canInstall: false, title: "Install", isEnabled: false,
+                  help: "Not available in fixture mode."),
+        BarButton("downloading", .downloading(0.5), title: nil, isEnabled: false),
+        BarButton("verifying", .verifying, title: nil, isEnabled: false),
+        BarButton("ready", .ready, title: "Install and Relaunch", isEnabled: true,
+                  help: "Replaces Join! with version 1.1.0 and opens it again."),
+        // A check may find a newer release, which replaces the ready one.
+        BarButton("ready while a check runs", .ready, isChecking: true, title: "Install and Relaunch", isEnabled: false,
+                  help: "Replaces Join! with version 1.1.0 and opens it again."),
+        BarButton("installing", .installing, title: nil, isEnabled: false),
+        BarButton("failed", .failed(.checksum), title: "Download Page", isEnabled: true,
+                  help: "The download doesn't match the release's checksum."),
+        // Download Page only opens a page; the reason beats the fixture note.
+        BarButton("failed in a fixture run while a check runs", .failed(.download), canInstall: false, isChecking: true,
+                  title: "Download Page", isEnabled: true, help: "The download didn't finish."),
+        BarButton("revealed, while a check runs", .revealed(URL(fileURLWithPath: "/tmp/Join.app")), isChecking: true,
+                  title: "Show in Finder", isEnabled: true),
+    ])
+    func barButton(_ button: BarButton) {
+        #expect(UpdateCopy.barButtonTitle(install: button.install) == button.title)
+        #expect(UpdateCopy.barButtonEnabled(install: button.install, canInstall: button.canInstall, isChecking: button.isChecking) == button.isEnabled)
+        #expect(UpdateCopy.barButtonHelp(version: Self.newer, install: button.install, canInstall: button.canInstall) == button.help)
     }
 }

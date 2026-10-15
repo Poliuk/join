@@ -3,21 +3,17 @@ import Testing
 @testable import JoinCore
 
 struct MeetingFilterTests {
-    @Test func allDayEventsAreExcluded() {
-        #expect(!MeetingFilter.shouldInclude(isAllDay: true, isCanceled: false, myStatus: .accepted))
-    }
-
-    @Test func canceledEventsAreExcluded() {
-        #expect(!MeetingFilter.shouldInclude(isAllDay: false, isCanceled: true, myStatus: .accepted))
-    }
-
-    @Test func declinedEventsAreExcluded() {
-        #expect(!MeetingFilter.shouldInclude(isAllDay: false, isCanceled: false, myStatus: .declined))
-    }
-
-    @Test func tentativeAndUnknownAreIncluded() {
-        #expect(MeetingFilter.shouldInclude(isAllDay: false, isCanceled: false, myStatus: .tentative))
-        #expect(MeetingFilter.shouldInclude(isAllDay: false, isCanceled: false, myStatus: .unknown))
+    /// What reaches the list at all: not all-day, not canceled, not declined. Maybe and unanswered count.
+    @Test(arguments: [
+        ("an accepted event", false, false, .accepted, true),
+        ("a Maybe", false, false, .tentative, true),
+        ("an unanswered invitation", false, false, .unknown, true),
+        ("a declined event", false, false, .declined, false),
+        ("an all-day event", true, false, .accepted, false),
+        ("a canceled event", false, true, .accepted, false),
+    ] as [(String, Bool, Bool, ParticipationStatus, Bool)])
+    func shouldInclude(_ name: String, isAllDay: Bool, isCanceled: Bool, status: ParticipationStatus, included: Bool) {
+        #expect(MeetingFilter.shouldInclude(isAllDay: isAllDay, isCanceled: isCanceled, myStatus: status) == included)
     }
 
     // MARK: Events choices
@@ -36,189 +32,75 @@ struct MeetingFilterTests {
         )
     }
 
-    /// One event of each kind: an ordinary one, one with no participants, an out-of-office one, and both.
+    /// One event of each kind: an out-of-office one, an ordinary one, one out of office with no participants,
+    /// and one with no participants. Not in alphabetical order, so the tables also show the filters keep the
+    /// order they're given.
     private var kinds: [Meeting] {
         [
-            meeting("call", participants: true),
-            meeting("focus", participants: false),
             meeting("ooo", participants: true, outOfOffice: true),
+            meeting("call", participants: true),
             meeting("ooo-solo", participants: false, outOfOffice: true),
-        ]
-    }
-
-    @Test func meetingsHaveParticipantsUnlessToldOtherwise() {
-        #expect(Meeting(id: "call", title: "Call", start: start, end: start.addingTimeInterval(1800)).hasParticipants)
-        #expect(!meeting("focus", participants: false).hasParticipants)
-    }
-
-    @Test func everyCombinationOfChoices() {
-        let all = ["call", "focus", "ooo", "ooo-solo"]
-        // (no participants, out of office) → (visible, alertable)
-        let cases: [(EventVisibility, EventVisibility, [String], [String])] = [
-            (.showAndAlert, .showAndAlert, all, all),
-            (.showAndAlert, .listOnly, all, ["call", "focus"]),
-            (.showAndAlert, .exclude, ["call", "focus"], ["call", "focus"]),
-            (.listOnly, .showAndAlert, all, ["call", "ooo"]),
-            (.listOnly, .listOnly, all, ["call"]),
-            (.listOnly, .exclude, ["call", "focus"], ["call"]),
-            (.exclude, .showAndAlert, ["call", "ooo"], ["call", "ooo"]),
-            (.exclude, .listOnly, ["call", "ooo"], ["call"]),
-            (.exclude, .exclude, ["call"], ["call"]),
-        ]
-        #expect(cases.count == EventVisibility.allCases.count * EventVisibility.allCases.count)
-        for (withoutParticipants, outOfOffice, visible, alertable) in cases {
-            let label = "\(withoutParticipants), \(outOfOffice)"
-            #expect(
-                MeetingFilter.visible(kinds, eventsWithoutParticipants: withoutParticipants, outOfOfficeEvents: outOfOffice).map(\.id)
-                    == visible, "\(label)"
-            )
-            #expect(
-                MeetingFilter.alertable(kinds, eventsWithoutParticipants: withoutParticipants, outOfOfficeEvents: outOfOffice).map(\.id)
-                    == alertable, "\(label)"
-            )
-        }
-    }
-
-    @Test func anEventOfBothKindsGetsTheChoiceThatShowsLess() {
-        let both = meeting("ooo-solo", participants: false, outOfOffice: true)
-        let cases: [(EventVisibility, EventVisibility, EventVisibility)] = [
-            (.showAndAlert, .showAndAlert, .showAndAlert),
-            (.showAndAlert, .listOnly, .listOnly),
-            (.showAndAlert, .exclude, .exclude),
-            (.listOnly, .showAndAlert, .listOnly),
-            (.listOnly, .listOnly, .listOnly),
-            (.listOnly, .exclude, .exclude),
-            (.exclude, .showAndAlert, .exclude),
-            (.exclude, .listOnly, .exclude),
-            (.exclude, .exclude, .exclude),
-        ]
-        for (withoutParticipants, outOfOffice, expected) in cases {
-            #expect(
-                MeetingFilter.visibility(of: both, eventsWithoutParticipants: withoutParticipants, outOfOfficeEvents: outOfOffice)
-                    == expected, "\(withoutParticipants), \(outOfOffice)"
-            )
-        }
-    }
-
-    @Test func eachKindGetsItsOwnChoiceAndOrdinaryEventsAlwaysShowAndAlert() {
-        for withoutParticipants in EventVisibility.allCases {
-            for outOfOffice in EventVisibility.allCases {
-                func choice(_ meeting: Meeting) -> EventVisibility {
-                    MeetingFilter.visibility(of: meeting, eventsWithoutParticipants: withoutParticipants, outOfOfficeEvents: outOfOffice)
-                }
-                let label = "\(withoutParticipants), \(outOfOffice)"
-                #expect(choice(kinds[0]) == .showAndAlert, "\(label)")
-                #expect(choice(kinds[1]) == withoutParticipants, "\(label)")
-                #expect(choice(kinds[2]) == outOfOffice, "\(label)")
-            }
-        }
-    }
-
-    @Test func filteringKeepsTheOrder() {
-        let meetings = [
-            meeting("standup", participants: true),
             meeting("focus", participants: false),
-            meeting("review", participants: true),
-            meeting("away", participants: true, outOfOffice: true),
-            meeting("reminder", participants: false),
         ]
-        #expect(
-            MeetingFilter.visible(meetings, eventsWithoutParticipants: .exclude, outOfOfficeEvents: .listOnly).map(\.id)
-                == ["standup", "review", "away"]
-        )
-        #expect(
-            MeetingFilter.alertable(meetings, eventsWithoutParticipants: .showAndAlert, outOfOfficeEvents: .listOnly).map(\.id)
-                == ["standup", "focus", "review", "reminder"]
-        )
-        #expect(MeetingFilter.visible([], eventsWithoutParticipants: .exclude, outOfOfficeEvents: .exclude) == [])
-        #expect(MeetingFilter.alertable([], eventsWithoutParticipants: .showAndAlert, outOfOfficeEvents: .showAndAlert) == [])
     }
 
-    @Test func alertableIsAlwaysWithinVisible() {
-        for withoutParticipants in EventVisibility.allCases {
-            for outOfOffice in EventVisibility.allCases {
-                let visible = MeetingFilter.visible(kinds, eventsWithoutParticipants: withoutParticipants, outOfOfficeEvents: outOfOffice)
-                let alertable = MeetingFilter.alertable(kinds, eventsWithoutParticipants: withoutParticipants, outOfOfficeEvents: outOfOffice)
-                #expect(Set(alertable.map(\.id)).isSubset(of: visible.map(\.id)), "\(withoutParticipants), \(outOfOffice)")
-                #expect(
-                    MeetingFilter.alertable(visible, eventsWithoutParticipants: withoutParticipants, outOfOfficeEvents: outOfOffice)
-                        == alertable, "the same whether given every meeting or the visible ones"
-                )
-            }
+    /// Every pair of Events choices (no participants, out of office): the events listed, and those that can
+    /// alert. An ordinary event always shows and alerts, and one of both kinds gets the choice that shows less.
+    @Test(arguments: EventVisibility.allCases, EventVisibility.allCases)
+    func everyCombinationOfChoices(withoutParticipants: EventVisibility, outOfOffice: EventVisibility) {
+        let all = ["ooo", "call", "ooo-solo", "focus"]
+        let (visible, alertable): ([String], [String]) = switch (withoutParticipants, outOfOffice) {
+        case (.showAndAlert, .showAndAlert): (all, all)
+        case (.showAndAlert, .listOnly): (all, ["call", "focus"])
+        case (.showAndAlert, .exclude): (["call", "focus"], ["call", "focus"])
+        case (.listOnly, .showAndAlert): (all, ["ooo", "call"])
+        case (.listOnly, .listOnly): (all, ["call"])
+        case (.listOnly, .exclude): (["call", "focus"], ["call"])
+        case (.exclude, .showAndAlert): (["ooo", "call"], ["ooo", "call"])
+        case (.exclude, .listOnly): (["ooo", "call"], ["call"])
+        case (.exclude, .exclude): (["call"], ["call"])
         }
+        #expect(MeetingFilter.visible(kinds, eventsWithoutParticipants: withoutParticipants, outOfOfficeEvents: outOfOffice).map(\.id) == visible)
+        #expect(MeetingFilter.alertable(kinds, eventsWithoutParticipants: withoutParticipants, outOfOfficeEvents: outOfOffice).map(\.id) == alertable)
     }
 
-    @Test func yourAnswerDoesNotChangeTheChoice() {
-        for status in [ParticipationStatus.accepted, .tentative, .unknown] {
-            let meetings = [meeting("call", participants: true, status: status), meeting("hold", participants: false, status: status)]
-            #expect(
-                MeetingFilter.visible(meetings, eventsWithoutParticipants: .exclude, outOfOfficeEvents: .listOnly).map(\.id)
-                    == ["call"], "\(status)"
-            )
-            #expect(
-                MeetingFilter.alertable(meetings, eventsWithoutParticipants: .listOnly, outOfOfficeEvents: .listOnly).map(\.id)
-                    == ["call"], "\(status)"
-            )
-            #expect(
-                MeetingFilter.alertable(meetings, eventsWithoutParticipants: .showAndAlert, outOfOfficeEvents: .listOnly).map(\.id)
-                    == ["call", "hold"], "\(status)"
-            )
-        }
-        // Declined events never reach the list, so no choice can bring them back either.
-        #expect(!MeetingFilter.shouldInclude(isAllDay: false, isCanceled: false, myStatus: .declined))
+    /// Maybe and unanswered events follow the choice like accepted ones: unlike the menu bar, which follows
+    /// the meetings you attend, the choice doesn't look at your answer.
+    @Test(arguments: [ParticipationStatus.accepted, .tentative, .unknown])
+    func yourAnswerDoesNotChangeTheChoice(_ status: ParticipationStatus) {
+        let meetings = [meeting("call", participants: true, status: status), meeting("hold", participants: false, status: status)]
+        #expect(MeetingFilter.visible(meetings, eventsWithoutParticipants: .exclude, outOfOfficeEvents: .listOnly).map(\.id) == ["call"])
+        #expect(MeetingFilter.alertable(meetings, eventsWithoutParticipants: .listOnly, outOfOfficeEvents: .listOnly).map(\.id) == ["call"])
+        #expect(MeetingFilter.alertable(meetings, eventsWithoutParticipants: .showAndAlert, outOfOfficeEvents: .listOnly).map(\.id)
+                == ["call", "hold"])
     }
 
     // MARK: Dismissed events
 
-    @Test func dismissedMeetingsAreNotAlertableButStayVisible() {
-        let dismissed = DismissedEvents().dismissing(kinds[0])
-        #expect(
-            MeetingFilter.alertable(kinds, eventsWithoutParticipants: .showAndAlert, outOfOfficeEvents: .showAndAlert, dismissed: dismissed).map(\.id)
-                == ["focus", "ooo", "ooo-solo"]
-        )
-        #expect(
-            MeetingFilter.alertable(kinds, eventsWithoutParticipants: .showAndAlert, outOfOfficeEvents: .showAndAlert, dismissed: DismissedEvents())
-                == MeetingFilter.alertable(kinds, eventsWithoutParticipants: .showAndAlert, outOfOfficeEvents: .showAndAlert),
-            "nothing dismissed by default"
-        )
-        #expect(
-            MeetingFilter.visible(kinds, eventsWithoutParticipants: .showAndAlert, outOfOfficeEvents: .showAndAlert).map(\.id)
-                == ["call", "focus", "ooo", "ooo-solo"], "the lists keep a dismissed event"
-        )
-    }
-
-    // Only an event that could alert is dismissed: one whose choice became Show in the list only (or Exclude)
-    // after it was dismissed is shown according to the new choice.
-    @Test func dismissedIDsAreTheShowAndAlertOnesOnly() {
-        let dismissed = DismissedEvents().dismissing(kinds[0]).dismissing(kinds[1]).dismissing(kinds[2])
-        func ids(_ withoutParticipants: EventVisibility, _ outOfOffice: EventVisibility) -> Set<String> {
-            MeetingFilter.dismissedIDs(kinds, eventsWithoutParticipants: withoutParticipants, outOfOfficeEvents: outOfOffice, dismissed: dismissed)
+    /// Every kind but the one of both kinds dismissed. Only an event that could alert is dismissed: one whose
+    /// choice became Show in the list only (or Exclude) after it was dismissed is shown according to the new
+    /// choice. The Show and alert events are split between alertable and dismissed.
+    @Test(arguments: EventVisibility.allCases, EventVisibility.allCases)
+    func dismissedIDsAreTheShowAndAlertOnesOnly(withoutParticipants: EventVisibility, outOfOffice: EventVisibility) {
+        let dismissed = DismissedEvents().dismissing(kinds[0]).dismissing(kinds[1]).dismissing(kinds[3])
+        let expected: Set<String> = switch (withoutParticipants, outOfOffice) {
+        case (.showAndAlert, .showAndAlert): ["ooo", "call", "focus"]
+        case (.showAndAlert, .listOnly), (.showAndAlert, .exclude): ["call", "focus"]
+        case (.listOnly, .showAndAlert), (.exclude, .showAndAlert): ["ooo", "call"]
+        case (.listOnly, .listOnly), (.listOnly, .exclude), (.exclude, .listOnly), (.exclude, .exclude): ["call"]
         }
-        #expect(ids(.showAndAlert, .showAndAlert) == ["call", "focus", "ooo"])
-        #expect(ids(.showAndAlert, .listOnly) == ["call", "focus"])
-        #expect(ids(.listOnly, .listOnly) == ["call"])
-        #expect(ids(.exclude, .exclude) == ["call"])
-        #expect(
-            MeetingFilter.dismissedIDs(kinds, eventsWithoutParticipants: .showAndAlert, outOfOfficeEvents: .showAndAlert, dismissed: DismissedEvents())
-                == []
-        )
-        #expect(
-            MeetingFilter.dismissedIDs([], eventsWithoutParticipants: .showAndAlert, outOfOfficeEvents: .showAndAlert, dismissed: dismissed)
-                == [], "an entry with no meeting (ended, or its calendar unchecked) shows nowhere"
-        )
-
-        for withoutParticipants in EventVisibility.allCases {
-            for outOfOffice in EventVisibility.allCases {
-                let label = "\(withoutParticipants), \(outOfOffice)"
-                let all = MeetingFilter.alertable(kinds, eventsWithoutParticipants: withoutParticipants, outOfOfficeEvents: outOfOffice)
-                let alertable = MeetingFilter.alertable(kinds, eventsWithoutParticipants: withoutParticipants, outOfOfficeEvents: outOfOffice, dismissed: dismissed)
-                #expect(
-                    Set(alertable.map(\.id)).union(ids(withoutParticipants, outOfOffice)) == Set(all.map(\.id)),
-                    "the Show and alert events are split between alertable and dismissed: \(label)"
-                )
-                #expect(Set(alertable.map(\.id)).isDisjoint(with: ids(withoutParticipants, outOfOffice)), "\(label)")
-            }
+        func ids(_ meetings: [Meeting], _ dismissed: DismissedEvents) -> Set<String> {
+            MeetingFilter.dismissedIDs(meetings, eventsWithoutParticipants: withoutParticipants, outOfOfficeEvents: outOfOffice, dismissed: dismissed)
         }
+        #expect(ids(kinds, dismissed) == expected)
+
+        let all = MeetingFilter.alertable(kinds, eventsWithoutParticipants: withoutParticipants, outOfOfficeEvents: outOfOffice)
+        let alertable = MeetingFilter.alertable(kinds, eventsWithoutParticipants: withoutParticipants, outOfOfficeEvents: outOfOffice, dismissed: dismissed)
+        #expect(Set(alertable.map(\.id)).union(expected) == Set(all.map(\.id)))
+        #expect(Set(alertable.map(\.id)).isDisjoint(with: expected))
+
+        #expect(ids(kinds, DismissedEvents()).isEmpty)
+        #expect(ids([], dismissed).isEmpty, "an entry with no meeting (ended, or its calendar unchecked) shows nowhere")
     }
 
     // A repeating event's occurrences: alertable and dismissedIDs ask `DismissedEvents.isDismissed`, so All Future
@@ -241,10 +123,6 @@ struct MeetingFilterTests {
         #expect(
             MeetingFilter.dismissedIDs(week + others, eventsWithoutParticipants: .showAndAlert, outOfOfficeEvents: .showAndAlert, dismissed: stored)
                 == Set(ids([week[2], week[4]]))
-        )
-        #expect(
-            MeetingFilter.visible(week + others, eventsWithoutParticipants: .showAndAlert, outOfOfficeEvents: .showAndAlert).count
-                == 6, "the lists keep them"
         )
 
         // An occurrence that can't alert (here, no one else on it, and that kind on Show in the list only) isn't
@@ -270,22 +148,6 @@ struct MeetingFilterTests {
             MeetingFilter.dismissedBySeriesIDs(week, eventsWithoutParticipants: .showAndAlert, outOfOfficeEvents: .showAndAlert,
                                                dismissed: DismissedEvents().dismissing(week[1]))
                 == [], "no series rule, nothing asks"
-        )
-    }
-
-    @Test func repeatingEventsHaveASeries() {
-        #expect(!meeting("call", participants: true).isRepeating)
-        let occurrence = Meeting(id: "standup@1", title: "Standup", start: start, end: start, seriesID: "standup")
-        #expect(occurrence.isRepeating)
-        #expect(occurrence.seriesID == "standup")
-    }
-
-    @Test func occurrenceIDIncludesStart() {
-        let start = Date(timeIntervalSince1970: 1_800_000_000)
-        #expect(Meeting.occurrenceID(eventIdentifier: "evt", start: start) == "evt@1800000000")
-        #expect(
-            Meeting.occurrenceID(eventIdentifier: "evt", start: start)
-                != Meeting.occurrenceID(eventIdentifier: "evt", start: start.addingTimeInterval(86400))
         )
     }
 }

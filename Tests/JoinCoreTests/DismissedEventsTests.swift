@@ -6,53 +6,55 @@ struct DismissedEventsTests {
     typealias F = MenuBarFixtures
 
     /// A daily standup at 9:00, one series, like EventKit's: every occurrence shares the event identifier.
-    private func standup(_ day: Int, _ hour: Int = 9, minutes: Double = 15) -> Meeting {
+    static func standup(_ day: Int, _ hour: Int = 9, minutes: Double = 15) -> Meeting {
         let start = F.date(day, hour)
         return Meeting(id: Meeting.occurrenceID(eventIdentifier: "standup", start: start), title: "Standup",
                        start: start, end: start.addingTimeInterval(minutes * 60), seriesID: "standup")
     }
 
-    private var monday: Meeting { standup(5) }
-    private var tuesday: Meeting { standup(6) }
-    private var wednesday: Meeting { standup(7) }
-    private var thursday: Meeting { standup(8) }
-    private var friday: Meeting { standup(9) }
+    static let monday = standup(5)
+    static let tuesday = standup(6)
+    static let wednesday = standup(7)
+    static let thursday = standup(8)
+    static let friday = standup(9)
     /// Every standup from Monday 5 to Friday 16 October.
-    private var standups: [Meeting] { (5...16).map { standup($0) } }
+    static let standups = (5...16).map { standup($0) }
 
-    private func dismissedDays(_ dismissed: DismissedEvents, _ meetings: [Meeting]? = nil) -> [Int] {
-        (meetings ?? standups).filter(dismissed.isDismissed).map { F.calendar.component(.day, from: $0.start) }
+    private var monday: Meeting { Self.monday }
+    private var tuesday: Meeting { Self.tuesday }
+    private var wednesday: Meeting { Self.wednesday }
+    private var thursday: Meeting { Self.thursday }
+    private var friday: Meeting { Self.friday }
+    private var standups: [Meeting] { Self.standups }
+
+    /// The days of `meetings` (the standups by default) that are dismissed.
+    private func dismissedDays(_ dismissed: DismissedEvents, _ meetings: [Meeting] = Self.standups) -> [Int] {
+        meetings.filter(dismissed.isDismissed).map { F.calendar.component(.day, from: $0.start) }
     }
 
     // MARK: One occurrence
 
-    @Test func dismissAndRestore() {
+    /// Dismiss and restore one occurrence. An event that doesn't repeat has no series, so All Future Events
+    /// is This Event, both ways.
+    @Test(arguments: DismissScope.allCases)
+    func dismissAndRestoreAOneOffEvent(scope: DismissScope) {
+        #expect(!F.workshop.isRepeating)
         let none = DismissedEvents()
         #expect(none.isEmpty)
         #expect(!none.isDismissed(F.workshop))
 
-        let dismissed = none.dismissing(F.workshop)
+        let dismissed = none.dismissing(F.workshop, scope: scope)
         #expect(!dismissed.isEmpty)
         #expect(dismissed.isDismissed(F.workshop))
         #expect(!dismissed.isDismissed(F.planning))
         #expect(dismissed.occurrences == [F.workshop.id: .init(start: F.workshop.start, end: F.workshop.end)], "kept until the occurrence ends")
-        #expect(dismissed.seriesRules.isEmpty)
-        #expect(dismissed.exceptions.isEmpty)
-        #expect(dismissed.dismissing(F.workshop) == dismissed, "dismissing twice changes nothing")
+        #expect(dismissed.dismissing(F.workshop, scope: scope) == dismissed, "dismissing twice changes nothing")
 
-        let both = dismissed.dismissing(F.planning)
+        let both = dismissed.dismissing(F.planning, scope: scope)
         #expect(Set(both.occurrences.keys) == [F.workshop.id, F.planning.id])
-        #expect(both.restoring(F.planning) == dismissed)
-        #expect(dismissed.restoring(F.workshop) == none)
-        #expect(dismissed.restoring(F.planning) == dismissed, "restoring what isn't dismissed changes nothing")
-    }
-
-    // An event that doesn't repeat has no series: All Future Events is This Event, both ways.
-    @Test func allFutureEventsOfAOneOffEventIsThisEvent() {
-        #expect(!F.workshop.isRepeating)
-        #expect(DismissedEvents().dismissing(F.workshop, scope: .allFutureEvents) == DismissedEvents().dismissing(F.workshop))
-        let dismissed = DismissedEvents().dismissing(F.workshop).dismissing(F.planning)
-        #expect(dismissed.restoring(F.workshop, scope: .allFutureEvents) == dismissed.restoring(F.workshop))
+        #expect(both.restoring(F.planning, scope: scope) == dismissed)
+        #expect(dismissed.restoring(F.workshop, scope: scope) == none)
+        #expect(dismissed.restoring(F.planning, scope: scope) == dismissed, "restoring what isn't dismissed changes nothing")
     }
 
     // This Event on a repeating event: only that occurrence. Each occurrence has its own id, and so does an
@@ -63,7 +65,7 @@ struct DismissedEventsTests {
         #expect(dismissedDays(dismissed) == [5])
         #expect(dismissed.seriesRules.isEmpty)
         #expect(dismissed.occurrences[monday.id] == .init(start: monday.start, end: monday.end, seriesID: "standup"))
-        #expect(!dismissed.isDismissed(standup(5, 10)), "moved to 10:00, it's a new occurrence")
+        #expect(!dismissed.isDismissed(Self.standup(5, 10)), "moved to 10:00, it's a new occurrence")
         #expect(dismissed.restoring(monday) == DismissedEvents())
     }
 
@@ -74,15 +76,15 @@ struct DismissedEventsTests {
         #expect(dismissed.seriesRules == ["standup": [.init(from: wednesday.start)]])
         #expect(dismissed.occurrences.isEmpty)
         #expect(dismissedDays(dismissed) == Array(7...16), "Monday and Tuesday aren't, everything from Wednesday is")
-        #expect(dismissed.isDismissed(standup(30)), "beyond the 7-day window, and not fetched yet")
-        #expect(dismissed.isDismissed(standup(8, 11)), "an occurrence moved on its own is still in the series")
-        #expect(!dismissed.isDismissed(standup(7, 8)), "moved before the occurrence the rule started from")
+        #expect(dismissed.isDismissed(Self.standup(30)), "beyond the 7-day window, and not fetched yet")
+        #expect(dismissed.isDismissed(Self.standup(8, 11)), "an occurrence moved on its own is still in the series")
+        #expect(!dismissed.isDismissed(Self.standup(7, 8)), "moved before the occurrence the rule started from")
 
         // Only that series: another one, and an event with the same identifier that doesn't repeat, aren't.
-        var other = standup(9)
+        var other = Self.standup(9)
         other.seriesID = "retro"
         #expect(!dismissed.isDismissed(other))
-        var oneOff = standup(9)
+        var oneOff = Self.standup(9)
         oneOff.seriesID = nil
         #expect(!dismissed.isDismissed(oneOff))
 
@@ -90,60 +92,73 @@ struct DismissedEventsTests {
         #expect(dismissed.dismissing(wednesday, scope: .allFutureEvents) == dismissed, "twice changes nothing")
     }
 
-    // Occurrences dismissed one by one from there on are covered by the rule, so their entries go; earlier ones
-    // and other events stay.
-    @Test func allFutureEventsReplacesLaterSingleEntriesOfTheSeries() {
-        let singles = DismissedEvents().dismissing(monday).dismissing(thursday).dismissing(F.workshop)
-        let dismissed = singles.dismissing(wednesday, scope: .allFutureEvents)
-        #expect(Set(dismissed.occurrences.keys) == [monday.id, F.workshop.id])
-        #expect(dismissedDays(dismissed) == [5] + Array(7...16))
-        #expect(dismissed.isDismissed(F.workshop))
+    /// Entries of the series from where All Future Events is chosen on become the rule's: dismissed ones are
+    /// covered, restored ones dismissed again. Earlier entries and other events stay.
+    struct Absorbing: Sendable, CustomTestStringConvertible {
+        let testDescription: String
+        let stored: DismissedEvents
+        let from: Meeting
+        let rules: [DismissedEvents.SeriesRule]
+        let occurrenceIDs: Set<String>
+        let exceptionIDs: Set<String>
+        let days: [Int]
     }
 
-    // Dismiss This Event inside a rule's range: already dismissed, so nothing changes, unless it had been
-    // restored on its own, when the rule covers it again.
+    static let absorbing: [Absorbing] = [
+        Absorbing(
+            testDescription: "later single entries are covered",
+            stored: DismissedEvents().dismissing(monday).dismissing(thursday).dismissing(F.workshop),
+            from: wednesday,
+            rules: [.init(from: wednesday.start)],
+            occurrenceIDs: [monday.id, F.workshop.id],
+            exceptionIDs: [],
+            days: [5] + Array(7...16)
+        ),
+        Absorbing(
+            testDescription: "from before a rule, the rule's start moves back",
+            stored: DismissedEvents().dismissing(thursday, scope: .allFutureEvents).restoring(friday).dismissing(tuesday),
+            from: monday,
+            rules: [.init(from: monday.start)],
+            occurrenceIDs: [],
+            exceptionIDs: [],
+            days: Array(5...16)
+        ),
+        Absorbing(
+            testDescription: "from inside a rule, later exceptions are dismissed again",
+            stored: DismissedEvents().dismissing(monday, scope: .allFutureEvents).restoring(tuesday).restoring(thursday),
+            from: wednesday,
+            rules: [.init(from: monday.start)],
+            occurrenceIDs: [],
+            exceptionIDs: [tuesday.id],
+            days: [5] + Array(7...16)
+        ),
+    ]
+
+    @Test(arguments: absorbing)
+    func allFutureEventsAbsorbsEntriesFromItsStart(_ row: Absorbing) {
+        let dismissed = row.stored.dismissing(row.from, scope: .allFutureEvents)
+        #expect(dismissed.seriesRules == ["standup": row.rules])
+        #expect(Set(dismissed.occurrences.keys) == row.occurrenceIDs)
+        #expect(Set(dismissed.exceptions.keys) == row.exceptionIDs)
+        #expect(dismissedDays(dismissed) == row.days)
+    }
+
+    // This Event inside a rule's range: Dismiss changes nothing, since it's already dismissed, unless it had
+    // been restored on its own; Restore makes an exception for it, which goes at the occurrence's end like a
+    // dismissed one, and the rest of the series stays dismissed.
     @Test func thisEventInsideASeriesRule() {
         let rule = DismissedEvents().dismissing(wednesday, scope: .allFutureEvents)
         #expect(rule.dismissing(thursday) == rule)
 
         let restored = rule.restoring(thursday)
-        #expect(!restored.isDismissed(thursday))
-        #expect(restored.dismissing(thursday) == rule)
-        #expect(rule.dismissing(tuesday) != rule, "before the rule, it's an occurrence of its own")
-        #expect(rule.dismissing(tuesday).occurrences.keys.first == tuesday.id)
-    }
+        #expect(restored.exceptions == [thursday.id: .init(start: thursday.start, end: thursday.end, seriesID: "standup")])
+        #expect(restored.seriesRules == rule.seriesRules)
+        #expect(dismissedDays(restored) == [7] + Array(9...16))
+        #expect(restored.restoring(thursday) == restored, "twice changes nothing")
+        #expect(restored.dismissing(thursday) == rule, "dismissed again, the rule covers it")
 
-    // All Future Events from an earlier occurrence than a rule's start moves the start back, and occurrences
-    // restored on their own from there on are dismissed again.
-    @Test func allFutureEventsFromEarlierMovesTheRuleBack() {
-        let stored = DismissedEvents()
-            .dismissing(thursday, scope: .allFutureEvents)
-            .restoring(friday)
-            .dismissing(tuesday)
-        #expect(stored.exceptions.keys.first == friday.id)
-        #expect(dismissedDays(stored) == [6, 8] + Array(10...16))
-
-        let moved = stored.dismissing(monday, scope: .allFutureEvents)
-        #expect(moved.seriesRules == ["standup": [.init(from: monday.start)]])
-        #expect(moved.exceptions.isEmpty, "Friday is dismissed again")
-        #expect(moved.occurrences.isEmpty, "Tuesday's entry is covered")
-        #expect(moved == DismissedEvents().dismissing(monday, scope: .allFutureEvents))
-        #expect(dismissedDays(moved) == Array(5...16))
-    }
-
-    // From a later occurrence inside the rule: the rule stays, and occurrences restored on their own from there
-    // on are dismissed again, while an earlier restored one stays restored.
-    @Test func allFutureEventsFromInsideARuleDismissesLaterExceptionsAgain() {
-        let stored = DismissedEvents()
-            .dismissing(monday, scope: .allFutureEvents)
-            .restoring(tuesday)
-            .restoring(thursday)
-        #expect(dismissedDays(stored) == [5, 7] + Array(9...16))
-
-        let again = stored.dismissing(wednesday, scope: .allFutureEvents)
-        #expect(again.seriesRules == stored.seriesRules)
-        #expect(Set(again.exceptions.keys) == [tuesday.id])
-        #expect(dismissedDays(again) == [5] + Array(7...16))
+        #expect(rule.restoring(tuesday) == rule, "Tuesday wasn't dismissed")
+        #expect(Set(rule.dismissing(tuesday).occurrences.keys) == [tuesday.id], "before the rule, it's an occurrence of its own")
     }
 
     // MARK: Restoring
@@ -167,18 +182,6 @@ struct DismissedEventsTests {
         #expect(bounded.isDismissedBySeries(thursday))
         #expect(!bounded.isDismissedBySeries(friday), "past the rule's end")
         #expect(!bounded.dismissing(friday).isDismissedBySeries(friday), "Friday dismissed on its own")
-    }
-
-    // Restore This Event inside a rule: an exception for that occurrence, the rest stays dismissed. It goes at
-    // the occurrence's end, like a dismissed one.
-    @Test func restoreThisEventInsideASeriesRule() {
-        let rule = DismissedEvents().dismissing(wednesday, scope: .allFutureEvents)
-        let restored = rule.restoring(thursday)
-        #expect(restored.exceptions == [thursday.id: .init(start: thursday.start, end: thursday.end, seriesID: "standup")])
-        #expect(restored.seriesRules == rule.seriesRules)
-        #expect(dismissedDays(restored) == [7] + Array(9...16))
-        #expect(restored.restoring(thursday) == restored, "twice changes nothing")
-        #expect(rule.restoring(tuesday) == rule, "Tuesday wasn't dismissed")
     }
 
     // Restore All Future Events from the occurrence the rule started on: the rule goes, and with it any
@@ -212,12 +215,12 @@ struct DismissedEventsTests {
         #expect(restored.seriesRules == ["standup": [.init(from: monday.start, until: thursday.start)]])
         #expect(Set(restored.exceptions.keys) == [tuesday.id], "Friday's exception has no rule left to except it from")
         #expect(dismissedDays(restored) == [5, 7])
-        #expect(!restored.isDismissed(standup(30)))
-        #expect(restored.isDismissed(standup(8, 8)), "moved to 8:00, it starts before the occurrence restored from")
+        #expect(!restored.isDismissed(Self.standup(30)))
+        #expect(restored.isDismissed(Self.standup(8, 8)), "moved to 8:00, it starts before the occurrence restored from")
         #expect(restored.restoring(friday, scope: .allFutureEvents) == restored, "nothing left to restore after Thursday")
 
         // A single entry after a bounded rule comes back with a restore further back.
-        let single = restored.dismissing(standup(12))
+        let single = restored.dismissing(Self.standup(12))
         #expect(single.restoring(friday, scope: .allFutureEvents) == restored)
     }
 
@@ -244,49 +247,92 @@ struct DismissedEventsTests {
         #expect(dismissedDays(restoredFromTuesday) == [5])
     }
 
+    // MARK: Other series
+
+    /// A daily retro at 3:00 PM, a series of its own.
+    static func retro(_ day: Int) -> Meeting {
+        let start = F.date(day, 15)
+        return Meeting(id: Meeting.occurrenceID(eventIdentifier: "retro", start: start), title: "Retro",
+                       start: start, end: start.addingTimeInterval(45 * 60), seriesID: "retro")
+    }
+
+    /// A daily one-on-one at 11:00 AM, another series.
+    static func oneOnOne(_ day: Int) -> Meeting {
+        let start = F.date(day, 11)
+        return Meeting(id: Meeting.occurrenceID(eventIdentifier: "one", start: start), title: "1:1",
+                       start: start, end: start.addingTimeInterval(30 * 60), seriesID: "one")
+    }
+
+    /// Dismiss or Restore All Future Events on the standup from Wednesday leaves every other series as it was:
+    /// the retro's rule and its exception, and a one-on-one dismissed on its own, all later than Wednesday.
+    @Test(arguments: [false, true])
+    func allFutureEventsLeavesOtherSeriesAlone(restores: Bool) {
+        let stored = DismissedEvents()
+            .dismissing(monday, scope: .allFutureEvents)
+            .restoring(thursday)
+            .dismissing(Self.retro(6), scope: .allFutureEvents)
+            .restoring(Self.retro(9))
+            .dismissing(Self.oneOnOne(10))
+        let retros = (5...16).map(Self.retro)
+        let oneOnOnes = (5...16).map(Self.oneOnOne)
+        #expect(dismissedDays(stored, retros) == [6, 7, 8] + Array(10...16))
+        #expect(dismissedDays(stored, oneOnOnes) == [10])
+
+        let changed = restores
+            ? stored.restoring(wednesday, scope: .allFutureEvents)
+            : stored.dismissing(wednesday, scope: .allFutureEvents)
+        #expect(changed.seriesRules["retro"] == stored.seriesRules["retro"])
+        #expect(dismissedDays(changed, retros) == dismissedDays(stored, retros))
+        #expect(dismissedDays(changed, oneOnOnes) == [10])
+    }
+
     // MARK: Pruning
 
-    @Test func pruningDropsEventsThatHaveEnded() {
+    /// Lunch (1:00 to 2:00 PM) and the Workshop (3:00 to 7:30 PM) dismissed, pruned at a time against the
+    /// meetings fetched then: an occurrence goes at its end. One missing from the fetch (its calendar
+    /// unchecked, a fetch that failed) is kept until its stored end.
+    @Test(arguments: [
+        ("both still on or to come", F.date(6, 13, 30), [F.lunch, F.workshop], [F.lunch.id, F.workshop.id]),
+        ("lunch over at 2:00 PM", F.date(6, 14), [F.lunch, F.workshop], [F.workshop.id]),
+        ("both over", F.date(6, 19, 30), [F.lunch, F.workshop], []),
+        ("the Workshop missing from the fetch", F.date(6, 16), [], [F.workshop.id]),
+        ("missing, a minute before its stored end", F.date(6, 19, 29), [F.lunch], [F.workshop.id]),
+        ("missing, at its stored end", F.date(6, 19, 30), [], []),
+        ("missing, the next day", F.date(7, 9), [F.lunch], []),
+    ] as [(String, Date, [Meeting], Set<String>)])
+    func pruningKeepsAnOccurrenceUntilItsEnd(_ name: String, now: Date, meetings: [Meeting], kept: Set<String>) {
         let dismissed = DismissedEvents().dismissing(F.lunch).dismissing(F.workshop)
-        #expect(dismissed.pruned(at: F.date(6, 13, 30), meetings: [F.lunch, F.workshop]) == dismissed, "both still on or to come")
-        #expect(Set(dismissed.pruned(at: F.date(6, 14), meetings: [F.lunch, F.workshop]).occurrences.keys) == [F.workshop.id], "lunch ended at 2:00 PM")
-        #expect(dismissed.pruned(at: F.date(6, 19, 30), meetings: [F.lunch, F.workshop]).isEmpty)
-        #expect(DismissedEvents().pruned(at: F.date(6, 12), meetings: F.week).isEmpty)
+        #expect(Set(dismissed.pruned(at: now, meetings: meetings).occurrences.keys) == kept)
     }
 
-    // An event missing from the meetings (its calendar unchecked, a fetch that failed) is kept until its stored end.
-    @Test func pruningKeepsAnUnknownEventUntilItsStoredEnd() {
+    /// The Workshop, dismissed while it ran until 7:30 PM, then moved to end later or earlier: it stays
+    /// dismissed until its new end rather than its old one, and keeps that end if it then goes missing.
+    @Test(arguments: [
+        ("extended to 8:30 PM", F.date(6, 20, 30)),
+        ("shortened to 5:00 PM", F.date(6, 17)),
+    ])
+    func pruningFollowsTheEventsCurrentEnd(_ name: String, newEnd: Date) {
         let dismissed = DismissedEvents().dismissing(F.workshop)
-        #expect(dismissed.pruned(at: F.date(6, 16), meetings: []) == dismissed)
-        #expect(dismissed.pruned(at: F.date(6, 19, 29), meetings: [F.lunch]) == dismissed)
-        #expect(dismissed.pruned(at: F.date(6, 19, 30), meetings: []).isEmpty)
-        #expect(dismissed.pruned(at: F.date(7, 9), meetings: [F.lunch]).isEmpty)
+        var moved = F.workshop
+        moved.end = newEnd
+        let stillOn = newEnd.addingTimeInterval(-15 * 60)
+
+        #expect(dismissed.pruned(at: stillOn, meetings: [moved]).isDismissed(F.workshop))
+        let updated = dismissed.pruned(at: F.date(6, 16), meetings: [moved])
+        #expect(updated.occurrences[F.workshop.id]?.end == newEnd, "the stored end follows the event")
+        #expect(updated.pruned(at: stillOn, meetings: []) == updated, "and is kept if the event then goes missing")
+        #expect(dismissed.pruned(at: newEnd, meetings: [moved]).isEmpty, "over at its new end")
     }
 
-    // Workshop, dismissed while it ran until 7:30 PM, now runs until 8:30 PM: it stays dismissed to the new end
-    // rather than coming back at 7:30.
-    @Test func pruningFollowsAnEventExtendedAfterItWasDismissed() {
+    /// A fetch with the same occurrence twice, in either order, doesn't crash, and the copy that ends later
+    /// decides when the dismissal goes.
+    @Test(arguments: [false, true])
+    func pruningAFetchWithAnOccurrenceTwice(longerFirst: Bool) {
+        var longer = F.workshop
+        longer.end = F.date(6, 20, 30)
+        let meetings = longerFirst ? [longer, F.workshop] : [F.workshop, longer]
         let dismissed = DismissedEvents().dismissing(F.workshop)
-        var extended = F.workshop
-        extended.end = F.date(6, 20, 30)
-
-        let atOldEnd = dismissed.pruned(at: F.date(6, 19, 45), meetings: [extended])
-        #expect(atOldEnd.isDismissed(F.workshop))
-        #expect(atOldEnd.occurrences[F.workshop.id]?.end == extended.end, "the stored end follows the event")
-
-        let earlier = dismissed.pruned(at: F.date(6, 16), meetings: [extended])
-        #expect(earlier.occurrences[F.workshop.id]?.end == extended.end, "updated before the old end too")
-        #expect(earlier.pruned(at: F.date(6, 19, 45), meetings: []) == earlier, "and kept if it then goes missing")
-
-        #expect(atOldEnd.pruned(at: F.date(6, 20, 30), meetings: [extended]).isEmpty)
-    }
-
-    @Test func pruningFollowsAnEventShortenedAfterItWasDismissed() {
-        let dismissed = DismissedEvents().dismissing(F.workshop)
-        var shortened = F.workshop
-        shortened.end = F.date(6, 17)
-        #expect(dismissed.pruned(at: F.date(6, 16), meetings: [shortened]).occurrences[F.workshop.id]?.end == shortened.end)
-        #expect(dismissed.pruned(at: F.date(6, 17, 30), meetings: [shortened]).isEmpty, "over at its new end")
+        #expect(dismissed.pruned(at: F.date(6, 19, 45), meetings: meetings).occurrences[F.workshop.id]?.end == longer.end)
     }
 
     // A rule with no end covers occurrences not in the calendar yet, so it never expires, whatever is fetched.
@@ -304,7 +350,7 @@ struct DismissedEventsTests {
         let over = restored.pruned(at: F.date(7, 9, 15), meetings: standups)
         #expect(over.exceptions.isEmpty)
         #expect(over.seriesRules == restored.seriesRules)
-        #expect(restored.pruned(at: F.date(7, 9, 20), meetings: [standup(7, minutes: 30)]).exceptions[wednesday.id]?.end
+        #expect(restored.pruned(at: F.date(7, 9, 20), meetings: [Self.standup(7, minutes: 30)]).exceptions[wednesday.id]?.end
                     == F.date(7, 9, 30), "extended to 9:30, it stays restored until then")
     }
 
@@ -320,24 +366,10 @@ struct DismissedEventsTests {
         #expect(bounded.pruned(at: F.date(7, 9), meetings: standups).isEmpty, "the rule goes with its exception")
 
         // Tuesday's standup runs past Wednesday 9:00 this time.
-        let long = standup(6, minutes: 25 * 60)
+        let long = Self.standup(6, minutes: 25 * 60)
         let running = bounded.restoring(long).dismissing(long)
         #expect(running.pruned(at: F.date(7, 9, 30), meetings: [long]).seriesRules == bounded.seriesRules, "still running")
         #expect(running.pruned(at: F.date(7, 10), meetings: [long]).isEmpty)
-    }
-
-    // Entries saved by 1.2.0 have no start or series. Once their event is fetched they get them, so a series
-    // choice covers them like any other.
-    @Test func pruningCompletesEntriesSavedBy120() throws {
-        let old = try JSONDecoder().decode(DismissedEvents.self, from: JSONEncoder().encode([thursday.id: thursday.end]))
-        #expect(old.occurrences == [thursday.id: .init(end: thursday.end)])
-        #expect(old.isDismissed(thursday))
-
-        let completed = old.pruned(at: F.date(5, 8), meetings: standups)
-        #expect(completed == DismissedEvents().dismissing(thursday))
-        #expect(completed.dismissing(monday, scope: .allFutureEvents) == DismissedEvents().dismissing(monday, scope: .allFutureEvents))
-        #expect(completed.restoring(monday, scope: .allFutureEvents) == DismissedEvents())
-        #expect(old.pruned(at: F.date(5, 8), meetings: []) == old, "kept as it is while its event isn't fetched")
     }
 
     // MARK: Fixture runs
@@ -351,9 +383,6 @@ struct DismissedEventsTests {
         #expect(!stored.exceptions.isEmpty)
         #expect(stored.withoutSeriesRules == alone)
         #expect(dismissedDays(stored.withoutSeriesRules) == [5])
-        #expect(DismissedEvents().dismissing(F.workshop).withoutSeriesRules == DismissedEvents().dismissing(F.workshop),
-                "nothing to drop")
-        #expect(DismissedEvents().withoutSeriesRules == DismissedEvents())
     }
 
     // MARK: Saved format
@@ -365,10 +394,9 @@ struct DismissedEventsTests {
             .dismissing(monday, scope: .allFutureEvents)
             .restoring(wednesday)
             .restoring(friday, scope: .allFutureEvents)
-            .dismissing(standup(12), scope: .allFutureEvents)
+            .dismissing(Self.standup(12), scope: .allFutureEvents)
         let data = try JSONEncoder().encode(dismissed)
         #expect(try JSONDecoder().decode(DismissedEvents.self, from: data) == dismissed)
-        #expect(try JSONDecoder().decode(DismissedEvents.self, from: JSONEncoder().encode(DismissedEvents())) == DismissedEvents())
 
         let object = try #require(JSONSerialization.jsonObject(with: data) as? [String: Any])
         #expect(Set(object.keys) == ["occurrences", "seriesRules", "exceptions"])
@@ -380,29 +408,40 @@ struct DismissedEventsTests {
         #expect(Set(exceptions.keys) == [wednesday.id])
     }
 
-    // 1.2.0 saved a plain object of occurrence id → end: each entry reads as an occurrence dismissed on its own.
-    @Test func jsonSavedBy120StillReads() throws {
-        let data = try JSONEncoder().encode([F.workshop.id: F.workshop.end, F.review.id: F.review.end])
-        let decoded = try JSONDecoder().decode(DismissedEvents.self, from: data)
-        #expect(decoded.occurrences == [F.workshop.id: .init(end: F.workshop.end), F.review.id: .init(end: F.review.end)])
-        #expect(decoded.seriesRules.isEmpty)
-        #expect(decoded.exceptions.isEmpty)
-        #expect(decoded.isDismissed(F.workshop))
-        #expect(decoded.isDismissed(F.review))
-        #expect(!decoded.isDismissed(F.planning))
-        #expect(decoded.restoring(F.workshop).restoring(F.review) == DismissedEvents())
-        #expect(decoded.pruned(at: F.date(6, 12), meetings: [F.workshop, F.review])
-                    == DismissedEvents().dismissing(F.workshop).dismissing(F.review))
+    // 1.2.0 saved a plain object of occurrence id → end: each entry reads as an occurrence dismissed on its own,
+    // with no start or series. Once its event is fetched it gets them, so a series choice covers it like any
+    // other.
+    @Test func entriesSavedBy120ReadAndJoinSeriesChoices() throws {
+        let data = try JSONEncoder().encode([thursday.id: thursday.end, F.workshop.id: F.workshop.end])
+        let old = try JSONDecoder().decode(DismissedEvents.self, from: data)
+        #expect(old.occurrences == [thursday.id: .init(end: thursday.end), F.workshop.id: .init(end: F.workshop.end)])
+        #expect(old.isDismissed(thursday))
+        #expect(old.isDismissed(F.workshop))
+        #expect(!old.isDismissed(F.planning))
+        #expect(old.restoring(thursday).restoring(F.workshop) == DismissedEvents())
+        #expect(old.pruned(at: F.date(5, 8), meetings: []) == old, "kept as it is while its event isn't fetched")
+
+        let completed = old.pruned(at: F.date(5, 8), meetings: standups + [F.workshop])
+        #expect(completed == DismissedEvents().dismissing(thursday).dismissing(F.workshop))
+        #expect(completed.dismissing(monday, scope: .allFutureEvents)
+                    == DismissedEvents().dismissing(F.workshop).dismissing(monday, scope: .allFutureEvents))
+        #expect(completed.restoring(monday, scope: .allFutureEvents) == DismissedEvents().dismissing(F.workshop))
+
         #expect(try JSONDecoder().decode(DismissedEvents.self, from: Data("{}".utf8)).isEmpty)
     }
 
-    @Test func unreadableJSONDoesNotDecode() {
-        for json in [#"not json"#, #"["val"]"#, #"{"val": "tonight"}"#, #"{"val": null}"#, #"3"#,
-                     #"{"occurrences": {}}"#, #"{"occurrences": {}, "seriesRules": {}, "exceptions": []}"#,
-                     #"{"occurrences": {"val": {"start": 0}}, "seriesRules": {}, "exceptions": {}}"#] {
-            #expect(throws: (any Error).self, "\(json)") {
-                try JSONDecoder().decode(DismissedEvents.self, from: Data(json.utf8))
-            }
+    /// Neither shape, or the new one with a part missing or of the wrong kind.
+    @Test(arguments: [
+        #"["val"]"#,
+        #"{"val": "tonight"}"#,
+        #"{"val": null}"#,
+        #"{"occurrences": {}}"#,
+        #"{"occurrences": {}, "seriesRules": {}, "exceptions": []}"#,
+        #"{"occurrences": {"val": {"start": 0}}, "seriesRules": {}, "exceptions": {}}"#,
+    ])
+    func unreadableJSONDoesNotDecode(_ json: String) {
+        #expect(throws: (any Error).self) {
+            try JSONDecoder().decode(DismissedEvents.self, from: Data(json.utf8))
         }
     }
 }

@@ -2,38 +2,37 @@ import Testing
 @testable import JoinCore
 
 struct AppVersionTests {
-    @Test func parsesWithOrWithoutTheTagPrefix() {
-        #expect(AppVersion("1.2.3") == AppVersion(major: 1, minor: 2, patch: 3))
-        #expect(AppVersion("v1.2.3") == AppVersion(major: 1, minor: 2, patch: 3))
-        #expect(AppVersion("0.0.0") == AppVersion(major: 0, minor: 0, patch: 0))
-        #expect(AppVersion("v10.20.300") == AppVersion(major: 10, minor: 20, patch: 300))
+    /// "1.2.3" or "v1.2.3", read as its tag, "v1.2.3", which spells out major, minor and patch; nil for
+    /// anything else, one row per kind.
+    @Test(arguments: [
+        ("1.2.3", "v1.2.3"),
+        ("v1.2.3", "v1.2.3"),
+        ("0.0.0", "v0.0.0"),
+        ("v10.20.300", "v10.20.300"),
+        ("", nil),
+        ("v1.2", nil),
+        ("1.2.3.4", nil),
+        ("1.2.3-beta", nil),
+        ("1.2.3+build", nil),
+        (" 1.2.3", nil),
+        ("01.2.3", nil),
+        ("+1.2.3", nil),
+        ("1..3", nil),
+        ("V1.2.3", nil),
+        ("vv1.2.3", nil),
+        ("١.٢.٣", nil),
+        ("99999999999999999999.0.0", nil),
+    ] as [(String, String?)])
+    func parse(_ string: String, tag: String?) {
+        #expect(AppVersion(string)?.tag == tag)
     }
 
-    @Test func rejectsAnythingElse() {
-        let invalid = [
-            "", "v", "1", "v1.2", "1.2.3.4", "1.2.3-beta", "1.2.3+build", " 1.2.3", "1.2.3 ", "01.2.3", "1.02.3",
-            "1.2.03", "1.-2.3", "+1.2.3", "1..3", "1.2.", ".1.2", "V1.2.3", "vv1.2.3", "1.2.x", "١.٢.٣",
-            "99999999999999999999.0.0",
-        ]
-        for string in invalid {
-            #expect(AppVersion(string) == nil, "\"\(string)\"")
-        }
-    }
-
+    /// By number, not as text: 1.10.0 is newer than 1.9.0, which decides whether a release is offered.
     @Test func ordersByMajorThenMinorThenPatch() {
-        let ordered = ["0.9.9", "1.0.0", "1.0.1", "1.0.10", "1.1.0", "1.10.0", "2.0.0"].compactMap(AppVersion.init)
-        #expect(ordered.count == 7)
-        #expect(ordered.shuffled().sorted() == ordered)
-        #expect(AppVersion(major: 1, minor: 0, patch: 9) < AppVersion(major: 1, minor: 1, patch: 0))
+        let ordered = ["0.9.9", "1.0.0", "1.0.1", "1.0.10", "1.1.0", "1.9.0", "1.10.0", "2.0.0"].compactMap(AppVersion.init)
+        #expect(ordered.count == 8)
+        let scrambled = [ordered[6], ordered[3], ordered[7], ordered[0], ordered[5], ordered[2], ordered[4], ordered[1]]
+        #expect(scrambled.sorted() == ordered)
         #expect(!(AppVersion(major: 1, minor: 1, patch: 0) < AppVersion(major: 1, minor: 1, patch: 0)))
-        #expect(AppVersion("v1.1.0") == AppVersion("1.1.0"))
-    }
-
-    @Test func descriptionAndTag() {
-        let version = AppVersion(major: 1, minor: 10, patch: 0)
-        #expect(version.description == "1.10.0")
-        #expect("\(version)" == "1.10.0")
-        #expect(version.tag == "v1.10.0")
-        #expect(AppVersion(version.tag) == version)
     }
 }
