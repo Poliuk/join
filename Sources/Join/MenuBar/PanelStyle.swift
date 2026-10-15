@@ -228,7 +228,12 @@ struct PanelProgressBar: View {
 }
 
 /// The diagonal stripes behind an out-of-office row: 5 pt bands every 10 pt, running bottom-left to top-right.
-struct PanelStripes: Shape {
+///
+/// Nonisolated because `Shape` is `Sendable` with nonisolated requirements, and SwiftUI may call `path(in:)` off
+/// the main actor. The macOS 26 SDK strips main-actor inference from shapes (`_RemoveGlobalActorIsolation`), but
+/// the macOS 27 SDK doesn't, so under the target's default main-actor isolation the conformance would otherwise be
+/// main-actor isolated and rejected.
+nonisolated struct PanelStripes: Shape {
     var bandWidth: CGFloat = 5
     var period: CGFloat = 10
 
