@@ -2,7 +2,8 @@ import Foundation
 import Observation
 
 /// All user-configurable settings. One owner, persisted to UserDefaults on every change,
-/// observable by SwiftUI through the Observation framework.
+/// observable by SwiftUI through the Observation framework. On the main actor, where the views that observe
+/// it and the app that changes it run: the one isolated type in JoinCore.
 @MainActor
 @Observable
 public final class Preferences {
@@ -45,9 +46,12 @@ public final class Preferences {
         public static let unsupportedUpdate = "unsupportedUpdate"
     }
 
-    public static let defaultLeadTime: TimeInterval = 3 * 60
-    public static let defaultSnoozeDurations: [TimeInterval] = [60, 5 * 60]
-    public static let defaultAutoCloseAfter: TimeInterval = 15 * 60
+    // Constants, so they're nonisolated: any caller reads them without the main actor, like `Keys` (a nested
+    // type, which the class's isolation doesn't reach). Isolated, another module could only read them on the
+    // main actor or with `await`.
+    nonisolated public static let defaultLeadTime: TimeInterval = 3 * 60
+    nonisolated public static let defaultSnoozeDurations: [TimeInterval] = [60, 5 * 60]
+    nonisolated public static let defaultAutoCloseAfter: TimeInterval = 15 * 60
 
     private let defaults: UserDefaults
 

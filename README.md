@@ -137,7 +137,7 @@ SDKROOT=/Library/Developer/CommandLineTools/SDKs/MacOSX26.5.sdk swift build
 
 The package has two targets:
 
-- `JoinCore` — pure logic with no UI, EventKit or network dependency: scheduling, link detection, time formatting, preferences, which events show and alert, what the menu bar item and panel say, the full-screen alert's countdown, colors and contrast, and which GitHub release counts as an update. This is what the tests cover. It's nonisolated, so callers decide where its code runs.
+- `JoinCore` — pure logic with no UI, EventKit or network dependency: scheduling, link detection, time formatting, preferences, which events show and alert, what the menu bar item and panel say, the full-screen alert's countdown, colors and contrast, and which GitHub release counts as an update. This is what the tests cover. It's nonisolated, so callers decide where its code runs; only `Preferences`, which the app's views observe, is on the main actor.
 - `Join` — the app: EventKit calendar service, full-screen alert windows, menu bar item and panel, Settings, and the updater. Everything in it is on the main actor unless it says otherwise ([Concurrency](docs/TECHNICAL_DESIGN.md#concurrency) in the technical design).
 
 To check the UI against a known calendar instead of your own, quit Join! and launch it with a fixture scenario (`nothing`, `later`, `busy`, `meeting`, `maybe` or `denied`):
