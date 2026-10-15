@@ -6,12 +6,14 @@ public enum PanelAction: Hashable, Sendable {
     case directions(URL)
 }
 
-/// The menu bar panel below its header: one hero card, then sections of rows.
+/// The menu bar panel below its header: one hero card, then sections of rows. Built by `PanelPresenter` only,
+/// like the cards, sections and rows in it, so the rules that keep their parts consistent stay in one place:
+/// the app reads them.
 public struct PanelContent: Equatable, Sendable {
-    public var hero: PanelHero
-    public var sections: [PanelSection]
+    public let hero: PanelHero
+    public let sections: [PanelSection]
 
-    public init(hero: PanelHero, sections: [PanelSection]) {
+    init(hero: PanelHero, sections: [PanelSection]) {
         self.hero = hero
         self.sections = sections
     }
@@ -41,14 +43,14 @@ public enum PanelListFilter: String, CaseIterable, Sendable {
 /// The Today | 7 Days switch for one moment's content.
 public struct PanelFilterState: Equatable, Sendable {
     /// False when nothing comes after today: both choices would list the same rows, so the switch hides.
-    public var isShown: Bool
+    public let isShown: Bool
     /// False when nothing is left today but out-of-office blocks (evenings, the day's last meeting): Today
     /// is dimmed and the week shows, so Today never leads to an empty list. The stored choice is kept, so
     /// Today comes back by itself the next morning. Dismissed events count: they're still on, and listed.
-    public var isTodayAvailable: Bool
+    public let isTodayAvailable: Bool
     /// What the list shows: the stored choice, or the week while Today has nothing.
-    public var effective: PanelListFilter
-    public var sections: [PanelSection]
+    public let effective: PanelListFilter
+    public let sections: [PanelSection]
 
     /// The heading over everything that hasn't started, under Now.
     public static let upcomingTitle = "Upcoming events"
@@ -84,34 +86,29 @@ public enum PanelHero: Equatable, Sendable {
 }
 
 public struct PanelCard: Equatable, Sendable {
-    public var meeting: Meeting
-    /// "Next · in 2 h 15 min", "Starts in 4 min", "Now · 40 min left".
-    public var label: String
-    /// "1:00 – 2:00 PM".
-    public var timeRange: String
-    /// Short location ("C. de Ruiz de Alarcón, 23 · Retiro") when the meeting has a physical place.
-    public var location: String?
-    /// "Overlaps Workshop, which runs until 7:30 PM".
-    public var overlap: String?
-    /// Elapsed fraction, for the card of the meeting you are in.
-    public var progress: Double?
-    public var action: PanelAction?
+    /// What the card shows under its time range: one or the other, so a card can't have both a progress bar
+    /// and a place or an overlap warning.
+    public enum Detail: Equatable, Sendable {
+        /// The meeting you are in: its elapsed fraction, drawn as a progress bar.
+        case ongoing(progress: Double)
+        /// A meeting yet to start: its short location ("C. de Ruiz de Alarcón, 23 · Retiro") when it has a
+        /// physical place, and what it overlaps ("Overlaps Workshop, which runs until 7:30 PM").
+        case upcoming(location: String?, overlap: String?)
+    }
 
-    public init(
-        meeting: Meeting,
-        label: String,
-        timeRange: String,
-        location: String? = nil,
-        overlap: String? = nil,
-        progress: Double? = nil,
-        action: PanelAction? = nil
-    ) {
+    public let meeting: Meeting
+    /// "Next · in 2 h 15 min", "Starts in 4 min", "Now · 40 min left".
+    public let label: String
+    /// "1:00 – 2:00 PM".
+    public let timeRange: String
+    public let detail: Detail
+    public let action: PanelAction?
+
+    init(meeting: Meeting, label: String, timeRange: String, detail: Detail, action: PanelAction? = nil) {
         self.meeting = meeting
         self.label = label
         self.timeRange = timeRange
-        self.location = location
-        self.overlap = overlap
-        self.progress = progress
+        self.detail = detail
         self.action = action
     }
 }
@@ -126,15 +123,15 @@ public struct PanelSection: Equatable, Identifiable, Sendable {
         case later
     }
 
-    public var id: String
+    public let id: String
     /// "Now", "Also now", "Today", "Tomorrow", "Wednesday".
-    public var title: String
+    public let title: String
     /// "Wed 7 Oct" after "Tomorrow", "7 Oct" after a weekday.
-    public var subtitle: String?
-    public var rows: [PanelRow]
-    public var kind: Kind
+    public let subtitle: String?
+    public let rows: [PanelRow]
+    public let kind: Kind
 
-    public init(id: String, title: String, subtitle: String? = nil, rows: [PanelRow], kind: Kind = .today) {
+    init(id: String, title: String, subtitle: String? = nil, rows: [PanelRow], kind: Kind = .today) {
         self.id = id
         self.title = title
         self.subtitle = subtitle
@@ -185,36 +182,26 @@ public struct PanelRow: Equatable, Identifiable, Sendable {
         }
     }
 
-    public var meeting: Meeting
-    public var startTime: String
-    public var endTime: String
-    public var detail: Detail?
-    public var action: PanelAction?
-    /// Out-of-office blocks are drawn striped and muted, with no Join or Directions button. Dismissed rows
-    /// aren't muted: they're still on, so they count for Today (`PanelContent.filtered(by:)`).
-    public var isMuted: Bool
+    public let meeting: Meeting
+    public let startTime: String
+    public let endTime: String
+    public internal(set) var detail: Detail?
+    public internal(set) var action: PanelAction?
     /// nil for a meeting that never alerts (Show in the list only, out-of-office blocks by default): there's
     /// nothing to dismiss.
-    public var dismissal: Dismissal?
+    public internal(set) var dismissal: Dismissal?
 
     public var id: String { meeting.id }
 
-    public init(
-        meeting: Meeting,
-        startTime: String,
-        endTime: String,
-        detail: Detail? = nil,
-        action: PanelAction? = nil,
-        isMuted: Bool = false,
-        dismissal: Dismissal? = nil
-    ) {
+    /// Out-of-office blocks are drawn striped and muted, with no Join or Directions button: the meeting
+    /// decides, so a row can't be muted while its meeting isn't out of office. Dismissed rows aren't muted:
+    /// they're still on, so they count for Today (`PanelContent.filtered(by:)`).
+    public var isMuted: Bool { meeting.isOutOfOffice }
+
+    init(meeting: Meeting, startTime: String, endTime: String) {
         self.meeting = meeting
         self.startTime = startTime
         self.endTime = endTime
-        self.detail = detail
-        self.action = action
-        self.isMuted = isMuted
-        self.dismissal = dismissal
     }
 }
 
@@ -233,35 +220,35 @@ public enum DismissCopy {
     /// A dismissed row's detail line, after its crossed-out bell.
     public static let dismissedTitle = "Dismissed"
 
-    /// The base of a row's Dismiss help tag; `rowDismissHelp(asksScope:)` adds `repeatingHelp` when it asks.
-    static let rowDismissHelp = "Dismiss: no full-screen alert, and it leaves the menu bar and the top card. It stays in this list until it ends."
-    /// The base of the card's Dismiss help tag; `cardDismissHelp(asksScope:)` adds `repeatingHelp` when it asks.
-    static let cardDismissHelp = "Dismiss: no full-screen alert, and it leaves the menu bar and this card. It stays in the list until it ends."
-    /// The base of a dismissed row's Restore help tag; `restoreHelp(asksScope:)` adds `repeatingHelp` when it asks.
-    static let restoreHelp = "Restore: its full-screen alert and the menu bar come back."
+    /// The base of a row's Dismiss help tag; `rowDismissHelp(asksScope:)` adds `repeatingNote` when it asks.
+    private static let rowDismissBase = "Dismiss: no full-screen alert, and it leaves the menu bar and the top card. It stays in this list until it ends."
+    /// The base of the card's Dismiss help tag; `cardDismissHelp(asksScope:)` adds `repeatingNote` when it asks.
+    private static let cardDismissBase = "Dismiss: no full-screen alert, and it leaves the menu bar and this card. It stays in the list until it ends."
+    /// The base of a dismissed row's Restore help tag; `restoreHelp(asksScope:)` adds `repeatingNote` when it asks.
+    private static let restoreBase = "Restore: its full-screen alert and the menu bar come back."
     /// What the help tags add when the button opens a This Event / All Future Events menu (`Dismissal.asksScope`).
-    static let repeatingHelp = "It repeats: the menu offers this event or all future events."
+    private static let repeatingNote = "It repeats: the menu offers this event or all future events."
 
     /// The help tag on a row's Dismiss button: with the menu's note when it asks (`Dismissal.asksScope`, a
     /// repeating event).
     public static func rowDismissHelp(asksScope: Bool) -> String {
-        help(rowDismissHelp, asksScope: asksScope)
+        help(rowDismissBase, asksScope: asksScope)
     }
 
     /// The help tag on the card's Dismiss button: with the menu's note when it asks (`Dismissal.asksScope`, a
     /// repeating event).
     public static func cardDismissHelp(asksScope: Bool) -> String {
-        help(cardDismissHelp, asksScope: asksScope)
+        help(cardDismissBase, asksScope: asksScope)
     }
 
     /// The help tag on a dismissed row's Restore button: with the menu's note when it asks (`Dismissal.asksScope`,
     /// an occurrence dismissed with its series), without it for one dismissed on its own.
     public static func restoreHelp(asksScope: Bool) -> String {
-        help(restoreHelp, asksScope: asksScope)
+        help(restoreBase, asksScope: asksScope)
     }
 
-    private static func help(_ text: String, asksScope: Bool) -> String {
-        asksScope ? "\(text) \(repeatingHelp)" : text
+    private static func help(_ base: String, asksScope: Bool) -> String {
+        asksScope ? "\(base) \(repeatingNote)" : base
     }
 
     /// The Dismiss menu items of a repeating event, and its card's and row's accessibility actions:
@@ -314,30 +301,27 @@ public enum PanelPresenter {
     ///   - alertable: the meetings that may alert (`MeetingFilter.alertable`); only these drive the hero
     ///     card, picked the way the menu bar picks (`MenuBarPresenter.focus`), and only their rows offer
     ///     Dismiss.
-    ///   - dismissed: the Show and alert meetings the user dismissed, on their own or with their series
-    ///     (`MeetingFilter.dismissedIDs`). They never take the card (any left in `alertable` are dropped),
-    ///     clash with nothing, and are listed until they end, marked dismissed, with Restore. A repeating
+    ///   - dismissed: the Show and alert meetings the user dismissed, with how each was dismissed
+    ///     (`MeetingFilter.dismissals`). They never take the card (any left in `alertable` are dropped),
+    ///     clash with nothing, and are listed until they end, marked dismissed, with Restore, which asks This
+    ///     Event or All Future Events for one dismissed with its series (`.allFutureEvents`). A repeating
     ///     event's next occurrence is its own row: it takes the card unless it's dismissed too.
-    ///   - dismissedBySeries: among `dismissed`, those dismissed with their series
-    ///     (`MeetingFilter.dismissedBySeriesIDs`), whose Restore asks This Event or All Future Events.
     ///   - startingSoonWindow: how soon before its start the next meeting gets the starting-soon card,
     ///     the same window as the menu bar pill.
     public static func content(
         meetings: [Meeting],
         alertable: [Meeting],
-        dismissed: Set<String> = [],
-        dismissedBySeries: Set<String> = [],
+        dismissed: [Meeting.ID: DismissScope] = [:],
         now: Date,
         startingSoonWindow: TimeInterval = MenuBarPresenter.startingSoonWindow,
         calendar: Calendar = .current,
         locale: Locale = .current
     ) -> PanelContent {
-        let alertable = alertable.filter { !dismissed.contains($0.id) }
+        let alertable = alertable.filter { dismissed[$0.id] == nil }
         let builder = Builder(
             meetings: meetings,
             alertableIDs: Set(alertable.map(\.id)),
             dismissed: dismissed,
-            dismissedBySeries: dismissedBySeries,
             now: now,
             calendar: calendar,
             locale: locale
@@ -429,8 +413,7 @@ public enum PanelPresenter {
         /// What overlaps are looked for among: everything listed but dismissed meetings, which clash with nothing.
         let clashing: [Meeting]
         let alertableIDs: Set<String>
-        let dismissed: Set<String>
-        let dismissedBySeries: Set<String>
+        let dismissed: [Meeting.ID: DismissScope]
         let now: Date
         let calendar: Calendar
         let locale: Locale
@@ -439,17 +422,15 @@ public enum PanelPresenter {
         init(
             meetings: [Meeting],
             alertableIDs: Set<String>,
-            dismissed: Set<String>,
-            dismissedBySeries: Set<String>,
+            dismissed: [Meeting.ID: DismissScope],
             now: Date,
             calendar: Calendar,
             locale: Locale
         ) {
             self.sorted = PanelPresenter.sortedMeetings(meetings)
-            self.clashing = sorted.filter { !dismissed.contains($0.id) }
+            self.clashing = sorted.filter { dismissed[$0.id] == nil }
             self.alertableIDs = alertableIDs
             self.dismissed = dismissed
-            self.dismissedBySeries = dismissedBySeries
             self.now = now
             self.calendar = calendar
             self.locale = locale
@@ -466,30 +447,31 @@ public enum PanelPresenter {
         }
 
         func card(for meeting: Meeting, label: String, isOngoing: Bool = false) -> PanelCard {
-            var card = PanelCard(
+            let detail: PanelCard.Detail = if isOngoing {
+                .ongoing(progress: MenuBarPresenter.elapsedFraction(of: meeting, now: now))
+            } else {
+                .upcoming(
+                    location: shortLocation(of: meeting),
+                    overlap: PanelPresenter.overlap(for: meeting, in: clashing).map { "Overlaps \($0.title), which runs until \(time($0.end))" }
+                )
+            }
+            return PanelCard(
                 meeting: meeting,
                 label: label,
                 timeRange: MeetingTimeFormatter.timeRange(start: meeting.start, end: meeting.end, locale: locale, timeZone: calendar.timeZone),
+                detail: detail,
                 action: action(for: meeting)
             )
-            if isOngoing {
-                card.progress = MenuBarPresenter.elapsedFraction(of: meeting, now: now)
-            } else {
-                card.location = shortLocation(of: meeting)
-                if let other = PanelPresenter.overlap(for: meeting, in: clashing) {
-                    card.overlap = "Overlaps \(other.title), which runs until \(time(other.end))"
-                }
-            }
-            return card
         }
 
         func row(_ meeting: Meeting) -> PanelRow {
-            var row = PanelRow(meeting: meeting, startTime: time(meeting.start), endTime: time(meeting.end), isMuted: meeting.isOutOfOffice)
+            var row = PanelRow(meeting: meeting, startTime: time(meeting.start), endTime: time(meeting.end))
             // Dismiss follows what alerts, so an out-of-office block set to Show and alert can be dismissed
             // (and restored) from its row like any meeting, while staying muted.
-            let isDismissed = dismissed.contains(meeting.id)
-            if isDismissed {
-                row.dismissal = .dismissed(asksScope: dismissedBySeries.contains(meeting.id))
+            let scope = dismissed[meeting.id]
+            let isDismissed = scope != nil
+            if let scope {
+                row.dismissal = .dismissed(asksScope: scope == .allFutureEvents)
                 row.detail = .dismissed(DismissCopy.dismissedDetail(left: meeting.isOngoing(at: now) ? timeLeft(meeting) : nil))
             } else if alertableIDs.contains(meeting.id) {
                 row.dismissal = .dismissable(for: meeting)

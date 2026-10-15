@@ -74,8 +74,8 @@ struct FullScreenAlertTab: View {
 
             // Stays enabled while Alert me is Never, as the user scoped Never: Show Demo still uses it.
             SettingsSection(title: "Snooze & auto-close") {
-                snoozeChoice("First snooze button", index: 0)
-                snoozeChoice("Second snooze button", index: 1)
+                snoozeChoice("First snooze button", \.first, separator: false)
+                snoozeChoice("Second snooze button", \.second, separator: true)
                 SettingsRow(title: SettingsOptions.autoCloseRowTitle) {
                     Picker(SettingsOptions.autoCloseRowTitle, selection: autoCloseSelection) {
                         ForEach(autoCloseChoices, id: \.self) { minutes in
@@ -135,23 +135,19 @@ struct FullScreenAlertTab: View {
 
     // MARK: Snooze and auto-close
 
-    private func snoozeChoice(_ title: String, index: Int) -> some View {
+    private func snoozeChoice(_ title: String, _ button: WritableKeyPath<SnoozeDurations, TimeInterval>, separator: Bool) -> some View {
         let preferences = model.preferences
         return SettingsMinutesChoice(
             title: title,
-            separator: index > 0,
+            separator: separator,
             presets: SettingsOptions.snoozeMinutes,
             range: SettingsOptions.customSnoozeRange,
             presetTitle: SettingsOptions.durationTitle(minutes:),
             unit: SettingsOptions.minutesUnit,
             fieldLabel: "\(title), minutes",
             minutes: Binding(
-                get: { SettingsOptions.wholeMinutes(preferences.snoozeDurations[index]) },
-                set: { minutes in
-                    var durations = preferences.snoozeDurations
-                    durations[index] = TimeInterval(minutes * 60)
-                    preferences.snoozeDurations = durations
-                }
+                get: { SettingsOptions.wholeMinutes(preferences.snoozeDurations[keyPath: button]) },
+                set: { minutes in preferences.snoozeDurations[keyPath: button] = TimeInterval(minutes * 60) }
             )
         )
     }

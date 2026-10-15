@@ -92,7 +92,7 @@ struct PanelPaletteTests {
     @Test(arguments: modes, accents)
     func theStartingSoonCardReads(_ mode: Mode, _ accent: Accent) {
         let color = accent.color(dark: mode.dark)
-        let card = mode.palette.startingSoonCard(accent: color, over: mode.surface, dark: mode.dark)
+        let card = mode.palette.startingSoonCard(accent: color, over: mode.surface)
         for (name, ink) in [("primary", mode.palette.primary), ("secondary", mode.palette.secondary), ("warning", mode.palette.warning)] {
             #expect(ink.contrastRatio(to: card) >= 4.5, "\(name)")
         }

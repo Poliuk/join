@@ -34,7 +34,7 @@ public enum AlertButtonKind: String, CaseIterable, Sendable {
     case join
     case dismissAndSnooze
 
-    public var keyPath: WritableKeyPath<AlertAppearance, AlertButtonColors> {
+    var keyPath: WritableKeyPath<AlertAppearance, AlertButtonColors> {
         switch self {
         case .join: return \.join
         case .dismissAndSnooze: return \.dismissAndSnooze
@@ -65,7 +65,7 @@ public enum AlertButtonKind: String, CaseIterable, Sendable {
 
     /// What the kind's fill opacity is clamped to. Settings now picks Join's fill at 100 %, so its range only
     /// matters for a look saved by an earlier build; the Snooze and Dismiss buttons' swatches and well set theirs.
-    public var fillOpacityRange: ClosedRange<Double> {
+    var fillOpacityRange: ClosedRange<Double> {
         switch self {
         case .join: return 0.4...1
         case .dismissAndSnooze: return 0...1
@@ -103,10 +103,10 @@ public struct AlertAppearance: Hashable, Sendable {
 
     public static let `default` = AlertAppearancePreset.dark.appearance
 
-    public static let defaultJoinFill = RGBA(rgb: 0xF5A524)
+    static let defaultJoinFill = RGBA(rgb: 0xF5A524)
     /// Where Tint's Other… starts from None: a color none of the swatches has, so the well shows something new.
-    public static let otherTintSeed = RGBA(rgb: 0x7A5AF8)
-    public static let minimumContrast = 4.5
+    static let otherTintSeed = RGBA(rgb: 0x7A5AF8)
+    static let minimumContrast = 4.5
 
     public subscript(button kind: AlertButtonKind) -> AlertButtonColors {
         get { self[keyPath: kind.keyPath] }
@@ -220,12 +220,12 @@ extension AlertAppearance {
     /// a custom color equal to the automatic one, or a tint strength while there's no tint, changes nothing.
     /// Matching never rewrites what's stored: switching a pop-up to Other… starts from the color shown, which
     /// would otherwise snap straight back to Automatic.
-    public func isEquivalent(to other: AlertAppearance) -> Bool {
+    func isEquivalent(to other: AlertAppearance) -> Bool {
         fingerprint == other.fingerprint
     }
 
     /// The preset this appearance looks like, or nil for a look of the user's own.
-    public var matchingPreset: AlertAppearancePreset? {
+    var matchingPreset: AlertAppearancePreset? {
         AlertAppearancePreset.allCases.first { isEquivalent(to: $0.appearance) }
     }
 
@@ -280,23 +280,23 @@ extension AlertAppearance {
 /// Concrete colors for one appearance, with Automatic choices resolved.
 public struct AlertPalette: Hashable, Sendable {
     /// Light text on a dark backdrop. Picks the countdown colors and the scrim.
-    public var isDark: Bool
+    let isDark: Bool
     /// An opaque stand-in for the blurred, tinted backdrop the text sits on.
-    public var surface: RGBA
-    public var text: RGBA
-    public var joinText: RGBA
-    public var joinFill: RGBA
-    public var buttonText: RGBA
-    public var buttonFill: RGBA
+    public let surface: RGBA
+    public let text: RGBA
+    public let joinText: RGBA
+    public let joinFill: RGBA
+    public let buttonText: RGBA
+    public let buttonFill: RGBA
     /// The layer the blur material adds over the desktop; drawn by the Settings preview, which
     /// can't blur what's behind its window. nil without blur.
-    public var material: RGBA?
+    public let material: RGBA?
     /// The center of the radial scrim behind the alert's content; it fades to clear at the edges.
-    public var scrim: RGBA
+    public let scrim: RGBA
 
-    public var textContrast: Double { text.composited(over: surface).contrastRatio(to: surface) }
-    public var joinContrast: Double { contrast(of: joinText, on: joinFill) }
-    public var buttonContrast: Double { contrast(of: buttonText, on: buttonFill) }
+    var textContrast: Double { text.composited(over: surface).contrastRatio(to: surface) }
+    var joinContrast: Double { contrast(of: joinText, on: joinFill) }
+    var buttonContrast: Double { contrast(of: buttonText, on: buttonFill) }
 
     public func countdownColor(for phase: AlertCountdown.Phase) -> RGBA {
         switch phase {
@@ -369,24 +369,24 @@ public struct AlertContrastWarning: Hashable, Sendable, Identifiable {
         case button(AlertButtonKind)
     }
 
-    public var subject: Subject
+    public let subject: Subject
     /// The Colors row it shows directly under: Tint (below its Strength row) when the tint makes the automatic
     /// event text hard to read, otherwise the subject's own row (a button's after its legacy Text row).
-    public var row: AlertColorRow
-    public var ratio: Double
-    public var message: String
+    public let row: AlertColorRow
+    public let ratio: Double
+    public let message: String
 
     public var id: Subject { subject }
 
     /// "4.2:1", rounded down so a ratio just under the threshold never reads as 4.5:1.
-    public static func format(_ ratio: Double) -> String {
+    static func format(_ ratio: Double) -> String {
         String(format: "%.1f:1", (ratio * 10).rounded(.down) / 10)
     }
 
     /// The one template every contrast warning uses, the alert's and the menu bar's: "Event text may be hard
     /// to read (3.2:1). Aim for 4.5:1, or choose Automatic." The advice names the fix, or, when the row is
     /// already Automatic, what to try instead.
-    public static func message(subject: String, ratio: Double, advice: String) -> String {
+    static func message(subject: String, ratio: Double, advice: String) -> String {
         "\(subject) may be hard to read (\(format(ratio))). \(advice)"
     }
 }

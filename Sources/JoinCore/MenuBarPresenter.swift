@@ -1,6 +1,7 @@
 import Foundation
 
-/// What the menu bar item shows: its icon, optional text, and how it is drawn.
+/// What the menu bar item shows: its icon, optional text, and how it is drawn. Built by `MenuBarPresenter`
+/// only; the app reads it.
 public struct MenuBarStatus: Equatable, Sendable {
     public enum Kind: Equatable, Sendable {
         /// Nothing upcoming: the calendar icon alone.
@@ -19,12 +20,12 @@ public struct MenuBarStatus: Equatable, Sendable {
         case inMeeting(remaining: Double)
     }
 
-    public var kind: Kind
+    public internal(set) var kind: Kind
     /// nil means icon only.
-    public var text: String?
-    public var accessibilityLabel: String
+    public internal(set) var text: String?
+    public internal(set) var accessibilityLabel: String
 
-    public init(kind: Kind, text: String?, accessibilityLabel: String) {
+    init(kind: Kind, text: String?, accessibilityLabel: String) {
         self.kind = kind
         self.text = text
         self.accessibilityLabel = accessibilityLabel
@@ -53,8 +54,7 @@ public enum MenuBarPresenter {
             meetings: [demo],
             now: now,
             pauseState: .active,
-            showsNextEvent: display.showsNextEvent,
-            showsTitles: display.showsTitles,
+            display: display,
             startingSoonWindow: pill.window
         ).text
     }
@@ -67,8 +67,7 @@ public enum MenuBarPresenter {
         meetings: [Meeting],
         now: Date,
         pauseState: PauseState,
-        showsNextEvent: Bool,
-        showsTitles: Bool,
+        display: MenuBarDisplay,
         startingSoonWindow: TimeInterval = startingSoonWindow,
         calendar: Calendar = .current,
         locale: Locale = .current
@@ -80,13 +79,10 @@ public enum MenuBarPresenter {
 
         /// A countdown without a title reads "Next in 42 min"; with a title, the title says what's next.
         func compose(_ kind: MenuBarStatus.Kind, _ text: String, meeting: Meeting, spoken: String, isCountdown: Bool = false) -> MenuBarStatus {
-            let shown: String?
-            if !showsNextEvent {
-                shown = nil
-            } else if showsTitles {
-                shown = "\(MeetingTimeFormatter.truncate(meeting.title, to: maxTitleLength)) · \(text)"
-            } else {
-                shown = isCountdown ? "Next \(text)" : text
+            let shown: String? = switch display {
+            case .iconOnly: nil
+            case .time: isCountdown ? "Next \(text)" : text
+            case .titleAndTime: "\(MeetingTimeFormatter.truncate(meeting.title, to: maxTitleLength)) · \(text)"
             }
             return MenuBarStatus(kind: kind, text: shown, accessibilityLabel: "Join!: \(meeting.title) \(spoken)")
         }

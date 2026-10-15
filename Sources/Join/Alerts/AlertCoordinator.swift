@@ -163,7 +163,7 @@ final class AlertCoordinator {
         let session = AlertSession(
             meetings: plan.meetings,
             appearance: preferences.appearance,
-            snoozeDurations: preferences.snoozeDurations,
+            snoozeDurations: preferences.snoozeDurations.all,
             actions: AlertActions(
                 dismiss: { [weak self] in self?.dismiss() },
                 snooze: { [weak self] duration in self?.snooze(for: duration) },
@@ -230,7 +230,7 @@ final class AlertCoordinator {
         let session = AlertSession(
             meetings: [demo],
             appearance: preferences.appearance,
-            snoozeDurations: preferences.snoozeDurations,
+            snoozeDurations: preferences.snoozeDurations.all,
             actions: AlertActions(
                 dismiss: { [weak self] in self?.closeDemo() },
                 snooze: { [weak self] _ in self?.closeDemo() },

@@ -38,7 +38,7 @@ public enum SettingsOptions {
     }
 
     /// "1 min", "1 hr", as on the alert's buttons.
-    public static func shortDurationTitle(minutes: Int) -> String {
+    static func shortDurationTitle(minutes: Int) -> String {
         if minutes >= 60, minutes % 60 == 0 {
             return "\(minutes / 60) hr"
         }
@@ -111,7 +111,7 @@ public enum SettingsOptions {
 
     // MARK: Auto-close
 
-    public static let autoCloseMinutes: [Int] = [5, 10, 15, 30, 60]
+    static let autoCloseMinutes: [Int] = [5, 10, 15, 30, 60]
 
     /// The pop-up's selection: nil is Never.
     public static func autoCloseSelection(enabled: Bool, after: TimeInterval) -> Int? {
@@ -130,7 +130,7 @@ public enum SettingsOptions {
 
     // MARK: Open at login
 
-    public static let openAtLoginApprovalHint = "Allow Join! in System Settings › General › Login Items to open it at login."
+    static let openAtLoginApprovalHint = "Allow Join! in System Settings › General › Login Items to open it at login."
     public static let openAtLoginFixtureNote = "Not available in fixture mode."
 
     /// Registered but waiting for approval in System Settings still reads as on, so turning the

@@ -25,7 +25,7 @@ public struct StartingSoonPill: Hashable, Sendable {
     /// Lower than the alert's 4.5:1 by choice: white on macOS's blue accent is about 4:1, and the pill
     /// should keep that look by default. Below 3:1 (the orange, yellow and green accents, or a light
     /// custom fill) Automatic text turns near-black, and custom colors get a warning.
-    public static let minimumContrast = 3.0
+    static let minimumContrast = 3.0
     static let darkText = RGBA(rgb: 0x1D1D1F)
 
     public var window: TimeInterval { TimeInterval(minutes * 60) }
@@ -69,7 +69,7 @@ public struct StartingSoonPill: Hashable, Sendable {
     ])
 
     /// The item the Color pop-up shows; see `ColorChoice.selection`.
-    public func colorSelection(accent: RGBA, otherPicked: Bool) -> ColorChoice.Item {
+    func colorSelection(accent: RGBA, otherPicked: Bool) -> ColorChoice.Item {
         Self.colorChoice.selection(stored: fill, shown: resolvedFill(accent: accent), otherPicked: otherPicked)
     }
 

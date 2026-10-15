@@ -16,14 +16,26 @@ struct PanelPresenterTests {
         case nothingToday, next, startingSoon, now
     }
 
-    /// `alertable` defaults to the meetings that aren't out-of-office blocks or `dismissed`, as the store passes them.
+    /// `dismissed` were each dismissed on their own (This Event). `alertable` defaults to the meetings that aren't
+    /// out-of-office blocks or dismissed, as the store passes them.
     private func content(at now: Date, meetings: [Meeting] = F.week, alertable: [Meeting]? = nil, dismissed: Set<String> = [],
-                         dismissedBySeries: Set<String> = [],
                          startingSoonWindow: TimeInterval = MenuBarPresenter.startingSoonWindow,
                          locale: Locale = F.us) -> PanelContent {
-        PanelPresenter.content(meetings: meetings, alertable: alertable ?? meetings.filter { !$0.isOutOfOffice && !dismissed.contains($0.id) },
-                               dismissed: dismissed, dismissedBySeries: dismissedBySeries, now: now,
+        content(at: now, meetings: meetings, alertable: alertable, dismissals: Dictionary(uniqueKeysWithValues: dismissed.map { ($0, .thisEvent) }),
+                startingSoonWindow: startingSoonWindow, locale: locale)
+    }
+
+    private func content(at now: Date, meetings: [Meeting] = F.week, alertable: [Meeting]? = nil, dismissals: [Meeting.ID: DismissScope],
+                         startingSoonWindow: TimeInterval = MenuBarPresenter.startingSoonWindow,
+                         locale: Locale = F.us) -> PanelContent {
+        PanelPresenter.content(meetings: meetings, alertable: alertable ?? meetings.filter { !$0.isOutOfOffice && dismissals[$0.id] == nil },
+                               dismissed: dismissals, now: now,
                                startingSoonWindow: startingSoonWindow, calendar: F.calendar, locale: locale)
+    }
+
+    /// The card's overlap warning: nil when there's none, and on the card of a meeting in progress.
+    private func overlap(on card: PanelCard) -> String? {
+        if case .upcoming(_, let overlap) = card.detail { overlap } else { nil }
     }
 
     private func kind(_ hero: PanelHero) -> HeroKind {
@@ -135,9 +147,8 @@ struct PanelPresenterTests {
         #expect(card.meeting.id == "lunch")
         #expect(card.label == "Next · in 2 h 15 min")
         #expect(F.squash(card.timeRange) == "1:00 – 2:00 PM")
-        #expect(card.location == "C. de Ruiz de Alarcón, 23 · Retiro")
-        #expect(card.overlap == nil, "out-of-office blocks never count as overlaps")
-        #expect(card.progress == nil)
+        #expect(card.detail == .upcoming(location: "C. de Ruiz de Alarcón, 23 · Retiro", overlap: nil),
+                "out-of-office blocks never count as overlaps")
         #expect(card.action == .directions(LocationFormatter.directionsURL(to: F.lunch.location!)!))
 
         #expect(titles(result) == ["Today", "Tomorrow / \(us("EEEdMMM", 7))", "Thursday / \(us("dMMM", 8))"])
@@ -153,7 +164,7 @@ struct PanelPresenterTests {
         }
         #expect(card.meeting.id == "plan")
         #expect(card.label == "Starts in 4 min")
-        #expect(F.squash(card.overlap) == "Overlaps Workshop, which runs until 7:30 PM")
+        #expect(F.squash(overlap(on: card)) == "Overlaps Workshop, which runs until 7:30 PM")
         #expect(card.action == .join(F.meet))
 
         #expect(titles(result) == ["Now", "Today", "Tomorrow / \(us("EEEdMMM", 7))", "Thursday / \(us("dMMM", 8))"])
@@ -177,8 +188,11 @@ struct PanelPresenterTests {
         #expect(card.meeting.id == "plan", "the most recently started meeting gets the card")
         #expect(card.label == "Now · 40 min left")
         #expect(F.squash(card.timeRange) == "4:00 – 5:00 PM")
-        #expect(abs((card.progress ?? -1) - 1.0 / 3.0) <= 0.0001)
-        #expect(card.overlap == nil)
+        guard case .ongoing(let progress) = card.detail else {
+            Issue.record("expected progress, got \(card.detail)")
+            return
+        }
+        #expect(abs(progress - 1.0 / 3.0) <= 0.0001, "a progress bar, and so no place or overlap")
         #expect(card.action == .join(F.meet))
 
         #expect(titles(result) == ["Also now", "Tomorrow / \(us("EEEdMMM", 7))", "Thursday / \(us("dMMM", 8))"])
@@ -269,7 +283,7 @@ struct PanelPresenterTests {
             Issue.record("expected next")
             return
         }
-        #expect(card.location == "Sala Retiro")
+        #expect(card.detail == .upcoming(location: "Sala Retiro", overlap: nil))
     }
 
     /// An out-of-office block set to Show and alert takes the card like any other event (product brief #8), with
@@ -290,7 +304,7 @@ struct PanelPresenterTests {
         }
         #expect(card.meeting.id == block.id)
         #expect(card.action == action)
-        #expect(card.location == location)
+        #expect(card.detail == .upcoming(location: location, overlap: nil))
 
         let row = try #require(row(block.id, in: result))
         #expect(row.isMuted)
@@ -370,7 +384,7 @@ struct PanelPresenterTests {
         #expect(kind(hero) == (isSoon ? .startingSoon : .next))
         #expect(hero.card?.meeting.id == "lunch")
         #expect(hero.card?.label == label)
-        let pill = MenuBarPresenter.status(meetings: F.alertable, now: now, pauseState: .active, showsNextEvent: true, showsTitles: false,
+        let pill = MenuBarPresenter.status(meetings: F.alertable, now: now, pauseState: .active, display: .time,
                                            startingSoonWindow: window, calendar: F.calendar, locale: F.us)
         #expect((pill.kind == .startingSoon) == isSoon, "the menu bar's pill turns at the same moment")
     }
@@ -585,7 +599,7 @@ struct PanelPresenterTests {
             PanelPresenter.content(
                 meetings: MeetingFilter.visible(all, eventsWithoutParticipants: withoutParticipants, outOfOfficeEvents: outOfOffice),
                 alertable: MeetingFilter.alertable(all, eventsWithoutParticipants: withoutParticipants, outOfOfficeEvents: outOfOffice, dismissed: stored),
-                dismissed: MeetingFilter.dismissedIDs(all, eventsWithoutParticipants: withoutParticipants, outOfOfficeEvents: outOfOffice, dismissed: stored),
+                dismissed: MeetingFilter.dismissals(all, eventsWithoutParticipants: withoutParticipants, outOfOfficeEvents: outOfOffice, dismissed: stored),
                 now: F.date(5, 21, 30), calendar: F.calendar, locale: F.us
             )
         }
@@ -627,7 +641,7 @@ struct PanelPresenterTests {
             return
         }
         #expect(card.meeting.id == "plan")
-        #expect(card.overlap == nil)
+        #expect(overlap(on: card) == nil)
         #expect(soon.sections.first?.title == "Now")
         #expect(soon.sections.first.map(ids) == ["val"])
         #expect(row("val", in: soon)?.detail == .dismissed("Dismissed · 3 h 34 min left"))
@@ -640,7 +654,7 @@ struct PanelPresenterTests {
             Issue.record("expected the late meeting's card")
             return
         }
-        #expect(lateCard.overlap == nil, "the card's line ignores the dismissed meeting too")
+        #expect(overlap(on: lateCard) == nil, "the card's line ignores the dismissed meeting too")
     }
 
     // MARK: Repeating events
@@ -660,9 +674,7 @@ struct PanelPresenterTests {
             at: F.date(6, 15, 56),
             meetings: meetings,
             alertable: MeetingFilter.alertable(meetings, eventsWithoutParticipants: .showAndAlert, outOfOfficeEvents: .listOnly, dismissed: stored),
-            dismissed: MeetingFilter.dismissedIDs(meetings, eventsWithoutParticipants: .showAndAlert, outOfOfficeEvents: .listOnly, dismissed: stored),
-            dismissedBySeries: MeetingFilter.dismissedBySeriesIDs(
-                meetings, eventsWithoutParticipants: .showAndAlert, outOfOfficeEvents: .listOnly, dismissed: stored)
+            dismissals: MeetingFilter.dismissals(meetings, eventsWithoutParticipants: .showAndAlert, outOfOfficeEvents: .listOnly, dismissed: stored)
         )
     }
 

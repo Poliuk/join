@@ -49,11 +49,11 @@ final class FixtureCalendarService: CalendarService {
 
     func requestAccess() async -> Bool { authorization == .authorized }
 
-    private static let work = CalendarInfo(id: "work", title: "Work", sourceTitle: "Acme", color: RGBA(hex: "#67CBDD")!)
-    private static let personal = CalendarInfo(id: "personal", title: "you@gmail.com", sourceTitle: "you@gmail.com", color: RGBA(hex: "#5CCF97")!)
-    private static let holidays = CalendarInfo(id: "holidays", title: "Holidays", sourceTitle: "you@gmail.com", color: RGBA(hex: "#E5A23B")!)
-    private static let birthdays = CalendarInfo(id: "birthdays", title: "Birthdays", sourceTitle: "you@gmail.com", color: RGBA(hex: "#B07CE8")!)
-    private static let ooo = CalendarInfo(id: "ooo", title: "Out of office", sourceTitle: "Acme", color: RGBA(hex: "#76787F")!)
+    private static let work = CalendarInfo(id: "work", title: "Work", sourceTitle: "Acme", color: RGBA(rgb: 0x67CBDD))
+    private static let personal = CalendarInfo(id: "personal", title: "you@gmail.com", sourceTitle: "you@gmail.com", color: RGBA(rgb: 0x5CCF97))
+    private static let holidays = CalendarInfo(id: "holidays", title: "Holidays", sourceTitle: "you@gmail.com", color: RGBA(rgb: 0xE5A23B))
+    private static let birthdays = CalendarInfo(id: "birthdays", title: "Birthdays", sourceTitle: "you@gmail.com", color: RGBA(rgb: 0xB07CE8))
+    private static let ooo = CalendarInfo(id: "ooo", title: "Out of office", sourceTitle: "Acme", color: RGBA(rgb: 0x76787F))
 
     func calendars() -> [CalendarInfo] {
         [Self.work, Self.ooo, Self.personal, Self.holidays, Self.birthdays]

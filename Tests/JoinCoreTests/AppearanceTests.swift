@@ -48,6 +48,8 @@ struct AppearanceTests {
             ("ff000080", "#FF000080"),
             ("#F5A524FF", "#F5A524"),
             ("nope", nil),
+            ("#+ABCDE", nil),
+            ("-00000", nil),
         ] as [(String, String?)])
         func hexRoundTrip(hex: String, expected: String?) {
             #expect(RGBA(hex: hex)?.hexString == expected)

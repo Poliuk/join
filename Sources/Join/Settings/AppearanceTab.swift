@@ -58,7 +58,7 @@ struct AppearanceTab: View {
             AppearancePreview(
                 appearance: appearance,
                 backdrop: previewBackdrop,
-                snoozeDurations: model.preferences.snoozeDurations
+                snoozeDurations: model.preferences.snoozeDurations.all
             )
             HStack(spacing: 16) {
                 HStack(spacing: 8) {

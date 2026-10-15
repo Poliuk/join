@@ -40,7 +40,7 @@ final class UpdateChecker {
     /// what it finds.
     @ObservationIgnored private let keepsChecksInMemory: Bool
     private var lastCheckInMemory: Date?
-    @ObservationIgnored private var offeredVersionInMemory: String?
+    @ObservationIgnored private var offeredVersionInMemory: AppVersion?
     @ObservationIgnored private var unsupportedUpdateInMemory: UnsupportedUpdate?
 
     init(preferences: Preferences, fixtureScenario: String?) {
@@ -61,7 +61,7 @@ final class UpdateChecker {
         }
         // A release an earlier run found this Mac can't run reads as such until the next check.
         if let unsupported = stillUnsupported {
-            status = .unsupported(unsupported.version, minimumSystem: unsupported.minimumSystem)
+            status = .unsupported(unsupported)
         }
     }
 
@@ -74,7 +74,7 @@ final class UpdateChecker {
     }
 
     /// The version the last successful check offered, so a relaunch can bring the offer back.
-    private var offeredVersion: String? {
+    private var offeredVersion: AppVersion? {
         get { keepsChecksInMemory ? offeredVersionInMemory : preferences.offeredUpdateVersion }
         set {
             if keepsChecksInMemory { offeredVersionInMemory = newValue } else { preferences.offeredUpdateVersion = newValue }
@@ -91,7 +91,7 @@ final class UpdateChecker {
     }
 
     /// `unsupportedUpdate`, while it's newer than this copy and this Mac's macOS is still too old for it.
-    private var stillUnsupported: (version: AppVersion, minimumSystem: String)? {
+    private var stillUnsupported: UnsupportedUpdate? {
         guard let currentVersion else { return nil }
         return unsupportedUpdate?.stillUnsupported(current: currentVersion, system: ProcessInfo.processInfo.operatingSystemVersion)
     }
@@ -162,7 +162,7 @@ final class UpdateChecker {
         let outcome = UpdateCheckOutcome(found: found, unsupported: stillUnsupported, offeredUpdate: offeredUpdate, install: install)
         status = outcome.status
         if outcome.forgetsUnsupported { unsupportedUpdate = nil }
-        offeredVersion = outcome.offer?.version.description
+        offeredVersion = outcome.offer?.version
         if outcome.discardsDownload { discardDownload() }
         install = outcome.install
         offeredUpdate = outcome.offeredUpdate
@@ -268,9 +268,10 @@ final class UpdateChecker {
         let failure = error as? UpdateFailure ?? .download
         if case .unsupportedSystem(let minimum) = failure {
             // Not an offer any more: the bar goes, and Settings says which macOS it needs.
-            unsupportedUpdate = UnsupportedUpdate(version: update.version.description, minimumSystem: minimum)
+            let unsupported = UnsupportedUpdate(version: update.version, minimumSystem: minimum)
+            unsupportedUpdate = unsupported
             offeredVersion = nil
-            status = .unsupported(update.version, minimumSystem: minimum)
+            status = .unsupported(unsupported)
             offeredUpdate = nil
             install = .idle
         } else {

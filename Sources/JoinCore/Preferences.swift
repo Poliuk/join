@@ -1,5 +1,8 @@
 import Foundation
 import Observation
+import OSLog
+
+private let logger = Logger(subsystem: "com.poliuk.join", category: "preferences")
 
 /// All user-configurable settings. One owner, persisted to UserDefaults on every change,
 /// observable by SwiftUI through the Observation framework. On the main actor, where the views that observe
@@ -7,66 +10,67 @@ import Observation
 @MainActor
 @Observable
 public final class Preferences {
-    public enum Keys {
-        public static let leadTime = "leadTime"
-        public static let fullScreenAlertsEnabled = "fullScreenAlertsEnabled"
-        public static let snoozeDurations = "snoozeDurations"
-        public static let alertScreens = "alertScreens"
+    /// Internal: writing these keys directly would bypass the observation, the clamping and the checks that
+    /// each setter applies.
+    enum Keys {
+        static let leadTime = "leadTime"
+        static let fullScreenAlertsEnabled = "fullScreenAlertsEnabled"
+        static let snoozeDurations = "snoozeDurations"
+        static let alertScreens = "alertScreens"
         /// Earlier builds stored a Bool here; true maps to `.all`, false to `.main`.
-        public static let legacyShowOnAllScreens = "showOnAllScreens"
-        public static let menuBarShowsEventTitles = "menuBarShowsEventTitles"
-        public static let autoCloseEnabled = "autoCloseEnabled"
-        public static let autoCloseAfter = "autoCloseAfter"
-        public static let soundName = "soundName"
-        public static let soundRepeats = "soundRepeats"
-        public static let enabledCalendarIDs = "enabledCalendarIDs"
-        public static let eventsWithoutParticipants = "eventsWithoutParticipants"
+        static let legacyShowOnAllScreens = "showOnAllScreens"
+        static let menuBarShowsEventTitles = "menuBarShowsEventTitles"
+        static let autoCloseEnabled = "autoCloseEnabled"
+        static let autoCloseAfter = "autoCloseAfter"
+        static let soundName = "soundName"
+        static let soundRepeats = "soundRepeats"
+        static let enabledCalendarIDs = "enabledCalendarIDs"
+        static let eventsWithoutParticipants = "eventsWithoutParticipants"
         /// 1.1 stored a switch here; true maps to `.showAndAlert`, false to `.exclude`.
-        public static let legacyShowsEventsWithoutParticipants = "showsEventsWithoutParticipants"
-        public static let menuBarShowsNextEvent = "menuBarShowsNextEvent"
-        public static let appearance = "appearance"
+        static let legacyShowsEventsWithoutParticipants = "showsEventsWithoutParticipants"
+        static let menuBarShowsNextEvent = "menuBarShowsNextEvent"
+        static let appearance = "appearance"
         /// The look on Appearance's Custom card, absent until there's one.
-        public static let customAppearance = "customAppearance"
-        public static let outOfOfficeEvents = "outOfOfficeEvents"
+        static let customAppearance = "customAppearance"
+        static let outOfOfficeEvents = "outOfOfficeEvents"
         /// 1.0 and 1.1 stored two switches for out-of-office events, read into `outOfOfficeEvents` until it
         /// is set: whether they alert, and whether the panel lists them.
-        public static let legacyAlertForOutOfOffice = "alertForOutOfOffice"
-        public static let legacyShowOutOfOfficeInList = "showOutOfOfficeInList"
+        static let legacyAlertForOutOfOffice = "alertForOutOfOffice"
+        static let legacyShowOutOfOfficeInList = "showOutOfOfficeInList"
         /// Builds before 1.0 stored the inverse of `legacyAlertForOutOfOffice` under this key.
-        public static let legacySkipOutOfOffice = "skipOutOfOffice"
-        public static let outOfOfficeKeywords = "outOfOfficeKeywords"
-        public static let startingSoonPill = "startingSoonPill"
-        public static let panelListFilter = "panelListFilter"
+        static let legacySkipOutOfOffice = "skipOutOfOffice"
+        static let outOfOfficeKeywords = "outOfOfficeKeywords"
+        static let startingSoonPill = "startingSoonPill"
+        static let panelListFilter = "panelListFilter"
         /// The occurrences and series dismissed from the menu bar panel, as JSON (1.2.0's plain object of
         /// occurrence id → end still reads); absent while there are none.
-        public static let dismissedEvents = "dismissedEvents"
-        public static let checksForUpdates = "checksForUpdates"
-        public static let lastUpdateCheck = "lastUpdateCheck"
-        public static let offeredUpdateVersion = "offeredUpdateVersion"
-        public static let unsupportedUpdate = "unsupportedUpdate"
+        static let dismissedEvents = "dismissedEvents"
+        static let checksForUpdates = "checksForUpdates"
+        static let lastUpdateCheck = "lastUpdateCheck"
+        static let offeredUpdateVersion = "offeredUpdateVersion"
+        static let unsupportedUpdate = "unsupportedUpdate"
     }
 
     // Constants, so they're nonisolated: any caller reads them without the main actor, like `Keys` (a nested
     // type, which the class's isolation doesn't reach). Isolated, another module could only read them on the
     // main actor or with `await`.
     nonisolated public static let defaultLeadTime: TimeInterval = 3 * 60
-    nonisolated public static let defaultSnoozeDurations: [TimeInterval] = [60, 5 * 60]
+    nonisolated public static let defaultSnoozeDurations = SnoozeDurations(first: 60, second: 5 * 60)
     nonisolated public static let defaultAutoCloseAfter: TimeInterval = 15 * 60
 
     private let defaults: UserDefaults
 
     @ObservationIgnored private var _leadTime: TimeInterval
     @ObservationIgnored private var _fullScreenAlertsEnabled: Bool
-    @ObservationIgnored private var _snoozeDurations: [TimeInterval]
+    @ObservationIgnored private var _snoozeDurations: SnoozeDurations
     @ObservationIgnored private var _alertScreens: AlertScreens
-    @ObservationIgnored private var _menuBarShowsEventTitles: Bool
+    @ObservationIgnored private var _menuBarDisplay: MenuBarDisplay
     @ObservationIgnored private var _autoCloseEnabled: Bool
     @ObservationIgnored private var _autoCloseAfter: TimeInterval
     @ObservationIgnored private var _soundName: String?
     @ObservationIgnored private var _soundRepeats: Bool
     @ObservationIgnored private var _enabledCalendarIDs: Set<String>?
     @ObservationIgnored private var _eventsWithoutParticipants: EventVisibility
-    @ObservationIgnored private var _menuBarShowsNextEvent: Bool
     @ObservationIgnored private var _appearance: AlertAppearance
     @ObservationIgnored private var _customAppearance: AlertAppearance?
     @ObservationIgnored private var _outOfOfficeEvents: EventVisibility
@@ -76,15 +80,15 @@ public final class Preferences {
     @ObservationIgnored private var _dismissedEvents: DismissedEvents
     @ObservationIgnored private var _checksForUpdates: Bool
     @ObservationIgnored private var _lastUpdateCheck: Date?
-    @ObservationIgnored private var _offeredUpdateVersion: String?
+    @ObservationIgnored private var _offeredUpdateVersion: AppVersion?
     @ObservationIgnored private var _unsupportedUpdate: UnsupportedUpdate?
 
     public init(defaults: UserDefaults = .standard) {
         self.defaults = defaults
         _leadTime = Self.wholeMinutes(defaults.object(forKey: Keys.leadTime) as? TimeInterval ?? Self.defaultLeadTime)
         _fullScreenAlertsEnabled = defaults.object(forKey: Keys.fullScreenAlertsEnabled) as? Bool ?? true
-        let storedSnooze = defaults.array(forKey: Keys.snoozeDurations) as? [TimeInterval]
-        _snoozeDurations = (storedSnooze?.count == 2 ? storedSnooze : nil) ?? Self.defaultSnoozeDurations
+        _snoozeDurations = (defaults.array(forKey: Keys.snoozeDurations) as? [TimeInterval]).flatMap(SnoozeDurations.init)
+            ?? Self.defaultSnoozeDurations
         if let raw = defaults.string(forKey: Keys.alertScreens), let stored = AlertScreens(rawValue: raw) {
             _alertScreens = stored
         } else if let legacy = defaults.object(forKey: Keys.legacyShowOnAllScreens) as? Bool {
@@ -92,7 +96,10 @@ public final class Preferences {
         } else {
             _alertScreens = .all
         }
-        _menuBarShowsEventTitles = defaults.object(forKey: Keys.menuBarShowsEventTitles) as? Bool ?? false
+        _menuBarDisplay = MenuBarDisplay(
+            showsNextEvent: defaults.object(forKey: Keys.menuBarShowsNextEvent) as? Bool ?? true,
+            showsTitles: defaults.object(forKey: Keys.menuBarShowsEventTitles) as? Bool ?? false
+        )
         _autoCloseEnabled = defaults.object(forKey: Keys.autoCloseEnabled) as? Bool ?? true
         _autoCloseAfter = Self.atLeastAMinute(defaults.object(forKey: Keys.autoCloseAfter) as? TimeInterval ?? Self.defaultAutoCloseAfter)
         _soundName = defaults.string(forKey: Keys.soundName)
@@ -100,32 +107,26 @@ public final class Preferences {
         _enabledCalendarIDs = (defaults.array(forKey: Keys.enabledCalendarIDs) as? [String]).map(Set.init)
         _eventsWithoutParticipants = defaults.string(forKey: Keys.eventsWithoutParticipants).flatMap(EventVisibility.init(rawValue:))
             ?? Self.legacyEventsWithoutParticipants(in: defaults)
-        _menuBarShowsNextEvent = defaults.object(forKey: Keys.menuBarShowsNextEvent) as? Bool ?? true
-        _appearance = defaults.data(forKey: Keys.appearance)
-            .flatMap { try? JSONDecoder().decode(AlertAppearance.self, from: $0) } ?? .default
-        if let stored = defaults.data(forKey: Keys.customAppearance)
-            .flatMap({ try? JSONDecoder().decode(AlertAppearance.self, from: $0) }) {
+        _appearance = defaults.decodedJSON(AlertAppearance.self, forKey: Keys.appearance) ?? .default
+        if let stored = defaults.decodedJSON(AlertAppearance.self, forKey: Keys.customAppearance) {
             _customAppearance = stored.matchingPreset == nil ? stored : nil
         } else if _appearance.matchingPreset == nil {
             // A look of the user's own, saved before the Custom card existed, becomes the card's.
             _customAppearance = _appearance
-            defaults.set(try? JSONEncoder().encode(_appearance), forKey: Keys.customAppearance)
+            defaults.setJSON(_appearance, forKey: Keys.customAppearance)
         } else {
             _customAppearance = nil
         }
         _outOfOfficeEvents = defaults.string(forKey: Keys.outOfOfficeEvents).flatMap(EventVisibility.init(rawValue:))
             ?? Self.legacyOutOfOfficeEvents(in: defaults)
         _outOfOfficeKeywords = defaults.array(forKey: Keys.outOfOfficeKeywords) as? [String] ?? OutOfOfficeDetector.defaultKeywords
-        _startingSoonPill = defaults.data(forKey: Keys.startingSoonPill)
-            .flatMap { try? JSONDecoder().decode(StartingSoonPill.self, from: $0) } ?? .default
+        _startingSoonPill = defaults.decodedJSON(StartingSoonPill.self, forKey: Keys.startingSoonPill) ?? .default
         _panelListFilter = defaults.string(forKey: Keys.panelListFilter).flatMap(PanelListFilter.init(rawValue:)) ?? .week
-        _dismissedEvents = defaults.data(forKey: Keys.dismissedEvents)
-            .flatMap { try? JSONDecoder().decode(DismissedEvents.self, from: $0) } ?? DismissedEvents()
+        _dismissedEvents = defaults.decodedJSON(DismissedEvents.self, forKey: Keys.dismissedEvents) ?? DismissedEvents()
         _checksForUpdates = defaults.object(forKey: Keys.checksForUpdates) as? Bool ?? true
         _lastUpdateCheck = defaults.object(forKey: Keys.lastUpdateCheck) as? Date
-        _offeredUpdateVersion = defaults.string(forKey: Keys.offeredUpdateVersion)
-        _unsupportedUpdate = defaults.data(forKey: Keys.unsupportedUpdate)
-            .flatMap { try? JSONDecoder().decode(UnsupportedUpdate.self, from: $0) }
+        _offeredUpdateVersion = defaults.string(forKey: Keys.offeredUpdateVersion).flatMap(AppVersion.init)
+        _unsupportedUpdate = defaults.decodedJSON(UnsupportedUpdate.self, forKey: Keys.unsupportedUpdate)
     }
 
     /// 1.1's switch, on by default: on showed these events like any other, off left them out.
@@ -177,14 +178,14 @@ public final class Preferences {
         }
     }
 
-    /// Exactly two entries, in seconds.
-    public var snoozeDurations: [TimeInterval] {
+    /// The alert's two snooze buttons, stored as a two-element array of seconds. One minute and 5 minutes by
+    /// default, and when what's stored doesn't have two entries.
+    public var snoozeDurations: SnoozeDurations {
         get { access(keyPath: \.snoozeDurations); return _snoozeDurations }
         set {
-            guard newValue.count == 2 else { return }
             withMutation(keyPath: \.snoozeDurations) {
                 _snoozeDurations = newValue
-                defaults.set(newValue, forKey: Keys.snoozeDurations)
+                defaults.set(newValue.all, forKey: Keys.snoozeDurations)
             }
         }
     }
@@ -200,14 +201,16 @@ public final class Preferences {
         }
     }
 
-    /// Whether the menu bar item starts with the event's title (in place of "Next"). Off by default.
-    /// Set through `menuBarDisplay` from Settings.
-    public var menuBarShowsEventTitles: Bool {
-        get { access(keyPath: \.menuBarShowsEventTitles); return _menuBarShowsEventTitles }
+    /// What the menu bar item shows next to its icon: Time until next event by default. Stored as the two
+    /// switches earlier builds kept, whether it shows the next event and whether the event's title takes the
+    /// place of "Next", both written in one change.
+    public var menuBarDisplay: MenuBarDisplay {
+        get { access(keyPath: \.menuBarDisplay); return _menuBarDisplay }
         set {
-            withMutation(keyPath: \.menuBarShowsEventTitles) {
-                _menuBarShowsEventTitles = newValue
-                defaults.set(newValue, forKey: Keys.menuBarShowsEventTitles)
+            withMutation(keyPath: \.menuBarDisplay) {
+                _menuBarDisplay = newValue
+                defaults.set(newValue.showsNextEvent, forKey: Keys.menuBarShowsNextEvent)
+                defaults.set(newValue.showsTitles, forKey: Keys.menuBarShowsEventTitles)
             }
         }
     }
@@ -287,23 +290,13 @@ public final class Preferences {
         }
     }
 
-    public var menuBarShowsNextEvent: Bool {
-        get { access(keyPath: \.menuBarShowsNextEvent); return _menuBarShowsNextEvent }
-        set {
-            withMutation(keyPath: \.menuBarShowsNextEvent) {
-                _menuBarShowsNextEvent = newValue
-                defaults.set(newValue, forKey: Keys.menuBarShowsNextEvent)
-            }
-        }
-    }
-
     /// How the full-screen alert looks. A look that matches no preset is kept as `customAppearance` too.
     public var appearance: AlertAppearance {
         get { access(keyPath: \.appearance); return _appearance }
         set {
             withMutation(keyPath: \.appearance) {
                 _appearance = newValue
-                defaults.set(try? JSONEncoder().encode(newValue), forKey: Keys.appearance)
+                defaults.setJSON(newValue, forKey: Keys.appearance)
             }
             if newValue.matchingPreset == nil, newValue != _customAppearance { customAppearance = newValue }
         }
@@ -319,7 +312,7 @@ public final class Preferences {
             withMutation(keyPath: \.customAppearance) {
                 _customAppearance = newValue
                 if let newValue {
-                    defaults.set(try? JSONEncoder().encode(newValue), forKey: Keys.customAppearance)
+                    defaults.setJSON(newValue, forKey: Keys.customAppearance)
                 } else {
                     defaults.removeObject(forKey: Keys.customAppearance)
                 }
@@ -358,7 +351,7 @@ public final class Preferences {
         set {
             withMutation(keyPath: \.startingSoonPill) {
                 _startingSoonPill = newValue
-                defaults.set(try? JSONEncoder().encode(newValue), forKey: Keys.startingSoonPill)
+                defaults.setJSON(newValue, forKey: Keys.startingSoonPill)
             }
         }
     }
@@ -387,7 +380,7 @@ public final class Preferences {
                 if newValue.isEmpty {
                     defaults.removeObject(forKey: Keys.dismissedEvents)
                 } else {
-                    defaults.set(try? JSONEncoder().encode(newValue), forKey: Keys.dismissedEvents)
+                    defaults.setJSON(newValue, forKey: Keys.dismissedEvents)
                 }
             }
         }
@@ -415,14 +408,18 @@ public final class Preferences {
         }
     }
 
-    /// The version the last successful check offered, "1.1.0", or nil when it found none. Lets a relaunch
-    /// show an offer again without waiting a day.
-    public var offeredUpdateVersion: String? {
+    /// The version the last successful check offered, or nil when it found none. Lets a relaunch show an
+    /// offer again without waiting a day. Stored as its "1.1.0" string; one that can't be read loads as nil.
+    public var offeredUpdateVersion: AppVersion? {
         get { access(keyPath: \.offeredUpdateVersion); return _offeredUpdateVersion }
         set {
             withMutation(keyPath: \.offeredUpdateVersion) {
                 _offeredUpdateVersion = newValue
-                if let newValue { defaults.set(newValue, forKey: Keys.offeredUpdateVersion) } else { defaults.removeObject(forKey: Keys.offeredUpdateVersion) }
+                if let newValue {
+                    defaults.set(newValue.description, forKey: Keys.offeredUpdateVersion)
+                } else {
+                    defaults.removeObject(forKey: Keys.offeredUpdateVersion)
+                }
             }
         }
     }
@@ -434,7 +431,7 @@ public final class Preferences {
             withMutation(keyPath: \.unsupportedUpdate) {
                 _unsupportedUpdate = newValue
                 if let newValue {
-                    defaults.set(try? JSONEncoder().encode(newValue), forKey: Keys.unsupportedUpdate)
+                    defaults.setJSON(newValue, forKey: Keys.unsupportedUpdate)
                 } else {
                     defaults.removeObject(forKey: Keys.unsupportedUpdate)
                 }
@@ -468,5 +465,30 @@ public final class Preferences {
     public func applyCustomAppearance() {
         guard let customAppearance else { return }
         appearance = customAppearance
+    }
+}
+
+private extension UserDefaults {
+    /// The value stored as JSON under `key`, or nil when there's none or it can't be read. One that can't be
+    /// read is logged with the decoding error, which says which field failed; the error stays private, since
+    /// its coding path can hold event ids.
+    func decodedJSON<Value: Decodable>(_ type: Value.Type, forKey key: String) -> Value? {
+        guard let data = data(forKey: key) else { return nil }
+        do {
+            return try JSONDecoder().decode(type, from: data)
+        } catch {
+            logger.error("Couldn't read the stored \(key, privacy: .public); using the default: \(String(describing: error))")
+            return nil
+        }
+    }
+
+    /// Stores `value` as JSON under `key`. If it can't be encoded (a color with a NaN component, say), what's
+    /// stored stays as it was and the failure is logged.
+    func setJSON(_ value: some Encodable, forKey key: String) {
+        do {
+            set(try JSONEncoder().encode(value), forKey: key)
+        } catch {
+            logger.error("Couldn't store \(key, privacy: .public); keeping what was stored: \(String(describing: error))")
+        }
     }
 }

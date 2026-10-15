@@ -110,21 +110,11 @@ final class MeetingStore {
         )
     }
 
-    /// The Show and alert meetings dismissed from the panel, on their own or with their series, by id: the
-    /// panel lists them as dismissed, with Restore, until they end.
-    var dismissedMeetingIDs: Set<String> {
-        MeetingFilter.dismissedIDs(
-            meetings,
-            eventsWithoutParticipants: preferences.eventsWithoutParticipants,
-            outOfOfficeEvents: preferences.outOfOfficeEvents,
-            dismissed: preferences.dismissedEvents
-        )
-    }
-
-    /// Among `dismissedMeetingIDs`, the ones dismissed with their series (Dismiss All Future Events): their
-    /// Restore asks This Event or All Future Events; one dismissed on its own restores at once.
-    var dismissedBySeriesMeetingIDs: Set<String> {
-        MeetingFilter.dismissedBySeriesIDs(
+    /// The Show and alert meetings dismissed from the panel, by id, with how each was dismissed: the panel
+    /// lists them as dismissed, with Restore, until they end. Restore asks This Event or All Future Events for
+    /// one dismissed with its series (`.allFutureEvents`); one dismissed on its own restores at once.
+    var dismissals: [Meeting.ID: DismissScope] {
+        MeetingFilter.dismissals(
             meetings,
             eventsWithoutParticipants: preferences.eventsWithoutParticipants,
             outOfOfficeEvents: preferences.outOfOfficeEvents,

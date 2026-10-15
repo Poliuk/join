@@ -127,7 +127,7 @@ struct UpdateCheckTests {
         #expect(update.version == AppVersion(major: 1, minor: 1, patch: 0))
         #expect(update.pageURL.absoluteString == "https://github.com/Poliuk/join/releases/tag/v1.1.0")
         #expect(update.downloadURL.absoluteString == "https://github.com/Poliuk/join/releases/download/v1.1.0/Join.zip")
-        #expect(update.sha256 == Self.hex)
+        #expect(update.digest == .sha256(Self.hex))
         #expect(update.size == 2_486_395)
     }
 
@@ -156,22 +156,24 @@ struct UpdateCheckTests {
     }
 
     /// Only "sha256:" and exactly 64 hex digits give a checksum, in lowercase. A release without one, or
-    /// with one that can't be read, is still an update, without a checksum.
+    /// with one that can't be read, is still an update, without a checksum; one that can't be read is kept
+    /// as GitHub sent it, so the installer can log it.
     @Test(arguments: [
-        ("sha256:" + hex, hex),
-        ("sha256:" + hex.uppercased(), hex),
-        (nil, nil),
-        ("sha512:" + hex, nil),
-        ("SHA256:" + hex, nil),
-        ("sha256:" + hex.dropLast(), nil),
-        ("sha256:" + hex + "0", nil),
-        ("sha256:" + hex.dropLast() + "g", nil),
-        ("sha256: " + hex.dropLast(), nil),
-    ] as [(String?, String?)])
-    func digestBecomesLowercaseHexOrNil(_ digest: String?, sha256: String?) throws {
+        ("sha256:" + hex, .sha256(hex)),
+        ("sha256:" + hex.uppercased(), .sha256(hex)),
+        (nil, .missing),
+        ("sha512:" + hex, .unreadable("sha512:" + hex)),
+        ("SHA256:" + hex, .unreadable("SHA256:" + hex)),
+        ("sha256:" + hex.dropLast(), .unreadable("sha256:" + hex.dropLast())),
+        ("sha256:" + hex + "0", .unreadable("sha256:" + hex + "0")),
+        ("sha256:" + hex.dropLast() + "g", .unreadable("sha256:" + hex.dropLast() + "g")),
+        ("sha256: " + hex.dropLast(), .unreadable("sha256: " + hex.dropLast())),
+        ("", .unreadable("")),
+    ] as [(String?, AvailableUpdate.Digest)])
+    func digestIsAChecksumOnlyWhenItReads(_ digest: String?, expected: AvailableUpdate.Digest) throws {
         let release = Self.release(assets: [Self.joinZip(size: 1000, digest: digest)])
         let update = try #require(UpdateCheck.update(current: Self.current, release: release))
-        #expect(update.sha256 == sha256)
+        #expect(update.digest == expected)
     }
 
     // MARK: Schedule
@@ -209,10 +211,10 @@ struct UpdateCheckTests {
         ("no offer", true, nil, false),
         ("an offer of this version: updated by hand", true, "1.0.0", false),
         ("an offer of an older version", true, "0.9.0", false),
-        ("an offer that can't be read", true, "1.1", false),
     ] as [(String, Bool, String?, Bool)])
     func rechecksAtLaunch(_ name: String, enabled: Bool, offeredVersion: String?, rechecks: Bool) {
-        #expect(UpdateCheck.rechecksAtLaunch(enabled: enabled, offeredVersion: offeredVersion, current: Self.current) == rechecks)
+        let offered = offeredVersion.flatMap(AppVersion.init)
+        #expect(UpdateCheck.rechecksAtLaunch(enabled: enabled, offeredVersion: offered, current: Self.current) == rechecks)
     }
 
     // MARK: A release this Mac can't run
@@ -242,15 +244,26 @@ struct UpdateCheckTests {
         ("needs macOS 15.0, on 14.6", "1.2.0", "15.0", 14, current, true),
         ("macOS updated to 15.6", "1.2.0", "15.0", 15, current, false),
         ("this copy updated to 1.2.0", "1.2.0", "15.0", 14, AppVersion(major: 1, minor: 2, patch: 0), false),
-        ("a version that can't be read", "1.2", "15.0", 14, current, false),
         ("a minimum that can't be read", "1.2.0", "fifteen", 14, current, false),
     ] as [(String, String, String, Int, AppVersion, Bool)])
-    func stillUnsupported(_ name: String, version: String, minimumSystem: String, macOS: Int, current: AppVersion, unsupported: Bool) {
-        let stored = UnsupportedUpdate(version: version, minimumSystem: minimumSystem)
+    func stillUnsupported(_ name: String, version: String, minimumSystem: String, macOS: Int, current: AppVersion, unsupported: Bool) throws {
+        let stored = UnsupportedUpdate(version: try #require(AppVersion(version)), minimumSystem: minimumSystem)
         let system = OperatingSystemVersion(majorVersion: macOS, minorVersion: 6, patchVersion: 0)
-        let still = stored.stillUnsupported(current: current, system: system)
-        #expect(still?.version == (unsupported ? AppVersion(version) : nil))
-        #expect(still?.minimumSystem == (unsupported ? minimumSystem : nil))
+        #expect(stored.stillUnsupported(current: current, system: system) == (unsupported ? stored : nil))
+    }
+
+    /// Stored as builds since 1.2.0 wrote it: the version as a plain "1.2.0" string. One whose version
+    /// can't be read doesn't load (`PreferencesTests` checks it loads as none).
+    @Test func anUnsupportedUpdateIsStoredWithItsVersionAsAString() throws {
+        let stored = Data(#"{"version":"1.2.0","minimumSystem":"15.0"}"#.utf8)
+        let decoded = try JSONDecoder().decode(UnsupportedUpdate.self, from: stored)
+        #expect(decoded == UnsupportedUpdate(version: AppVersion(major: 1, minor: 2, patch: 0), minimumSystem: "15.0"))
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = .sortedKeys
+        #expect(String(decoding: try encoder.encode(decoded), as: UTF8.self) == #"{"minimumSystem":"15.0","version":"1.2.0"}"#)
+        #expect(throws: DecodingError.self) {
+            try JSONDecoder().decode(UnsupportedUpdate.self, from: Data(#"{"version":"1.2","minimumSystem":"15.0"}"#.utf8))
+        }
     }
 
     // MARK: Install state
@@ -286,7 +299,7 @@ struct UpdateCheckTests {
             version: version,
             pageURL: UpdateCheck.releasesPageURL.appending(components: "tag", version.tag),
             downloadURL: UpdateCheck.releasesPageURL.appending(components: "download", version.tag, UpdateCheck.assetName),
-            sha256: nil,
+            digest: .missing,
             size: 2_486_395
         )
     }
@@ -295,8 +308,8 @@ struct UpdateCheckTests {
     struct Check: Sendable, CustomTestStringConvertible {
         let testDescription: String
         let found: AvailableUpdate?
-        /// The version of the release this Mac can't run, which needs macOS 15.0.
-        let unsupported: AppVersion?
+        /// The release this Mac can't run, which needs macOS 15.0.
+        let unsupported: UnsupportedUpdate?
         let offeredUpdate: AvailableUpdate?
         let install: UpdateInstallState
         let outcome: UpdateCheckOutcome
@@ -311,7 +324,7 @@ struct UpdateCheckTests {
         ) {
             testDescription = name
             self.found = found
-            self.unsupported = unsupported
+            self.unsupported = unsupported.map { UnsupportedUpdate(version: $0, minimumSystem: "15.0") }
             self.offeredUpdate = offeredUpdate
             self.install = install
             self.outcome = outcome
@@ -320,57 +333,68 @@ struct UpdateCheckTests {
 
     static let checks: [Check] = [
         Check("1.1.0 found", found: update(1), offered: nil, UpdateCheckOutcome(
-            status: .available(update(1)), offer: update(1), offeredUpdate: update(1), install: .idle,
-            discardsDownload: true, forgetsUnsupported: true
+            status: .available(update(1)), offeredUpdate: update(1), install: .idle, discardsDownload: true
         )),
         Check("up to date", found: nil, offered: nil, UpdateCheckOutcome(
-            status: .upToDate, offer: nil, offeredUpdate: nil, install: .idle, discardsDownload: false, forgetsUnsupported: true
+            status: .upToDate, offeredUpdate: nil, install: .idle, discardsDownload: false
         )),
         Check("the same release keeps a ready copy", found: update(1), offered: update(1), install: .ready, UpdateCheckOutcome(
-            status: .available(update(1)), offer: update(1), offeredUpdate: update(1), install: .ready,
-            discardsDownload: false, forgetsUnsupported: true
+            status: .available(update(1)), offeredUpdate: update(1), install: .ready, discardsDownload: false
         )),
         Check("the same release gets Install back after a failure", found: update(1), offered: update(1), install: .failed(.checksum),
               UpdateCheckOutcome(
-                  status: .available(update(1)), offer: update(1), offeredUpdate: update(1), install: .idle,
-                  discardsDownload: false, forgetsUnsupported: true
+                  status: .available(update(1)), offeredUpdate: update(1), install: .idle, discardsDownload: false
               )),
         Check("a newer release discards a ready copy", found: update(2), offered: update(1), install: .ready, UpdateCheckOutcome(
-            status: .available(update(2)), offer: update(2), offeredUpdate: update(2), install: .idle,
-            discardsDownload: true, forgetsUnsupported: true
+            status: .available(update(2)), offeredUpdate: update(2), install: .idle, discardsDownload: true
         )),
         Check("the release is gone, and so is the ready copy", found: nil, offered: update(1), install: .ready, UpdateCheckOutcome(
-            status: .upToDate, offer: nil, offeredUpdate: nil, install: .idle, discardsDownload: true, forgetsUnsupported: true
+            status: .upToDate, offeredUpdate: nil, install: .idle, discardsDownload: true
         )),
         // Checks that were under way when Install, or Install and Relaunch, was clicked.
         Check("a download under way keeps its update", found: update(2), offered: update(1), install: .downloading(0.5),
               UpdateCheckOutcome(
-                  status: .available(update(2)), offer: update(2), offeredUpdate: update(1), install: .downloading(0.5),
-                  discardsDownload: false, forgetsUnsupported: true
+                  status: .available(update(2)), offeredUpdate: update(1), install: .downloading(0.5), discardsDownload: false
               )),
         Check("an install under way keeps its update", found: nil, offered: update(1), install: .installing, UpdateCheckOutcome(
-            status: .upToDate, offer: nil, offeredUpdate: update(1), install: .installing, discardsDownload: false, forgetsUnsupported: true
+            status: .upToDate, offeredUpdate: update(1), install: .installing, discardsDownload: false
         )),
         Check("the release this Mac can't run isn't offered again", found: update(2), unsupported: update(2).version, offered: nil,
               UpdateCheckOutcome(
-                  status: .unsupported(update(2).version, minimumSystem: "15.0"), offer: nil, offeredUpdate: nil, install: .idle,
-                  discardsDownload: false, forgetsUnsupported: false
+                  status: .unsupported(UnsupportedUpdate(version: update(2).version, minimumSystem: "15.0")), offeredUpdate: nil,
+                  install: .idle, discardsDownload: false
               )),
         Check("a newer release than the one this Mac can't run", found: update(3), unsupported: update(2).version, offered: nil,
               UpdateCheckOutcome(
-                  status: .available(update(3)), offer: update(3), offeredUpdate: update(3), install: .idle,
-                  discardsDownload: true, forgetsUnsupported: true
+                  status: .available(update(3)), offeredUpdate: update(3), install: .idle, discardsDownload: true
               )),
         Check("up to date after a release this Mac can't run", found: nil, unsupported: update(2).version, offered: nil,
               UpdateCheckOutcome(
-                  status: .upToDate, offer: nil, offeredUpdate: nil, install: .idle, discardsDownload: false, forgetsUnsupported: true
+                  status: .upToDate, offeredUpdate: nil, install: .idle, discardsDownload: false
               )),
     ]
 
+    /// The offer, whose version is remembered, and whether the stored release this Mac can't run is
+    /// forgotten follow from the status: only an available update is offered, and only finding the release
+    /// this Mac can't run again keeps it.
+    @Test(arguments: [
+        ("an update", update(1), nil, update(1), true),
+        ("up to date", nil, update(2).version, nil, true),
+        ("the release this Mac can't run", update(2), update(2).version, nil, false),
+        ("a newer release than the one this Mac can't run", update(3), update(2).version, update(3), true),
+    ] as [(String, AvailableUpdate?, AppVersion?, AvailableUpdate?, Bool)])
+    func theOfferAndTheUnsupportedReleaseFollowTheStatus(
+        _ name: String, found: AvailableUpdate?, unsupported: AppVersion?, offer: AvailableUpdate?, forgetsUnsupported: Bool
+    ) {
+        let unsupported = unsupported.map { UnsupportedUpdate(version: $0, minimumSystem: "15.0") }
+        let outcome = UpdateCheckOutcome(found: found, unsupported: unsupported, offeredUpdate: nil, install: .idle)
+        #expect(outcome.offer == offer)
+        #expect(outcome.forgetsUnsupported == forgetsUnsupported)
+    }
+
     @Test(arguments: checks)
     func afterACheck(_ check: Check) {
-        let unsupported = check.unsupported.map { (version: $0, minimumSystem: "15.0") }
-        let outcome = UpdateCheckOutcome(found: check.found, unsupported: unsupported, offeredUpdate: check.offeredUpdate, install: check.install)
+        let outcome = UpdateCheckOutcome(found: check.found, unsupported: check.unsupported, offeredUpdate: check.offeredUpdate, install: check.install)
         #expect(outcome == check.outcome)
     }
 }

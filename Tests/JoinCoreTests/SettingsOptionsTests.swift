@@ -40,7 +40,7 @@ struct SettingsOptionsTests {
             testDescription: "Snooze",
             presets: SettingsOptions.snoozeMinutes, expectedPresets: [1, 3, 5, 10],
             range: SettingsOptions.customSnoozeRange, expectedRange: 1...120,
-            defaults: Preferences.defaultSnoozeDurations.map(SettingsOptions.wholeMinutes)
+            defaults: Preferences.defaultSnoozeDurations.all.map(SettingsOptions.wholeMinutes)
         ),
         MinutesPopUp(
             testDescription: "Starting soon",

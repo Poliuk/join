@@ -7,24 +7,28 @@ import Foundation
 /// screen (`darkGlassEnvelope`, `lightGlassEnvelope`). The frost is light enough to keep the glass
 /// showing, so a backdrop brighter (dark mode) or darker (light mode) than those can dip below that.
 public struct PanelPalette: Equatable, Sendable {
+    /// The mode the palette is for. The rules that differ by mode (the starting-soon tint) read it here,
+    /// so a palette can't be asked for the other mode's colors.
+    public let isDark: Bool
     /// Header date, meeting titles, button labels, row icons.
-    public var primary: RGBA
+    public let primary: RGBA
     /// Start times, the active header glyph, the paused message.
-    public var strong: RGBA
+    public let strong: RGBA
     /// Section headings, the hero card's label, time range and location, the bell and gear.
-    public var secondary: RGBA
+    public let secondary: RGBA
     /// End times, date subtitles, out-of-office rows.
-    public var tertiary: RGBA
+    public let tertiary: RGBA
     /// "Overlaps …".
-    public var warning: RGBA
+    public let warning: RGBA
     /// The bar of an out-of-office row; decorative.
-    public var mutedBar: RGBA
+    public let mutedBar: RGBA
     /// Opaque; drawn over the glass at `frostOpacity`.
-    public var frost: RGBA
-    /// White in dark mode, black in light mode: the base of every translucent fill.
-    public var ink: RGBA
+    public let frost: RGBA
     /// The hero card. In light mode it's white, away from the dark text, so it lifts the text's contrast.
-    public var card: RGBA
+    public let card: RGBA
+
+    /// White in dark mode, black in light mode: the base of every translucent fill.
+    public var ink: RGBA { isDark ? .white : .black }
 
     /// Frost opacity over Liquid Glass: half the glass still shows. Chosen on screen; 70% kept more
     /// contrast margin.
@@ -57,6 +61,7 @@ public struct PanelPalette: Equatable, Sendable {
     public static func standard(dark: Bool, increasedContrast: Bool = false) -> PanelPalette {
         if dark {
             return PanelPalette(
+                isDark: true,
                 primary: RGBA(rgb: increasedContrast ? 0xFFFFFF : 0xF5F5F7),
                 strong: RGBA(rgb: increasedContrast ? 0xF5F5F7 : 0xEBEBF0),
                 secondary: RGBA(rgb: increasedContrast ? 0xE0E0E5 : 0xCCCCD1),
@@ -64,11 +69,11 @@ public struct PanelPalette: Equatable, Sendable {
                 warning: RGBA(rgb: increasedContrast ? 0xFFC46E : 0xF7C37B),
                 mutedBar: RGBA(rgb: 0x6E6E73),
                 frost: RGBA(rgb: 0x1E1E20),
-                ink: .white,
                 card: RGBA.white.withAlpha(0.06)
             )
         }
         return PanelPalette(
+            isDark: false,
             primary: RGBA(rgb: increasedContrast ? 0x000000 : 0x1D1D1F),
             strong: RGBA(rgb: increasedContrast ? 0x1D1D1F : 0x2A2A2E),
             secondary: RGBA(rgb: increasedContrast ? 0x38383D : 0x4D4D52),
@@ -76,7 +81,6 @@ public struct PanelPalette: Equatable, Sendable {
             warning: RGBA(rgb: increasedContrast ? 0x6E3800 : 0x804100),
             mutedBar: RGBA(rgb: 0xA2A4AA),
             frost: RGBA(rgb: 0xFAFAFC),
-            ink: .black,
             card: RGBA.white.withAlpha(0.55)
         )
     }
@@ -90,8 +94,8 @@ public struct PanelPalette: Equatable, Sendable {
     /// light mode that's white, and 12% keeps the card's text above 4.5:1 for every accent. In dark mode
     /// it's up to 10%, less for bright accents (yellow, orange, green), down to none, until the card's
     /// text reads at 4.5:1 over the brightest glass; the accent border still marks the card.
-    public func startingSoonTint(accent: RGBA, dark: Bool) -> Double {
-        guard dark else { return 0.12 }
+    public func startingSoonTint(accent: RGBA) -> Double {
+        guard isDark else { return 0.12 }
         let cardSurface = card.composited(over: surface(over: Self.darkGlassEnvelope))
         for percent in stride(from: 10, to: 0, by: -1) {
             let tint = Double(percent) / 100
@@ -102,8 +106,8 @@ public struct PanelPalette: Equatable, Sendable {
     }
 
     /// The starting-soon card over `surface`: the regular card, then the accent tint.
-    public func startingSoonCard(accent: RGBA, over surface: RGBA, dark: Bool) -> RGBA {
-        accent.withAlpha(startingSoonTint(accent: accent, dark: dark)).composited(over: card.composited(over: surface))
+    public func startingSoonCard(accent: RGBA, over surface: RGBA) -> RGBA {
+        accent.withAlpha(startingSoonTint(accent: accent)).composited(over: card.composited(over: surface))
     }
 
     /// The accent stepped toward white (dark mode) or black (light mode) until it reads at `minimum` on
@@ -120,9 +124,9 @@ public struct PanelPalette: Equatable, Sendable {
 
     /// The prominent (accent) button: its fill, its fill under the pointer, and its label.
     public struct AccentButton: Equatable, Sendable {
-        public var fill: RGBA
-        public var hover: RGBA
-        public var label: RGBA
+        public let fill: RGBA
+        public let hover: RGBA
+        public let label: RGBA
     }
 
     /// Solves the prominent button for any accent: the accent darkened a little (white on the plain

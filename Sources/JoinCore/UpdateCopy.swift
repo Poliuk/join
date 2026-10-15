@@ -32,8 +32,8 @@ public enum UpdateCopy {
         switch status {
         case .available(let update):
             return available(update.version)
-        case .unsupported(let version, let minimumSystem):
-            return unsupported(version, minimumSystem: minimumSystem)
+        case .unsupported(let update):
+            return unsupported(update.version, minimumSystem: update.minimumSystem)
         case .checking:
             return name + " · Checking…"
         case .failed:

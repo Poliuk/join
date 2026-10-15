@@ -15,8 +15,7 @@ struct MenuBarPresenterTests {
         locale: Locale = F.us
     ) -> MenuBarStatus {
         var status = MenuBarPresenter.status(
-            meetings: meetings, now: now, pauseState: pause,
-            showsNextEvent: display.showsNextEvent, showsTitles: display.showsTitles,
+            meetings: meetings, now: now, pauseState: pause, display: display,
             startingSoonWindow: startingSoonWindow,
             calendar: F.calendar, locale: locale
         )

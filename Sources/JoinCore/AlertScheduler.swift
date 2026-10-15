@@ -1,10 +1,11 @@
 import Foundation
 
+/// The next full-screen alert: when it fires, and the meetings it shows. Built by `AlertScheduler` only.
 public struct AlertPlan: Equatable, Sendable {
-    public var fireAt: Date
-    public var meetings: [Meeting]
+    public let fireAt: Date
+    public let meetings: [Meeting]
 
-    public init(fireAt: Date, meetings: [Meeting]) {
+    init(fireAt: Date, meetings: [Meeting]) {
         self.fireAt = fireAt
         self.meetings = meetings
     }

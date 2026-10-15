@@ -24,11 +24,13 @@ public struct RGBA: Codable, Hashable, Sendable {
         )
     }
 
-    /// Accepts "#RRGGBB" or "#RRGGBBAA", with or without the leading "#".
-    public init?(hex: String) {
+    /// Accepts "#RRGGBB" or "#RRGGBBAA", with or without the leading "#". Hex digits only: a sign, which
+    /// `UInt64(_:radix:)` would take, is refused.
+    init?(hex: String) {
         var text = hex.trimmingCharacters(in: .whitespacesAndNewlines)
         if text.hasPrefix("#") { text.removeFirst() }
-        guard text.count == 6 || text.count == 8, let value = UInt64(text, radix: 16) else { return nil }
+        guard text.count == 6 || text.count == 8, text.allSatisfy(\.isHexDigit),
+              let value = UInt64(text, radix: 16) else { return nil }
         let hasAlpha = text.count == 8
         let shift = hasAlpha ? 8 : 0
         self.init(
@@ -39,7 +41,8 @@ public struct RGBA: Codable, Hashable, Sendable {
         )
     }
 
-    public var hexString: String {
+    /// "#RRGGBB", or "#RRGGBBAA" when translucent: for the legacy-look migration and test output.
+    var hexString: String {
         let base = String(format: "#%02X%02X%02X", Self.byte(red), Self.byte(green), Self.byte(blue))
         return alpha < 1 ? base + String(format: "%02X", Self.byte(alpha)) : base
     }
@@ -80,7 +83,7 @@ extension RGBA {
     }
 
     /// WCAG 2 relative luminance, 0 for black to 1 for white. Alpha is ignored.
-    public var relativeLuminance: Double {
+    var relativeLuminance: Double {
         func linear(_ component: Double) -> Double {
             let c = min(max(component, 0), 1)
             return c <= 0.04045 ? c / 12.92 : pow((c + 0.055) / 1.055, 2.4)

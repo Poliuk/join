@@ -40,7 +40,7 @@ public enum AlertColorRow: String, CaseIterable, Identifiable, Sendable {
     public var wellSupportsOpacity: Bool { self == .buttons }
 
     /// The button kind whose fill the row picks, and whose legacy Text row sits under it.
-    public var buttonKind: AlertButtonKind? {
+    var buttonKind: AlertButtonKind? {
         switch self {
         case .tint, .eventText: return nil
         case .joinButton: return .join

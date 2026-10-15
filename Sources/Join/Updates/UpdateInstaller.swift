@@ -96,8 +96,14 @@ nonisolated struct UpdateInstaller: UpdateInstalling {
         do {
             try await Download.run(from: update.downloadURL, to: archive, userAgent: userAgent) { report(.downloading($0)) }
             report(.verifying)
-            if let expected = update.sha256 {
+            switch update.digest {
+            case .sha256(let expected):
                 guard (try? Self.sha256(of: archive)) == expected else { throw UpdateFailure.checksum }
+            case .missing:
+                break
+            case .unreadable(let digest):
+                // Treated like a release without one, as before; logged so a bad digest doesn't go unnoticed.
+                logger.error("The release's digest can't be read (\(digest, privacy: .public)); skipping the checksum, the signature is still checked")
             }
             try await Self.unzip(archive, into: app.deletingLastPathComponent())
             try verify(app)

@@ -81,7 +81,7 @@ struct MeetingFilterTests {
     /// choice became Show in the list only (or Exclude) after it was dismissed is shown according to the new
     /// choice. The Show and alert events are split between alertable and dismissed.
     @Test(arguments: EventVisibility.allCases, EventVisibility.allCases)
-    func dismissedIDsAreTheShowAndAlertOnesOnly(withoutParticipants: EventVisibility, outOfOffice: EventVisibility) {
+    func dismissalsAreTheShowAndAlertOnesOnly(withoutParticipants: EventVisibility, outOfOffice: EventVisibility) {
         let dismissed = DismissedEvents().dismissing(kinds[0]).dismissing(kinds[1]).dismissing(kinds[3])
         let expected: Set<String> = switch (withoutParticipants, outOfOffice) {
         case (.showAndAlert, .showAndAlert): ["ooo", "call", "focus"]
@@ -89,22 +89,23 @@ struct MeetingFilterTests {
         case (.listOnly, .showAndAlert), (.exclude, .showAndAlert): ["ooo", "call"]
         case (.listOnly, .listOnly), (.listOnly, .exclude), (.exclude, .listOnly), (.exclude, .exclude): ["call"]
         }
-        func ids(_ meetings: [Meeting], _ dismissed: DismissedEvents) -> Set<String> {
-            MeetingFilter.dismissedIDs(meetings, eventsWithoutParticipants: withoutParticipants, outOfOfficeEvents: outOfOffice, dismissed: dismissed)
+        func dismissals(_ meetings: [Meeting], _ dismissed: DismissedEvents) -> [Meeting.ID: DismissScope] {
+            MeetingFilter.dismissals(meetings, eventsWithoutParticipants: withoutParticipants, outOfOfficeEvents: outOfOffice, dismissed: dismissed)
         }
-        #expect(ids(kinds, dismissed) == expected)
+        #expect(dismissals(kinds, dismissed) == Dictionary(uniqueKeysWithValues: expected.map { ($0, .thisEvent) }), "each on its own")
 
         let all = MeetingFilter.alertable(kinds, eventsWithoutParticipants: withoutParticipants, outOfOfficeEvents: outOfOffice)
         let alertable = MeetingFilter.alertable(kinds, eventsWithoutParticipants: withoutParticipants, outOfOfficeEvents: outOfOffice, dismissed: dismissed)
         #expect(Set(alertable.map(\.id)).union(expected) == Set(all.map(\.id)))
         #expect(Set(alertable.map(\.id)).isDisjoint(with: expected))
 
-        #expect(ids(kinds, DismissedEvents()).isEmpty)
-        #expect(ids([], dismissed).isEmpty, "an entry with no meeting (ended, or its calendar unchecked) shows nowhere")
+        #expect(dismissals(kinds, DismissedEvents()).isEmpty)
+        #expect(dismissals([], dismissed).isEmpty, "an entry with no meeting (ended, or its calendar unchecked) shows nowhere")
     }
 
-    // A repeating event's occurrences: alertable and dismissedIDs ask `DismissedEvents.isDismissed`, so All Future
-    // Events, and an occurrence restored inside it, count like an occurrence dismissed on its own.
+    // A repeating event's occurrences: alertable and dismissals ask `DismissedEvents.isDismissed`, so All Future
+    // Events, and an occurrence restored inside it, count like an occurrence dismissed on its own; dismissals tell
+    // the two apart, since only an occurrence dismissed with its series asks This Event or All Future Events.
     @Test func dismissedSeriesAreLeftOutOfAlertable() {
         func standup(_ day: Int, participants: Bool = true) -> Meeting {
             let date = start.addingTimeInterval(Double(day) * 86400)
@@ -115,39 +116,36 @@ struct MeetingFilterTests {
         let others = [meeting("call", participants: true)]
         let stored = DismissedEvents().dismissing(week[2], scope: .allFutureEvents).restoring(week[3])
         let ids = { (meetings: [Meeting]) in meetings.map(\.id) }
+        func dismissals(_ meetings: [Meeting], withoutParticipants: EventVisibility = .showAndAlert, _ dismissed: DismissedEvents)
+            -> [Meeting.ID: DismissScope] {
+            MeetingFilter.dismissals(meetings, eventsWithoutParticipants: withoutParticipants, outOfOfficeEvents: .showAndAlert, dismissed: dismissed)
+        }
 
         #expect(
             MeetingFilter.alertable(week + others, eventsWithoutParticipants: .showAndAlert, outOfOfficeEvents: .showAndAlert, dismissed: stored).map(\.id)
                 == ids([week[0], week[1], week[3]]) + ["call"]
         )
-        #expect(
-            MeetingFilter.dismissedIDs(week + others, eventsWithoutParticipants: .showAndAlert, outOfOfficeEvents: .showAndAlert, dismissed: stored)
-                == Set(ids([week[2], week[4]]))
-        )
+        #expect(dismissals(week + others, stored) == [week[2].id: .allFutureEvents, week[4].id: .allFutureEvents])
 
         // An occurrence that can't alert (here, no one else on it, and that kind on Show in the list only) isn't
         // shown as dismissed, even inside the rule.
         let solo = standup(4, participants: false)
         #expect(stored.isDismissed(solo))
-        #expect(
-            MeetingFilter.dismissedIDs([solo], eventsWithoutParticipants: .listOnly, outOfOfficeEvents: .showAndAlert, dismissed: stored)
-                == []
-        )
+        #expect(dismissals([solo], withoutParticipants: .listOnly, stored).isEmpty)
 
-        // Of those, the ones whose Restore asks: dismissed with their series, not one dismissed on its own.
+        // Dismissed with their series, or on their own: only the first ones' Restore asks.
         let alsoAlone = stored.dismissing(week[0])
-        #expect(
-            MeetingFilter.dismissedBySeriesIDs(week + others, eventsWithoutParticipants: .showAndAlert, outOfOfficeEvents: .showAndAlert, dismissed: alsoAlone)
-                == Set(ids([week[2], week[4]])), "Monday's was dismissed on its own"
-        )
-        #expect(
-            MeetingFilter.dismissedBySeriesIDs([solo], eventsWithoutParticipants: .listOnly, outOfOfficeEvents: .showAndAlert, dismissed: stored)
-                == [], "not one that can't alert"
-        )
-        #expect(
-            MeetingFilter.dismissedBySeriesIDs(week, eventsWithoutParticipants: .showAndAlert, outOfOfficeEvents: .showAndAlert,
-                                               dismissed: DismissedEvents().dismissing(week[1]))
-                == [], "no series rule, nothing asks"
-        )
+        #expect(dismissals(week + others, alsoAlone) == [
+            week[0].id: .thisEvent, week[2].id: .allFutureEvents, week[4].id: .allFutureEvents,
+        ], "Monday's was dismissed on its own")
+        #expect(dismissals(week, DismissedEvents().dismissing(week[1])) == [week[1].id: .thisEvent], "no series rule, nothing asks")
+
+        // The same occurrence twice in one fetch: one entry, without a crash, that asks when either copy was
+        // dismissed with its series, whichever comes first.
+        let copy = Meeting(id: week[4].id, title: "Standup", start: week[4].start, end: week[4].end)
+        let both = stored.dismissing(copy)
+        #expect(dismissals([week[4], copy], both) == [week[4].id: .allFutureEvents])
+        #expect(dismissals([copy, week[4]], both) == [week[4].id: .allFutureEvents])
+        #expect(dismissals([copy, copy], both) == [week[4].id: .thisEvent])
     }
 }

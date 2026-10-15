@@ -1,13 +1,14 @@
 import Foundation
 
-/// What the menu bar item shows next to its icon. One choice in Settings, stored as the two
-/// existing preferences (`menuBarShowsNextEvent`, `menuBarShowsEventTitles`).
+/// What the menu bar item shows next to its icon. One choice in Settings, stored as the two switches
+/// earlier builds kept, `menuBarShowsNextEvent` and `menuBarShowsEventTitles` (`Preferences.menuBarDisplay`).
 public enum MenuBarDisplay: String, CaseIterable, Sendable {
     case iconOnly
     case time
     case titleAndTime
 
-    public init(showsNextEvent: Bool, showsTitles: Bool) {
+    /// From the two stored switches. Titles without the next event (never written) reads as icon only.
+    init(showsNextEvent: Bool, showsTitles: Bool) {
         if !showsNextEvent {
             self = .iconOnly
         } else {
@@ -23,16 +24,7 @@ public enum MenuBarDisplay: String, CaseIterable, Sendable {
         }
     }
 
-    public var showsNextEvent: Bool { self != .iconOnly }
-    public var showsTitles: Bool { self == .titleAndTime }
-}
-
-extension Preferences {
-    public var menuBarDisplay: MenuBarDisplay {
-        get { MenuBarDisplay(showsNextEvent: menuBarShowsNextEvent, showsTitles: menuBarShowsEventTitles) }
-        set {
-            menuBarShowsNextEvent = newValue.showsNextEvent
-            menuBarShowsEventTitles = newValue.showsTitles
-        }
-    }
+    /// The two switches it's stored as.
+    var showsNextEvent: Bool { self != .iconOnly }
+    var showsTitles: Bool { self == .titleAndTime }
 }

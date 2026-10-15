@@ -14,7 +14,7 @@ struct UpdateCopyTests {
             version: version,
             pageURL: URL(string: "https://github.com/Poliuk/join/releases/tag/\(version.tag)")!,
             downloadURL: URL(string: "https://github.com/Poliuk/join/releases/download/\(version.tag)/Join.zip")!,
-            sha256: nil,
+            digest: .missing,
             size: 2_486_395
         )
     }
@@ -78,8 +78,8 @@ struct UpdateCopyTests {
         StatusLine("checking", .checking, lastCheck: fiveMinutesAgo, "Join! 1.0.0 · Checking…"),
         StatusLine("failed", .failed, lastCheck: fiveMinutesAgo, "Join! 1.0.0 · Couldn't check for updates"),
         StatusLine("available", .available(update(1)), lastCheck: fiveMinutesAgo, "Join! 1.1.0 is available"),
-        StatusLine("unsupported", .unsupported(AppVersion(major: 1, minor: 2, patch: 0), minimumSystem: "15.0"), lastCheck: fiveMinutesAgo,
-                   "Join! 1.2.0 needs macOS 15.0 or later"),
+        StatusLine("unsupported", .unsupported(UnsupportedUpdate(version: AppVersion(major: 1, minor: 2, patch: 0), minimumSystem: "15.0")),
+                   lastCheck: fiveMinutesAgo, "Join! 1.2.0 needs macOS 15.0 or later"),
         StatusLine("an offer while a check runs", .checking, offered: update(1), "Join! 1.1.0 is available"),
         StatusLine("an offer after a check failed", .failed, offered: update(1), "Join! 1.1.0 is available"),
         StatusLine("an offer from an earlier run", .unknown, offered: update(1), "Join! 1.1.0 is available"),

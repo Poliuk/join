@@ -3,7 +3,7 @@ import Foundation
 /// Which displays the full-screen alert covers. The main screen is the one with the menu bar, what
 /// macOS calls the main display (`NSScreen.screens.first`); the secondary screens are all the others.
 /// Stored as its raw value, so a case keeps its raw value for good.
-public enum AlertScreens: String, Codable, CaseIterable, Sendable {
+public enum AlertScreens: String, CaseIterable, Sendable {
     case all
     case main
     /// New in 1.2.0.

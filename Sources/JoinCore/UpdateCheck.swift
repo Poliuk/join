@@ -35,17 +35,47 @@ public struct AvailableUpdate: Equatable, Sendable {
     public let pageURL: URL
     /// https://github.com/Poliuk/join/releases/download/vX.Y.Z/Join.zip
     public let downloadURL: URL
-    /// Lowercase hex from the asset's "sha256:<hex>" digest; nil if it has none or it's malformed.
-    public let sha256: String?
+    /// The asset's digest, which gives the download's expected SHA-256.
+    public let digest: Digest
     /// In bytes, as GitHub reports it.
     public let size: Int
 
-    public init(version: AppVersion, pageURL: URL, downloadURL: URL, sha256: String?, size: Int) {
+    public init(version: AppVersion, pageURL: URL, downloadURL: URL, digest: Digest, size: Int) {
         self.version = version
         self.pageURL = pageURL
         self.downloadURL = downloadURL
-        self.sha256 = sha256
+        self.digest = digest
         self.size = size
+    }
+
+    /// What the release says the download's SHA-256 is. Only `sha256` gives a checksum; without one the
+    /// install still checks the app's signature.
+    public enum Digest: Equatable, Sendable {
+        /// The asset has none: uploaded before GitHub started computing digests.
+        case missing
+        /// Lowercase hex, from "sha256:<64 hex digits>" in either case.
+        case sha256(String)
+        /// One that isn't "sha256:<64 hex digits>", as GitHub sent it.
+        case unreadable(String)
+
+        /// From the asset's `digest` field.
+        init(_ digest: String?) {
+            guard let digest else {
+                self = .missing
+                return
+            }
+            let prefix = "sha256:"
+            let hex = digest.dropFirst(prefix.count).lowercased()
+            guard digest.hasPrefix(prefix), hex.utf8.count == 64, hex.utf8.allSatisfy(Self.isHexDigit) else {
+                self = .unreadable(digest)
+                return
+            }
+            self = .sha256(hex)
+        }
+
+        private static func isHexDigit(_ byte: UInt8) -> Bool {
+            (UInt8(ascii: "0")...UInt8(ascii: "9")).contains(byte) || (UInt8(ascii: "a")...UInt8(ascii: "f")).contains(byte)
+        }
     }
 }
 
@@ -79,7 +109,7 @@ public enum UpdateCheck {
             version: version,
             pageURL: releasesPageURL.appending(components: "tag", version.tag),
             downloadURL: releasesPageURL.appending(components: "download", version.tag, assetName),
-            sha256: asset.digest.flatMap(sha256(fromDigest:)),
+            digest: AvailableUpdate.Digest(asset.digest),
             size: asset.size
         )
     }
@@ -98,12 +128,12 @@ public enum UpdateCheck {
     }
 
     /// At launch, whether to check at once, due or not: automatic checks are on and the last successful
-    /// check offered `offeredVersion` ("1.1.0"), newer than `current`, so the offer comes back without
-    /// waiting a day. Until that check succeeds, `isDue` is asked as if there had been no success, so a
-    /// failure is retried after `retryInterval` rather than at the next daily check.
-    public static func rechecksAtLaunch(enabled: Bool, offeredVersion: String?, current: AppVersion) -> Bool {
-        guard enabled, let offered = offeredVersion.flatMap(AppVersion.init) else { return false }
-        return offered > current
+    /// check offered `offeredVersion`, newer than `current`, so the offer comes back without waiting a
+    /// day. Until that check succeeds, `isDue` is asked as if there had been no success, so a failure is
+    /// retried after `retryInterval` rather than at the next daily check.
+    public static func rechecksAtLaunch(enabled: Bool, offeredVersion: AppVersion?, current: AppVersion) -> Bool {
+        guard enabled, let offeredVersion else { return false }
+        return offeredVersion > current
     }
 
     /// Whether macOS `system` is `minimum` or later, an app's `LSMinimumSystemVersion`: "15.0", "26" or
@@ -114,41 +144,26 @@ public enum UpdateCheck {
         let numbers = parts.compactMap { $0 } + [0, 0]
         return (system.majorVersion, system.minorVersion, system.patchVersion) >= (numbers[0], numbers[1], numbers[2])
     }
-
-    /// "sha256:<64 hex digits>", in either case, to lowercase hex.
-    private static func sha256(fromDigest digest: String) -> String? {
-        let prefix = "sha256:"
-        guard digest.hasPrefix(prefix) else { return nil }
-        let hex = digest.dropFirst(prefix.count).lowercased()
-        guard hex.utf8.count == 64, hex.utf8.allSatisfy({ isHexDigit($0) }) else { return nil }
-        return hex
-    }
-
-    private static func isHexDigit(_ byte: UInt8) -> Bool {
-        (UInt8(ascii: "0")...UInt8(ascii: "9")).contains(byte) || (UInt8(ascii: "a")...UInt8(ascii: "f")).contains(byte)
-    }
 }
 
 /// A release whose install stopped because it needs a newer macOS ("15.0") than this Mac runs. It isn't
-/// offered again; a newer release replaces it.
+/// offered again; a newer release replaces it. Stored as JSON, {"version":"1.2.0","minimumSystem":"15.0"}:
+/// one whose version can't be read doesn't load.
 public struct UnsupportedUpdate: Codable, Equatable, Sendable {
-    /// "1.2.0".
-    public let version: String
+    public let version: AppVersion
     /// The new copy's `LSMinimumSystemVersion`, "15.0".
     public let minimumSystem: String
 
-    public init(version: String, minimumSystem: String) {
+    public init(version: AppVersion, minimumSystem: String) {
         self.version = version
         self.minimumSystem = minimumSystem
     }
 
     /// This release, while this Mac still can't run it: it's newer than `current`, and macOS `system` is
-    /// older than it needs. nil once either has been updated, and for a version that can't be read.
-    public func stillUnsupported(current: AppVersion, system: OperatingSystemVersion) -> (version: AppVersion, minimumSystem: String)? {
-        guard let version = AppVersion(self.version), version > current,
-              !UpdateCheck.system(system, isAtLeast: minimumSystem)
-        else { return nil }
-        return (version, minimumSystem)
+    /// older than it needs. nil once either has been updated.
+    public func stillUnsupported(current: AppVersion, system: OperatingSystemVersion) -> UnsupportedUpdate? {
+        guard version > current, !UpdateCheck.system(system, isAtLeast: minimumSystem) else { return nil }
+        return self
     }
 }
 
@@ -161,17 +176,23 @@ public struct UnsupportedUpdate: Codable, Equatable, Sendable {
 public struct UpdateCheckOutcome: Equatable, Sendable {
     /// What Settings says: the update found, up to date, or the release this Mac can't run.
     public let status: UpdateStatus
-    /// The update this check offers: the one found, unless it's the release this Mac can't run. Its version
-    /// is remembered, so a relaunch checks again at once and brings the offer back (`rechecksAtLaunch`).
-    public let offer: AvailableUpdate?
     /// The update on offer from now on, which the update bar shows and Install installs: `offer`, unless
     /// an install in progress keeps its own.
     public let offeredUpdate: AvailableUpdate?
     public let install: UpdateInstallState
     /// The download made for the previous offer goes: the offer changed.
     public let discardsDownload: Bool
+
+    /// The update this check offers: the one found, unless it's the release this Mac can't run. Its version
+    /// is remembered, so a relaunch checks again at once and brings the offer back (`rechecksAtLaunch`).
+    public var offer: AvailableUpdate? {
+        if case .available(let update) = status { update } else { nil }
+    }
+
     /// The release found unsupported earlier is forgotten: the check found something else.
-    public let forgetsUnsupported: Bool
+    public var forgetsUnsupported: Bool {
+        if case .unsupported = status { false } else { true }
+    }
 }
 
 extension UpdateCheckOutcome {
@@ -183,18 +204,18 @@ extension UpdateCheckOutcome {
     ///   - install: where installing it has got to.
     public init(
         found: AvailableUpdate?,
-        unsupported: (version: AppVersion, minimumSystem: String)?,
+        unsupported: UnsupportedUpdate?,
         offeredUpdate: AvailableUpdate?,
         install: UpdateInstallState
     ) {
+        // The same as the computed `offer`, which can't be read before every stored property is set.
+        let offer: AvailableUpdate?
         if let found, let unsupported, found.version == unsupported.version {
-            status = .unsupported(unsupported.version, minimumSystem: unsupported.minimumSystem)
+            status = .unsupported(unsupported)
             offer = nil
-            forgetsUnsupported = false
         } else {
             status = found.map(UpdateStatus.available) ?? .upToDate
             offer = found
-            forgetsUnsupported = true
         }
         if install.isInProgress {
             self.offeredUpdate = offeredUpdate
@@ -215,9 +236,8 @@ public enum UpdateStatus: Equatable, Sendable {
     case checking
     case upToDate
     case available(AvailableUpdate)
-    /// A newer release that needs a newer macOS than this Mac runs ("15.0"). Not an offer: there's nothing
-    /// to install.
-    case unsupported(AppVersion, minimumSystem: String)
+    /// A newer release that needs a newer macOS than this Mac runs. Not an offer: there's nothing to install.
+    case unsupported(UnsupportedUpdate)
     case failed
 }
 

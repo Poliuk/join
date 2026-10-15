@@ -96,15 +96,17 @@ private struct MeetingCard: View {
             .frame(minHeight: 22)
             .padding(.top, 6)
 
-            if let location = card.location {
-                detailLine(symbol: "mappin", text: location, color: PanelColors.secondary)
-            }
-            if let overlap = card.overlap {
-                detailLine(symbol: "exclamationmark.triangle", text: overlap, color: PanelColors.warning)
-            }
-            if let progress = card.progress {
+            switch card.detail {
+            case .ongoing(let progress):
                 PanelProgressBar(fraction: progress, color: calendarColor)
                     .padding(.top, 12)
+            case .upcoming(let location, let overlap):
+                if let location {
+                    detailLine(symbol: "mappin", text: location, color: PanelColors.secondary)
+                }
+                if let overlap {
+                    detailLine(symbol: "exclamationmark.triangle", text: overlap, color: PanelColors.warning)
+                }
             }
             // Join or Directions leads; Dismiss sits at the bottom right, alone when there's nothing to open.
             HStack(spacing: 8) {

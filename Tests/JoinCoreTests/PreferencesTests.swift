@@ -37,7 +37,7 @@ final class PreferencesTests {
         let preferences = Preferences(defaults: defaults)
         #expect(preferences.leadTime == 180)
         #expect(preferences.fullScreenAlertsEnabled)
-        #expect(preferences.snoozeDurations == [60, 300])
+        #expect(preferences.snoozeDurations == SnoozeDurations(first: 60, second: 300))
         #expect(preferences.alertScreens == .all)
         #expect(preferences.menuBarDisplay == .time)
         #expect(preferences.autoCloseEnabled)
@@ -66,8 +66,7 @@ final class PreferencesTests {
         case fullScreenAlertsEnabled
         case snoozeDurations
         case alertScreensMain, alertScreensSecondary, alertScreensPointer, alertScreensBackToAll
-        case menuBarShowsNextEvent
-        case menuBarShowsEventTitles
+        case menuBarDisplayIconOnly, menuBarDisplayTitleAndTime
         case autoCloseEnabled
         case autoCloseAfter
         case soundName, soundNameCleared
@@ -117,18 +116,20 @@ final class PreferencesTests {
     private func makeProbe(_ setting: Setting) -> Probe {
         let look = AlertAppearance(blurMode: .light, join: AlertButtonColors(fill: RGBA(rgb: 0x2563EB)))
         let dismissed = DismissedEvents().dismissing(MenuBarFixtures.workshop).dismissing(MenuBarFixtures.review)
-        let unsupported = UnsupportedUpdate(version: "1.2.0", minimumSystem: "15.0")
+        let unsupported = UnsupportedUpdate(version: AppVersion(major: 1, minor: 2, patch: 0), minimumSystem: "15.0")
+        let offered = AppVersion(major: 1, minor: 1, patch: 0)
         let checked = Date(timeIntervalSinceReferenceDate: 800_000_000)
         return switch setting {
         case .leadTime: Probe(\.leadTime, key: Keys.leadTime, to: 300)
         case .fullScreenAlertsEnabled: Probe(\.fullScreenAlertsEnabled, key: Keys.fullScreenAlertsEnabled, to: false)
-        case .snoozeDurations: Probe(\.snoozeDurations, key: Keys.snoozeDurations, to: [180, 600])
+        case .snoozeDurations: Probe(\.snoozeDurations, key: Keys.snoozeDurations, to: SnoozeDurations(first: 180, second: 600))
         case .alertScreensMain: Probe(\.alertScreens, key: Keys.alertScreens, to: .main)
         case .alertScreensSecondary: Probe(\.alertScreens, key: Keys.alertScreens, to: .secondary)
         case .alertScreensPointer: Probe(\.alertScreens, key: Keys.alertScreens, to: .pointer)
         case .alertScreensBackToAll: Probe(\.alertScreens, key: Keys.alertScreens, from: .pointer, to: .all)
-        case .menuBarShowsNextEvent: Probe(\.menuBarShowsNextEvent, key: Keys.menuBarShowsNextEvent, to: false)
-        case .menuBarShowsEventTitles: Probe(\.menuBarShowsEventTitles, key: Keys.menuBarShowsEventTitles, to: true)
+        // One change, though it writes both switches.
+        case .menuBarDisplayIconOnly: Probe(\.menuBarDisplay, key: Keys.menuBarShowsNextEvent, to: .iconOnly)
+        case .menuBarDisplayTitleAndTime: Probe(\.menuBarDisplay, key: Keys.menuBarShowsEventTitles, to: .titleAndTime)
         case .autoCloseEnabled: Probe(\.autoCloseEnabled, key: Keys.autoCloseEnabled, to: false)
         case .autoCloseAfter: Probe(\.autoCloseAfter, key: Keys.autoCloseAfter, to: 30 * 60)
         case .soundName: Probe(\.soundName, key: Keys.soundName, to: "Glass")
@@ -153,8 +154,8 @@ final class PreferencesTests {
         case .checksForUpdates: Probe(\.checksForUpdates, key: Keys.checksForUpdates, to: false)
         case .lastUpdateCheck: Probe(\.lastUpdateCheck, key: Keys.lastUpdateCheck, to: checked)
         case .lastUpdateCheckCleared: Probe(\.lastUpdateCheck, key: Keys.lastUpdateCheck, from: checked, to: nil, stores: false)
-        case .offeredUpdateVersion: Probe(\.offeredUpdateVersion, key: Keys.offeredUpdateVersion, to: "1.1.0")
-        case .offeredUpdateVersionCleared: Probe(\.offeredUpdateVersion, key: Keys.offeredUpdateVersion, from: "1.1.0", to: nil, stores: false)
+        case .offeredUpdateVersion: Probe(\.offeredUpdateVersion, key: Keys.offeredUpdateVersion, to: offered)
+        case .offeredUpdateVersionCleared: Probe(\.offeredUpdateVersion, key: Keys.offeredUpdateVersion, from: offered, to: nil, stores: false)
         case .unsupportedUpdate: Probe(\.unsupportedUpdate, key: Keys.unsupportedUpdate, to: unsupported)
         case .unsupportedUpdateCleared: Probe(\.unsupportedUpdate, key: Keys.unsupportedUpdate, from: unsupported, to: nil, stores: false)
         }
@@ -201,7 +202,7 @@ final class PreferencesTests {
             $0.startingSoonPill == .default
         },
         Unreadable(testDescription: "snooze buttons without two durations", key: Keys.snoozeDurations, stored: [120.0]) {
-            $0.snoozeDurations == [60, 300]
+            $0.snoozeDurations == Preferences.defaultSnoozeDurations
         },
         Unreadable(testDescription: "panel list filter", key: Keys.panelListFilter, stored: "everything") {
             $0.panelListFilter == .week
@@ -212,12 +213,35 @@ final class PreferencesTests {
         Unreadable(testDescription: "unsupported update", key: Keys.unsupportedUpdate, stored: Data("not json".utf8)) {
             $0.unsupportedUpdate == nil
         },
+        Unreadable(
+            testDescription: "unsupported update with a version that can't be read", key: Keys.unsupportedUpdate,
+            stored: Data(#"{"version":"1.2","minimumSystem":"15.0"}"#.utf8)
+        ) {
+            $0.unsupportedUpdate == nil
+        },
+        Unreadable(testDescription: "offered update version", key: Keys.offeredUpdateVersion, stored: "1.1") {
+            $0.offeredUpdateVersion == nil
+        },
     ]
 
     @Test(arguments: unreadable)
     func anUnreadableStoredValueFallsBackToTheDefault(_ value: Unreadable) {
         defaults.set(value.stored, forKey: value.key)
         #expect(value.fellBack(Preferences(defaults: defaults)))
+    }
+
+    /// A value that can't be stored as JSON (here a color with a NaN component, which JSON can't hold) leaves
+    /// what was stored, so a relaunch still has the last value that could be saved.
+    @Test func aValueThatCantBeStoredKeepsWhatWasStored() {
+        let preferences = Preferences(defaults: defaults)
+        let pill = StartingSoonPill(minutes: 10, fill: RGBA(rgb: 0xFFD60A))
+        preferences.startingSoonPill = pill
+        let stored = defaults.data(forKey: Keys.startingSoonPill)
+        #expect(stored != nil)
+
+        preferences.startingSoonPill = StartingSoonPill(minutes: 10, fill: RGBA(red: .nan, green: 0, blue: 0))
+        #expect(defaults.data(forKey: Keys.startingSoonPill) == stored)
+        #expect(Preferences(defaults: defaults).startingSoonPill == pill)
     }
 
     /// Alert me is in whole minutes, never below 0: set or loaded, a lead time rounds to the nearest minute.
@@ -241,21 +265,34 @@ final class PreferencesTests {
         #expect(preferences.autoCloseAfter == expected, "set")
     }
 
-    @Test func snoozeDurationsMustHaveTwoEntries() {
+    /// Stored as earlier builds stored them, so their settings still read: the snooze buttons as two
+    /// seconds, the menu bar's choice as two switches, an offered version as its "1.1.0" string.
+    @Test func settingsKeepTheShapesEarlierBuildsStored() {
+        defaults.set([120.0, 600.0], forKey: Keys.snoozeDurations)
+        defaults.set(true, forKey: Keys.menuBarShowsNextEvent)
+        defaults.set(true, forKey: Keys.menuBarShowsEventTitles)
+        defaults.set("1.1.0", forKey: Keys.offeredUpdateVersion)
         let preferences = Preferences(defaults: defaults)
-        preferences.snoozeDurations = [60]
-        #expect(preferences.snoozeDurations == [60, 300])
-        preferences.snoozeDurations = [120, 600]
-        #expect(preferences.snoozeDurations == [120, 600])
+        #expect(preferences.snoozeDurations == SnoozeDurations(first: 120, second: 600))
+        #expect(preferences.menuBarDisplay == .titleAndTime)
+        #expect(preferences.offeredUpdateVersion == AppVersion(major: 1, minor: 1, patch: 0))
+
+        preferences.snoozeDurations.second = 300
+        preferences.menuBarDisplay = .iconOnly
+        preferences.offeredUpdateVersion = AppVersion(major: 1, minor: 2, patch: 0)
+        #expect(defaults.array(forKey: Keys.snoozeDurations) as? [TimeInterval] == [120, 300])
+        #expect(defaults.object(forKey: Keys.menuBarShowsNextEvent) as? Bool == false)
+        #expect(defaults.object(forKey: Keys.menuBarShowsEventTitles) as? Bool == false)
+        #expect(defaults.string(forKey: Keys.offeredUpdateVersion) == "1.2.0")
     }
 
-    /// One choice in Settings, stored as the two switches the menu bar item reads.
+    /// One choice in Settings, stored as the two switches, and read back after a relaunch.
     @Test(arguments: MenuBarDisplay.allCases)
     func menuBarDisplayIsStoredAsTwoSwitches(_ display: MenuBarDisplay) {
         let preferences = Preferences(defaults: defaults)
         preferences.menuBarDisplay = display
-        #expect(preferences.menuBarShowsNextEvent == display.showsNextEvent)
-        #expect(preferences.menuBarShowsEventTitles == display.showsTitles)
+        #expect(defaults.object(forKey: Keys.menuBarShowsNextEvent) as? Bool == display.showsNextEvent)
+        #expect(defaults.object(forKey: Keys.menuBarShowsEventTitles) as? Bool == display.showsTitles)
         #expect(Preferences(defaults: defaults).menuBarDisplay == display)
     }
 
@@ -380,7 +417,7 @@ final class PreferencesTests {
         let custom = AlertAppearance(blurMode: .light, join: AlertButtonColors(fill: RGBA(rgb: 0x2563EB)))
         let pill = StartingSoonPill(minutes: 10, fill: RGBA(rgb: 0xFFD60A), text: .black)
         preferences.appearance = custom
-        preferences.snoozeDurations = [180, 600]
+        preferences.snoozeDurations = SnoozeDurations(first: 180, second: 600)
         preferences.autoCloseAfter = 30 * 60
         preferences.autoCloseEnabled = false
         preferences.startingSoonPill = pill
@@ -395,7 +432,7 @@ final class PreferencesTests {
         let reopened = Preferences(defaults: defaults)
         #expect(reopened.appearance == .default)
         #expect(reopened.customAppearance == custom, "the Custom card keeps the look")
-        #expect(reopened.snoozeDurations == [180, 600])
+        #expect(reopened.snoozeDurations == SnoozeDurations(first: 180, second: 600))
         #expect(!reopened.autoCloseEnabled)
         #expect(reopened.autoCloseAfter == 30 * 60)
         #expect(reopened.startingSoonPill == pill)

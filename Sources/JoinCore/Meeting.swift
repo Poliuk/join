@@ -2,7 +2,7 @@ import Foundation
 
 /// Your answer to the invitation. Events without attendees, and ones you organize, count as accepted;
 /// `unknown` covers invitations you haven't answered and events you aren't invited to.
-public enum ParticipationStatus: String, Codable, Hashable, Sendable {
+public enum ParticipationStatus: String, Hashable, Sendable {
     case accepted
     case tentative
     case declined
@@ -10,7 +10,7 @@ public enum ParticipationStatus: String, Codable, Hashable, Sendable {
 }
 
 /// One occurrence of a calendar event, independent of the calendar backend.
-public struct Meeting: Identifiable, Hashable, Sendable, Codable {
+public struct Meeting: Identifiable, Hashable, Sendable {
     public let id: String
     public var title: String
     public var start: Date
@@ -134,39 +134,26 @@ public enum MeetingFilter {
         }
     }
 
-    /// The Show and alert meetings the user dismissed, on their own or with their series, by id: left out of
-    /// `alertable`, and listed by the panel as dismissed, with Restore, until they end. Only an event that
-    /// could alert can be dismissed, so one whose choice has since become Show in the list only is listed
-    /// like any other of its kind: it isn't here.
-    public static func dismissedIDs(
+    /// The Show and alert meetings the user dismissed, by id, with how each was dismissed: with its series
+    /// (`.allFutureEvents`: a rule of the series covers it, `DismissedEvents.isDismissedBySeries`, so its
+    /// Restore asks This Event or All Future Events) or on its own (`.thisEvent`). Left out of `alertable`,
+    /// and listed by the panel as dismissed, with Restore, until they end. Only an event that could alert can
+    /// be dismissed, so one whose choice has since become Show in the list only is listed like any other of
+    /// its kind: it isn't here.
+    public static func dismissals(
         _ meetings: [Meeting],
         eventsWithoutParticipants: EventVisibility,
         outOfOfficeEvents: EventVisibility,
         dismissed: DismissedEvents
-    ) -> Set<String> {
-        guard !dismissed.isEmpty else { return [] }
-        return Set(meetings.lazy
-            .filter {
-                dismissed.isDismissed($0)
-                    && visibility(of: $0, eventsWithoutParticipants: eventsWithoutParticipants, outOfOfficeEvents: outOfOfficeEvents).alerts
-            }
-            .map(\.id))
-    }
-
-    /// Among `dismissedIDs`, the meetings dismissed by a rule of their series (Dismiss All Future Events), by
-    /// id: their Restore asks This Event or All Future Events (`DismissedEvents.isDismissedBySeries`).
-    public static func dismissedBySeriesIDs(
-        _ meetings: [Meeting],
-        eventsWithoutParticipants: EventVisibility,
-        outOfOfficeEvents: EventVisibility,
-        dismissed: DismissedEvents
-    ) -> Set<String> {
-        guard !dismissed.seriesRules.isEmpty else { return [] }
-        return Set(meetings.lazy
-            .filter {
-                dismissed.isDismissedBySeries($0)
-                    && visibility(of: $0, eventsWithoutParticipants: eventsWithoutParticipants, outOfOfficeEvents: outOfOfficeEvents).alerts
-            }
-            .map(\.id))
+    ) -> [Meeting.ID: DismissScope] {
+        guard !dismissed.isEmpty else { return [:] }
+        var dismissals: [Meeting.ID: DismissScope] = [:]
+        for meeting in meetings where dismissed.isDismissed(meeting)
+            && visibility(of: meeting, eventsWithoutParticipants: eventsWithoutParticipants, outOfOfficeEvents: outOfOfficeEvents).alerts {
+            // The same occurrence twice in a fetch: with its series on either copy, its Restore asks.
+            if dismissals[meeting.id] == .allFutureEvents { continue }
+            dismissals[meeting.id] = dismissed.isDismissedBySeries(meeting) ? .allFutureEvents : .thisEvent
+        }
+        return dismissals
     }
 }

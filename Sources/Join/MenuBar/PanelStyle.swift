@@ -46,14 +46,14 @@ nonisolated enum PanelColors {
 
     static let accent = Color.accentColor
     /// The starting-soon card's tint, drawn over the regular card (`PanelHeroView`).
-    static let accentSoft = palette { $0.accent.withAlpha($0.palette.startingSoonTint(accent: $0.accent, dark: $0.dark)) }
+    static let accentSoft = palette { $0.accent.withAlpha($0.palette.startingSoonTint(accent: $0.accent)) }
     static let accentLine = palette { $0.accent.withAlpha($0.dark ? 0.5 : 0.45) }
     /// "Starts in 4 min": the accent stepped toward white or black until it reads at 4.6:1 on the
     /// accent-tinted card over the frost, whatever the accent.
     static let accentText = palette { resolved in
         let envelope = resolved.dark ? PanelPalette.darkGlassEnvelope : PanelPalette.lightGlassEnvelope
         let surface = resolved.palette.surface(over: envelope)
-        let card = resolved.palette.startingSoonCard(accent: resolved.accent, over: surface, dark: resolved.dark)
+        let card = resolved.palette.startingSoonCard(accent: resolved.accent, over: surface)
         return PanelPalette.legibleAccent(resolved.accent, on: card, dark: resolved.dark)
     }
     /// The prominent button, solved per accent so its label reads at 4.5:1 at rest and under the pointer.
@@ -65,9 +65,10 @@ nonisolated enum PanelColors {
     /// What a color is worked out from: the palette for the drawing appearance, and the accent in it.
     struct Resolved {
         let palette: PanelPalette
-        let dark: Bool
         let increasedContrast: Bool
         let accent: RGBA
+
+        var dark: Bool { palette.isDark }
 
         /// The ink (white in dark mode, black in light mode) at `opacity`.
         func inkAt(_ opacity: Double) -> RGBA { palette.ink.withAlpha(opacity) }
@@ -92,7 +93,6 @@ nonisolated enum PanelColors {
         }
         return Resolved(
             palette: .standard(dark: dark, increasedContrast: increasedContrast),
-            dark: dark,
             increasedContrast: increasedContrast,
             accent: accent.rgba
         )

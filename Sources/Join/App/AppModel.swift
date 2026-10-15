@@ -98,8 +98,7 @@ final class AppModel {
             meetings: meetingStore.alertableMeetings,
             now: now,
             pauseState: alertCoordinator.pauseState,
-            showsNextEvent: preferences.menuBarShowsNextEvent,
-            showsTitles: preferences.menuBarShowsEventTitles,
+            display: preferences.menuBarDisplay,
             startingSoonWindow: preferences.startingSoonPill.window
         )
     }
@@ -108,8 +107,7 @@ final class AppModel {
         PanelPresenter.content(
             meetings: meetingStore.meetings,
             alertable: meetingStore.alertableMeetings,
-            dismissed: meetingStore.dismissedMeetingIDs,
-            dismissedBySeries: meetingStore.dismissedBySeriesMeetingIDs,
+            dismissed: meetingStore.dismissals,
             now: now,
             startingSoonWindow: preferences.startingSoonPill.window
         )

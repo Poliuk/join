@@ -40,3 +40,21 @@ public struct AppVersion: Comparable, Hashable, Sendable, CustomStringConvertibl
         return Int(part)
     }
 }
+
+/// Stored as its "1.2.3" string, the shape preferences have always held it in. Decoding throws on a string
+/// `init?(_:)` refuses, so a version that can't be read never loads as some other one.
+extension AppVersion: Codable {
+    public init(from decoder: any Decoder) throws {
+        let container = try decoder.singleValueContainer()
+        let string = try container.decode(String.self)
+        guard let version = AppVersion(string) else {
+            throw DecodingError.dataCorruptedError(in: container, debugDescription: "Not a version: \(string)")
+        }
+        self = version
+    }
+
+    public func encode(to encoder: any Encoder) throws {
+        var container = encoder.singleValueContainer()
+        try container.encode(description)
+    }
+}

@@ -2,13 +2,18 @@ import Foundation
 
 /// Finds a video-call link in an event's URL, location, or notes.
 public enum MeetingLinkDetector {
-    public struct Provider: Sendable, Hashable {
-        public let name: String
-        public let pattern: String
+    private struct Provider {
+        let name: String
+        let regex: NSRegularExpression
+
+        init(name: String, pattern: String) {
+            self.name = name
+            regex = MeetingLinkDetector.compile(pattern)
+        }
     }
 
     /// Ordered: a match from an earlier provider wins regardless of which field it appears in.
-    public static let providers: [Provider] = [
+    private static let providers: [Provider] = [
         Provider(
             name: "Google Meet",
             pattern: #"https://meet\.google\.com/(?:[a-z]{3}-[a-z]{4}-[a-z]{3}|lookup/[A-Za-z0-9_-]+)(?:\?[^\s<>"')]*)?"#
@@ -29,7 +34,7 @@ public enum MeetingLinkDetector {
 
     /// Any https link in the *location* field is treated as the way into the meeting.
     /// The URL field is deliberately excluded: calendar backends often put the event's own web page there.
-    private static let genericLocationPattern = #"https://[^\s<>"')]+"#
+    private static let genericLocationRegex = compile(#"https://[^\s<>"')]+"#)
 
     public static func joinURL(in meeting: Meeting) -> URL? {
         joinURL(url: meeting.url, location: meeting.location, notes: meeting.notes)
@@ -39,19 +44,18 @@ public enum MeetingLinkDetector {
         let fields = [url?.absoluteString, location, notes].compactMap { $0 }
         for provider in providers {
             for field in fields {
-                if let match = firstMatch(of: provider.pattern, in: field), let found = URL(string: match) {
+                if let match = firstMatch(of: provider.regex, in: field), let found = URL(string: match) {
                     return found
                 }
             }
         }
-        if let location, let match = firstMatch(of: genericLocationPattern, in: location) {
+        if let location, let match = firstMatch(of: genericLocationRegex, in: location) {
             return URL(string: match)
         }
         return nil
     }
 
-    private static func firstMatch(of pattern: String, in text: String) -> String? {
-        guard let regex = regexCache[pattern] else { return nil }
+    private static func firstMatch(of regex: NSRegularExpression, in text: String) -> String? {
         let range = NSRange(text.startIndex..., in: text)
         guard let match = regex.firstMatch(in: text, range: range), let found = Range(match.range, in: text) else {
             return nil
@@ -61,11 +65,13 @@ public enum MeetingLinkDetector {
         return result
     }
 
-    private static let regexCache: [String: NSRegularExpression] = {
-        var cache: [String: NSRegularExpression] = [:]
-        for pattern in providers.map(\.pattern) + [genericLocationPattern] {
-            cache[pattern] = try? NSRegularExpression(pattern: pattern, options: [.caseInsensitive])
+    /// The patterns are literals, so one that doesn't compile is a programmer mistake: it stops here rather
+    /// than leaving its provider's links silently undetected.
+    private static func compile(_ pattern: String) -> NSRegularExpression {
+        do {
+            return try NSRegularExpression(pattern: pattern, options: [.caseInsensitive])
+        } catch {
+            preconditionFailure("MeetingLinkDetector: invalid pattern \(pattern): \(error)")
         }
-        return cache
-    }()
+    }
 }
