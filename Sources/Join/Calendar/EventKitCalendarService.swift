@@ -2,7 +2,6 @@ import AppKit
 import EventKit
 import JoinCore
 
-@MainActor
 final class EventKitCalendarService: CalendarService {
     private let store = EKEventStore()
     private var observer: NSObjectProtocol?

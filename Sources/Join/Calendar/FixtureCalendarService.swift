@@ -20,7 +20,6 @@ import JoinCore
 /// for all future events would dismiss every later run's occurrences: `AppModel` drops the series rules (and
 /// the exceptions inside them) when a fixture run starts, keeping only the occurrences dismissed one by one
 /// (`DismissedEvents.withoutSeriesRules`).
-@MainActor
 final class FixtureCalendarService: CalendarService {
     static let environmentKey = "JOIN_FIXTURE"
     static let defaultsSuite = "com.poliuk.join.fixture"

@@ -3,7 +3,6 @@ import SwiftUI
 import JoinCore
 
 /// Callbacks from the panel's SwiftUI content to the controller that owns its window.
-@MainActor
 final class MenuBarPanelContext {
     var naturalHeightChanged: (CGFloat) -> Void = { _ in }
     var showPauseMenu: (NSView) -> Void = { _ in }
@@ -22,7 +21,6 @@ struct PanelMenuItem {
 /// The menu bar item and the panel that drops down from it.
 /// The panel is a borderless window sized to its SwiftUI content in both directions (SwiftUI's
 /// MenuBarExtra grows but never shrinks), anchored under the item and capped to the screen.
-@MainActor
 final class StatusItemController: NSObject, NSWindowDelegate {
     static let maxPanelHeight: CGFloat = 640
     /// Gap between the menu bar and the panel's top edge.
@@ -368,8 +366,9 @@ final class StatusItemController: NSObject, NSWindowDelegate {
     }
 }
 
-/// An NSMenuItem that runs a closure, so menus can be built inline.
-private final class ClosureMenuItem: NSMenuItem {
+/// An NSMenuItem that runs a closure, so menus can be built inline. Nonisolated like NSMenuItem, whose
+/// initializers it overrides; AppKit sends `run` on the main thread when the item is chosen.
+nonisolated private final class ClosureMenuItem: NSMenuItem {
     private let handler: () -> Void
 
     init(title: String, keyEquivalent: String = "", handler: @escaping () -> Void) {

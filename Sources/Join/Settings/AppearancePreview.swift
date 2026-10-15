@@ -21,7 +21,6 @@ enum AppearancePreviewBackdrop: String, CaseIterable, Identifiable {
 /// The real alert content, zoomed in, over a sample screen. A window can't blur what's behind it
 /// inside itself, so the sample screen is drawn already blurred and the material is a plain layer.
 /// Cropped close to the alert's content, which leaves about 12 pt of backdrop above and below it.
-@MainActor
 struct AppearancePreview: View {
     let appearance: AlertAppearance
     let backdrop: AppearancePreviewBackdrop

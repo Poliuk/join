@@ -3,7 +3,7 @@
 # Join!
 
 [![macOS 14+](https://img.shields.io/badge/macOS-14%2B-blue)](#requirements)
-[![Swift](https://img.shields.io/badge/Swift-5.10-orange)](Package.swift)
+[![Swift](https://img.shields.io/badge/Swift-6.2%2B-orange)](Package.swift)
 [![License: MIT](https://img.shields.io/badge/license-MIT-green)](LICENSE)
 
 A free, open-source macOS menu bar app that makes calendar meetings impossible to miss.
@@ -48,7 +48,7 @@ Links only open, in your browser or Apple Maps, when you click Join, Directions 
 ## Requirements
 
 - macOS 14 Sonoma or later
-- To build: Xcode Command Line Tools (`xcode-select --install`). Full Xcode is only needed to run the unit tests.
+- To build: Swift 6.2 or later, from Xcode 26 or later or its Command Line Tools (`xcode-select --install`). Full Xcode is only needed to run the unit tests.
 
 ## Install
 
@@ -121,16 +121,24 @@ To turn full-screen alerts off altogether, set **Alert me** to **Never** under *
 ## Development
 
 ```sh
-swift build          # debug build (Command Line Tools are enough)
+swift build          # debug build
 swift test           # unit tests (needs Xcode for XCTest)
 scripts/build-app.sh # assemble build/Join.app
 make icon            # redraw Resources/AppIcon.icns after changing scripts/make-icon.swift
 ```
 
+The package needs Swift 6.2 or later and builds in the Swift 6 language mode, with complete data-race checking. Xcode builds it with its default SDK. The Command Line Tools for Xcode 27 default to the macOS 27 SDK, whose SwiftUI needs a macro plugin that only Xcode ships, so with them alone the app builds against the macOS 26.5 SDK they also install. `make` and `scripts/build-app.sh` pick it by themselves (`scripts/select-sdk.sh`); `swift build` and `swift test` need it named:
+
+```sh
+SDKROOT=/Library/Developer/CommandLineTools/SDKs/MacOSX26.5.sdk swift build
+```
+
+`SDKROOT`, when set, always wins.
+
 The package has two targets:
 
-- `JoinCore` — pure logic with no UI, EventKit or network dependency: scheduling, link detection, time formatting, preferences, which events show and alert, what the menu bar item and panel say, the full-screen alert's countdown, colors and contrast, and which GitHub release counts as an update. This is what the tests cover.
-- `Join` — the app: EventKit calendar service, full-screen alert windows, menu bar item and panel, Settings, and the updater.
+- `JoinCore` — pure logic with no UI, EventKit or network dependency: scheduling, link detection, time formatting, preferences, which events show and alert, what the menu bar item and panel say, the full-screen alert's countdown, colors and contrast, and which GitHub release counts as an update. This is what the tests cover. It's nonisolated, so callers decide where its code runs.
+- `Join` — the app: EventKit calendar service, full-screen alert windows, menu bar item and panel, Settings, and the updater. Everything in it is on the main actor unless it says otherwise ([Concurrency](docs/TECHNICAL_DESIGN.md#concurrency) in the technical design).
 
 To check the UI against a known calendar instead of your own, quit Join! and launch it with a fixture scenario (`nothing`, `later`, `busy`, `meeting`, `maybe` or `denied`):
 

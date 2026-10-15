@@ -7,7 +7,6 @@ final class MenuBarPanelWindow: NSPanel {
     static let width: CGFloat = 368
     static let cornerRadius: CGFloat = 14
 
-    @MainActor
     init<Content: View>(rootView: Content) {
         super.init(
             contentRect: NSRect(x: 0, y: 0, width: Self.width, height: 200),
@@ -49,7 +48,6 @@ final class MenuBarPanelWindow: NSPanel {
     /// The system menus' material: Liquid Glass on macOS 26 and later, the menu blur before that. The
     /// SwiftUI content lays a frost over it (`PanelFrost`) so text stays readable over any backdrop.
     /// The glass is set up only through its public properties.
-    @MainActor
     private static func makeBackground(around content: NSView) -> NSView {
         if let glassType {
             let glass = glassType.init(frame: NSRect(x: 0, y: 0, width: width, height: 200))
@@ -83,7 +81,8 @@ final class MenuBarPanelWindow: NSPanel {
         return blur
     }
 
-    private static func roundedMask(radius: CGFloat) -> NSImage {
+    /// Nonisolated: AppKit runs an image's drawing handler on whatever thread draws the image.
+    nonisolated private static func roundedMask(radius: CGFloat) -> NSImage {
         let edge = radius * 2 + 1
         let image = NSImage(size: NSSize(width: edge, height: edge), flipped: false) { rect in
             NSColor.black.setFill()

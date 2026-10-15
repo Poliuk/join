@@ -11,7 +11,6 @@ struct AlertActions {
 }
 
 /// What one presentation of the alert shows. Shared by every screen's window.
-@MainActor
 @Observable
 final class AlertSession {
     var meetings: [Meeting]
@@ -30,7 +29,6 @@ final class AlertSession {
 }
 
 /// One borderless window per screen, above everything else, including other apps' full-screen Spaces.
-@MainActor
 final class AlertWindowController {
     /// Keys are ignored this long after the alert appears, so a keystroke the user was already typing
     /// in another app can't dismiss the alert or join a call by accident.
@@ -157,7 +155,6 @@ final class AlertWindowController {
 }
 
 final class AlertWindow: NSPanel {
-    @MainActor
     init(screen: NSScreen, session: AlertSession) {
         super.init(contentRect: screen.frame, styleMask: [.borderless, .nonactivatingPanel], backing: .buffered, defer: false)
         isReleasedWhenClosed = false

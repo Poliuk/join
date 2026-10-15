@@ -3,7 +3,6 @@ import SwiftUI
 import JoinCore
 
 /// The single card at the top of the panel.
-@MainActor
 struct PanelHeroView: View {
     let hero: PanelHero
     let perform: (PanelAction) -> Void
@@ -23,7 +22,6 @@ struct PanelHeroView: View {
     }
 }
 
-@MainActor
 private struct NothingTodayCard: View {
     let detail: String
 
@@ -52,7 +50,6 @@ private struct NothingTodayCard: View {
     }
 }
 
-@MainActor
 private struct MeetingCard: View {
     enum Style {
         case neutral

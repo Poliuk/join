@@ -8,7 +8,6 @@ struct AlertStateRecord: Codable {
 }
 
 /// Turns the pure scheduler's answer into timers, windows and sounds.
-@MainActor
 @Observable
 final class AlertCoordinator {
     static let heartbeatInterval: TimeInterval = 30

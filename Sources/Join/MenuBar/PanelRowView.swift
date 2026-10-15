@@ -3,7 +3,6 @@ import SwiftUI
 import JoinCore
 
 /// "Tomorrow  Wed 7 Oct" followed by that day's rows.
-@MainActor
 struct PanelSectionView: View {
     enum Heading {
         /// A list heading: "Now", "Also now".
@@ -129,7 +128,6 @@ struct PanelDismissActions {
     /// A click on `dismissal`'s button for `meeting`, whose view is `anchor`: it acts at once, or asks This Event
     /// or All Future Events when `dismissal.asksScope`. `menuOpen` follows the menu, for a button that would
     /// otherwise hide while it's up.
-    @MainActor
     func click(_ dismissal: PanelRow.Dismissal, of meeting: Meeting, anchor: NSView?, menuOpen: @escaping (Bool) -> Void = { _ in }) {
         // Without its button's view, which the button always has, it acts on this event alone.
         guard dismissal.asksScope, let anchor else {
@@ -155,7 +153,6 @@ struct PanelDismissActions {
 
 /// Start over end time, a calendar-colored bar, the title with an optional second line, and a button.
 /// Under the pointer, a meeting that may alert offers Dismiss; a dismissed one always shows Restore.
-@MainActor
 struct PanelRowView: View {
     static let dismissButtonSize: CGFloat = 22
     static let actionButtonSize: CGFloat = 30

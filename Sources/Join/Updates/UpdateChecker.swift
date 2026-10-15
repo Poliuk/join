@@ -10,7 +10,6 @@ private let logger = Logger(subsystem: "com.poliuk.join", category: "updates")
 /// Relaunch replaces the app and quits. One check runs at a time, and both buttons wait for it. What a
 /// successful check found is stored in preferences; a failed one is only remembered here, so the next
 /// automatic check waits an hour, and only Settings mentions it.
-@MainActor
 @Observable
 final class UpdateChecker {
     private(set) var status: UpdateStatus = .unknown
@@ -199,8 +198,8 @@ final class UpdateChecker {
         install = .downloading(nil)
         Task {
             do {
-                try await installer.prepare { [weak self] state in
-                    Task { @MainActor [weak self] in self?.installProgressed(state) }
+                try await installer.prepare { state in
+                    Task { @MainActor in self.installProgressed(state) }
                 }
                 logger.notice("Downloaded and verified \(update.version.description, privacy: .public); ready to install")
                 install = .ready

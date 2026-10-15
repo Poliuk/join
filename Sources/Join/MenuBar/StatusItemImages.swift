@@ -3,8 +3,8 @@ import JoinCore
 
 /// Images for the menu bar item. Plain states use template images so the menu bar tints them;
 /// the "starting soon" pill is drawn in full color, the system accent unless Settings › General ›
-/// Menu bar › Color picks another.
-@MainActor
+/// Menu bar › Color picks another. AppKit runs an image's drawing handler, and asks a dynamic color for its
+/// value, on whatever thread is drawing, so those closures are nonisolated and use only what they capture.
 enum StatusItemImages {
     static let iconConfiguration = NSImage.SymbolConfiguration(pointSize: 14, weight: .regular)
     static let textFont = NSFont.monospacedDigitSystemFont(ofSize: 13, weight: .medium)
@@ -17,7 +17,7 @@ enum StatusItemImages {
     }
 
     /// A 16 pt ring over a faint track; the arc is the share of the meeting still to run, from 12 o'clock clockwise.
-    static func ring(remaining: Double) -> NSImage {
+    nonisolated static func ring(remaining: Double) -> NSImage {
         let image = NSImage(size: NSSize(width: 16, height: 16), flipped: false) { rect in
             let center = NSPoint(x: rect.midX, y: rect.midY)
             let radius: CGFloat = 6
@@ -62,8 +62,10 @@ enum StatusItemImages {
         let trailing: CGFloat = title == nil ? 8 : 9
         let gap: CGFloat = 6
         let width = ceil(leading + iconSize.width + (title == nil ? 0 : gap + titleWidth) + trailing)
+        let capHeight = pillFont.capHeight
+        let descender = pillFont.descender
 
-        let image = NSImage(size: NSSize(width: width, height: height), flipped: false) { rect in
+        nonisolated func draw(_ rect: NSRect) -> Bool {
             fill.setFill()
             NSBezierPath(roundedRect: rect, xRadius: 5, yRadius: 5).fill()
             icon?.draw(in: NSRect(
@@ -74,11 +76,12 @@ enum StatusItemImages {
             ))
             if let title {
                 // Center the cap height, so digits sit in the visual middle of the pill.
-                let baseline = (rect.height - pillFont.capHeight) / 2
-                title.draw(at: NSPoint(x: leading + iconSize.width + gap, y: (baseline + pillFont.descender).rounded()))
+                let baseline = (rect.height - capHeight) / 2
+                title.draw(at: NSPoint(x: leading + iconSize.width + gap, y: (baseline + descender).rounded()))
             }
             return true
         }
+        let image = NSImage(size: NSSize(width: width, height: height), flipped: false, drawingHandler: draw)
         image.isTemplate = false
         return image
     }
@@ -87,11 +90,14 @@ enum StatusItemImages {
     /// is automatic, unless an earlier build stored a text color: worked out when the pill is drawn,
     /// against the accent as drawn in that appearance. General's Starting soon row draws its preview here.
     static func pill(text: String?, style pill: StartingSoonPill) -> NSImage {
-        let label = NSColor(name: nil) { appearance in
+        self.pill(text: text, fill: pill.fill.map(NSColor.init) ?? .controlAccentColor, label: label(for: pill))
+    }
+
+    nonisolated private static func label(for pill: StartingSoonPill) -> NSColor {
+        NSColor(name: nil) { appearance in
             var accent = RGBA.white
             appearance.performAsCurrentDrawingAppearance { accent = NSColor.controlAccentColor.rgba }
             return NSColor(pill.resolvedText(accent: accent))
         }
-        return self.pill(text: text, fill: pill.fill.map(NSColor.init) ?? .controlAccentColor, label: label)
     }
 }

@@ -160,10 +160,9 @@ enum SettingsSwatchDot: Hashable {
     /// A color wheel, for Other….
     case other
 
-    private static let size = NSSize(width: 12, height: 12)
-    @MainActor private static var cache: [SettingsSwatchDot: NSImage] = [:]
+    nonisolated private static let size = NSSize(width: 12, height: 12)
+    private static var cache: [SettingsSwatchDot: NSImage] = [:]
 
-    @MainActor
     var image: NSImage {
         if let cached = Self.cache[self] { return cached }
         let image = draw()
@@ -171,8 +170,9 @@ enum SettingsSwatchDot: Hashable {
         return image
     }
 
-    /// Drawn whenever the image is, so the accent and the outline follow the current appearance.
-    private func draw() -> NSImage {
+    /// Drawn whenever the image is, so the accent and the outline follow the current appearance. Nonisolated,
+    /// with the drawing below it: AppKit runs an image's drawing handler on whatever thread draws the image.
+    nonisolated private func draw() -> NSImage {
         let image = NSImage(size: Self.size, flipped: false) { rect in
             let dot = rect.insetBy(dx: 0.5, dy: 0.5)
             let circle = NSBezierPath(ovalIn: dot)
@@ -190,7 +190,7 @@ enum SettingsSwatchDot: Hashable {
         return image
     }
 
-    private func fill(_ rect: NSRect) {
+    nonisolated private func fill(_ rect: NSRect) {
         switch self {
         case .color(let color):
             // A translucent swatch shows over a checkerboard, as the color panel shows opacity.
@@ -234,7 +234,7 @@ enum SettingsSwatchDot: Hashable {
         }
     }
 
-    private static func checkerboard(in rect: NSRect) {
+    nonisolated private static func checkerboard(in rect: NSRect) {
         NSColor.white.setFill()
         rect.fill()
         NSColor(white: 0.8, alpha: 1).setFill()
@@ -311,7 +311,6 @@ struct SettingsColorWell: NSViewRepresentable {
         NSColorPanel.shared.orderOut(nil)
     }
 
-    @MainActor
     final class Coordinator: NSObject {
         var onChange: (RGBA) -> Void = { _ in }
         var supportsOpacity = false

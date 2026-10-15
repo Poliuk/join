@@ -3,7 +3,6 @@ import AppKit
 /// Writes a PNG of every visible window of the app, for checking UI without screen-recording access.
 /// Driven by the fixture-only `snapshot` script hook. Files always go under
 /// `$TMPDIR/JoinSnapshots/<name>`; the name is reduced to a single safe path component.
-@MainActor
 enum WindowSnapshots {
     static var root: URL {
         URL(fileURLWithPath: NSTemporaryDirectory(), isDirectory: true).appendingPathComponent("JoinSnapshots", isDirectory: true)

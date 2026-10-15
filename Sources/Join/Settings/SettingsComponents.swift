@@ -20,7 +20,8 @@ enum SettingsPalette {
     static let warning = Color(nsColor: dynamic(light: NSColor(srgbRed: 0xA1 / 255, green: 0x4C / 255, blue: 0, alpha: 1),
                                                 dark: .systemOrange))
 
-    private static func dynamic(light: NSColor, dark: NSColor) -> NSColor {
+    /// Nonisolated: AppKit asks a dynamic color for its value on whatever thread is drawing.
+    nonisolated private static func dynamic(light: NSColor, dark: NSColor) -> NSColor {
         NSColor(name: nil) { appearance in
             appearance.bestMatch(from: [.aqua, .darkAqua]) == .darkAqua ? dark : light
         }
@@ -259,7 +260,9 @@ struct SettingsFlowLayout: Layout {
 }
 
 /// Marks a `SettingsFlowLayout` subview that fills the rest of its line; the value is its minimum width.
-struct SettingsFlowFill: LayoutValueKey {
+/// Nonisolated because the layout reads it, and SwiftUI may run a `Layout` (a `Sendable` protocol) off
+/// the main actor.
+nonisolated struct SettingsFlowFill: LayoutValueKey {
     static let defaultValue: CGFloat? = nil
 }
 

@@ -2,7 +2,6 @@ import AppKit
 import SwiftUI
 import JoinCore
 
-@MainActor
 struct CalendarsTab: View {
     @Environment(AppModel.self) private var model
 

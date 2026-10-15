@@ -3,7 +3,6 @@ import Observation
 import JoinCore
 
 /// Owns the app's long-lived objects and wires them together.
-@MainActor
 @Observable
 final class AppModel {
     let preferences: Preferences

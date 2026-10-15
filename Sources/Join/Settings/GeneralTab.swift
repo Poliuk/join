@@ -5,7 +5,6 @@ import JoinCore
 
 /// The app and its menu bar item: Open at login, the Menu bar section with the starting-soon pill, which
 /// events count, and updates. The full-screen alert has its own pane.
-@MainActor
 struct GeneralTab: View {
     @Environment(AppModel.self) private var model
     /// Read from the system on appear and whenever the app or the Settings window comes back, so
@@ -241,7 +240,6 @@ struct GeneralTab: View {
 
 /// The menu bar item once an event is starting soon, as the menu bar draws it: the pill, with the text
 /// that Shows asks for, composed as the menu bar composes it.
-@MainActor
 private struct MenuBarPillPreview: View {
     let pill: StartingSoonPill
     let display: MenuBarDisplay

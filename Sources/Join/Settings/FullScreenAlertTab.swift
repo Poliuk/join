@@ -3,7 +3,6 @@ import JoinCore
 
 /// When, where and how loudly the full-screen alert comes up, its snooze buttons and auto-close, and Show
 /// Demo to try them, beside the settings it shows. How the alert looks is on Appearance.
-@MainActor
 struct FullScreenAlertTab: View {
     @Environment(AppModel.self) private var model
 
@@ -184,7 +183,6 @@ struct FullScreenAlertTab: View {
 
 /// Shows the demo full-screen alert, on this pane and beside Appearance's preview. Off while a real one
 /// is on screen, which the demo never replaces; the help tag says why.
-@MainActor
 struct ShowDemoButton: View {
     @Environment(AppModel.self) private var model
 

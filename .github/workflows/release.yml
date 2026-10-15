@@ -11,7 +11,10 @@ permissions:
 
 jobs:
   release:
-    runs-on: macos-15
+    # The same runner and Xcode as ci.yml.
+    runs-on: macos-26
+    env:
+      DEVELOPER_DIR: /Applications/Xcode_26.6.app/Contents/Developer
     steps:
       - uses: actions/checkout@v4
         with:

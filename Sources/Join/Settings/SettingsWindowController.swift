@@ -36,7 +36,6 @@ extension NSUserInterfaceItemIdentifier {
 
 /// Hosts Settings in a plain AppKit window with the standard settings toolbar. SwiftUI's `Settings`
 /// scene can't be opened reliably from a menu-bar-only app, so we own the window ourselves.
-@MainActor
 final class SettingsWindowController: NSObject, NSWindowDelegate {
     private var window: NSWindow?
     private var tabs: SettingsTabViewController?
@@ -100,7 +99,6 @@ final class SettingsWindowController: NSObject, NSWindowDelegate {
 
 /// One toolbar item per pane. The window keeps the panes' width and takes the selected pane's
 /// height, scrolling only when that doesn't fit on screen.
-@MainActor
 private final class SettingsTabViewController: NSTabViewController {
     private let panes: [SettingsPane] = SettingsPane.allCases
     private let isFixture: Bool
@@ -196,7 +194,6 @@ private final class SettingsTabViewController: NSTabViewController {
 }
 
 /// Hosts one pane's SwiftUI view and reports the height its content wants.
-@MainActor
 private final class SettingsPaneController: NSViewController {
     let pane: SettingsPane
     private let model: AppModel

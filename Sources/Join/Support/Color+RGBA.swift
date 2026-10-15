@@ -2,7 +2,10 @@ import AppKit
 import SwiftUI
 import JoinCore
 
-extension Color {
+// Nonisolated: AppKit resolves a dynamic color, and draws with any color, on whatever thread is drawing,
+// so these conversions can't be tied to the main actor.
+
+nonisolated extension Color {
     init(_ rgba: RGBA) {
         self.init(.sRGB, red: rgba.red, green: rgba.green, blue: rgba.blue, opacity: rgba.alpha)
     }
@@ -15,7 +18,7 @@ extension Color {
     }
 }
 
-extension NSColor {
+nonisolated extension NSColor {
     convenience init(_ rgba: RGBA) {
         self.init(srgbRed: rgba.red, green: rgba.green, blue: rgba.blue, alpha: rgba.alpha)
     }
@@ -31,7 +34,7 @@ extension NSColor {
     }
 }
 
-extension RGBA {
+nonisolated extension RGBA {
     init(_ color: Color) {
         self = NSColor(color).rgba
     }

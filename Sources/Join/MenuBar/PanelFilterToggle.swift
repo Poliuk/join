@@ -8,7 +8,6 @@ import JoinCore
 ///
 /// Drawn by hand rather than with a segmented Picker: built against an older SDK, the Picker draws
 /// pre-Tahoe chrome, it can't share the panel's hover, and window snapshots drop its labels.
-@MainActor
 struct PanelFilterToggle: View {
     /// Each half of the 144 × 24 pt track; the thumb is inset 2 pt.
     static let segmentWidth: CGFloat = 72

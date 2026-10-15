@@ -4,8 +4,9 @@ import JoinCore
 
 /// The panel's colors, from `PanelPalette`: five inks and translucent fills over the frosted glass, each
 /// resolved for the drawing appearance (light or dark) and for Increase Contrast. The inks are fixed
-/// sRGB, never vibrant, so their contrast on the frost is what the palette's tests check.
-enum PanelColors {
+/// sRGB, never vibrant, so their contrast on the frost is what the palette's tests check. Nonisolated:
+/// AppKit asks a dynamic color for its value on whatever thread is drawing.
+nonisolated enum PanelColors {
     static let primary = palette { $0.palette.primary }
     static let strong = palette { $0.palette.strong }
     static let secondary = palette { $0.palette.secondary }
@@ -72,7 +73,7 @@ enum PanelColors {
         func inkAt(_ opacity: Double) -> RGBA { palette.ink.withAlpha(opacity) }
     }
 
-    private static func palette(_ make: @escaping (Resolved) -> RGBA) -> Color {
+    private static func palette(_ make: @escaping @Sendable (Resolved) -> RGBA) -> Color {
         Color(nsColor: NSColor(name: nil) { appearance in
             NSColor(make(resolve(appearance)))
         })
@@ -201,7 +202,7 @@ extension NSEvent {
     /// Whether the click being handled is the second (or a later) click of a double click. A control whose
     /// click changes what's under the pointer ignores it, and so does every control such a click can move in
     /// under the pointer, so a double click acts once, not on what moved in.
-    @MainActor static var isRepeatedClick: Bool {
+    static var isRepeatedClick: Bool {
         guard let event = NSApp.currentEvent, event.type == .leftMouseDown || event.type == .leftMouseUp else { return false }
         return event.clickCount > 1
     }

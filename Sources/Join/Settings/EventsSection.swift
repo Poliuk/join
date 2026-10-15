@@ -4,7 +4,6 @@ import JoinCore
 /// What Join! does with events nobody else is on and with out-of-office events, a pop-up for each,
 /// then the keywords that make an event out of office. One section, as the user picked from the
 /// settings design's options; 1.1 had a switch here and a separate Out of office section with two.
-@MainActor
 struct EventsSection: View {
     @Environment(AppModel.self) private var model
     /// Held here so Restore Defaults can drop a half-typed keyword before the field commits it.

@@ -1,8 +1,8 @@
 import Foundation
 import JoinCore
 
-/// Where the update check finds the latest release.
-protocol ReleaseFeed: Sendable {
+/// Where the update check finds the latest release. Nonisolated: `FixtureReleaseFeed` is an actor of its own.
+nonisolated protocol ReleaseFeed: Sendable {
     func latestRelease() async throws -> GitHubRelease
 }
 
@@ -40,7 +40,8 @@ enum ReleaseFeedError: Error {
     case status(Int)
 }
 
-extension URLSessionConfiguration {
+/// Nonisolated: the update download (`Download`) makes its session off the main actor.
+nonisolated extension URLSessionConfiguration {
     /// Ephemeral, with no cookies, cache or stored credentials, so every update request stands alone.
     /// A request gives up after 20 s without data, or after `total` seconds in all.
     static func updates(total: TimeInterval) -> URLSessionConfiguration {

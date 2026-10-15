@@ -1,7 +1,8 @@
 #!/bin/sh
-# Builds Join.app from the Swift package. Only the Command Line Tools are required.
+# Builds Join.app from the Swift package, with Xcode or with only the Command Line Tools.
 #   CONFIG=debug scripts/build-app.sh          # debug build
 #   ARCHS="arm64 x86_64" scripts/build-app.sh  # universal build, as releases are
+#   SDKROOT=/path/to/MacOSX.sdk scripts/build-app.sh  # another SDK (see scripts/select-sdk.sh)
 set -eu
 cd "$(dirname "$0")/.."
 
@@ -9,13 +10,19 @@ CONFIG="${CONFIG:-release}"
 ARCHS="${ARCHS:-$(uname -m)}"
 APP="build/Join.app"
 
-# One build per architecture, joined into a single binary. The architectures share one cached
-# build manifest, and SwiftPM 5.10 fails a rebuild that reuses another architecture's, so it's
-# planned afresh each time.
+. scripts/select-sdk.sh
+
+# One build per architecture, joined into a single binary. Each binary is copied out as soon as it's built:
+# Swift Build (SwiftPM's build system from 6.4) puts every architecture's at the same path. The native build
+# system (the default before 6.4, as in CI) once failed a rebuild that reused another architecture's cached
+# build manifest, so the build is planned afresh each time.
+STAGE="$(mktemp -d)"
+trap 'rm -rf "$STAGE"' EXIT
 set --
 for ARCH in $ARCHS; do
     swift build -c "$CONFIG" --product Join --arch "$ARCH" --disable-build-manifest-caching
-    set -- "$@" "$(swift build -c "$CONFIG" --product Join --arch "$ARCH" --show-bin-path)/Join"
+    cp "$(swift build -c "$CONFIG" --product Join --arch "$ARCH" --show-bin-path)/Join" "$STAGE/Join-$ARCH"
+    set -- "$@" "$STAGE/Join-$ARCH"
 done
 
 rm -rf "$APP"

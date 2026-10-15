@@ -2,7 +2,6 @@ import AppKit
 import SwiftUI
 import JoinCore
 
-@MainActor
 struct AlertRootView: View {
     let session: AlertSession
 
@@ -15,7 +14,6 @@ struct AlertRootView: View {
 }
 
 /// The desktop blurred through the system material, then the tint and the scrim.
-@MainActor
 struct AlertBackdrop: View {
     let appearance: AlertAppearance
 
@@ -62,7 +60,6 @@ struct AlertTintAndScrim: View {
     }
 }
 
-@MainActor
 struct AlertContentView: View {
     let session: AlertSession
     /// A fixed clock, for the Settings preview. nil ticks every second.
@@ -190,7 +187,6 @@ struct AlertContentView: View {
     }
 }
 
-@MainActor
 private struct AlertMeetingHeader: View {
     let meeting: Meeting
     let now: Date

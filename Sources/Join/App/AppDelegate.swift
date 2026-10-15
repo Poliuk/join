@@ -1,7 +1,6 @@
 import AppKit
 import JoinCore
 
-@MainActor
 final class AppDelegate: NSObject, NSApplicationDelegate {
     let model = AppModel()
     private var statusItem: StatusItemController?

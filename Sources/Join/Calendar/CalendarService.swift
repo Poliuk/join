@@ -17,7 +17,6 @@ struct CalendarInfo: Identifiable, Hashable {
 }
 
 /// The calendar backend. EventKit today; a direct Google Calendar implementation could slot in later.
-@MainActor
 protocol CalendarService: AnyObject {
     var authorization: CalendarAuthorization { get }
     var onChange: (@MainActor () -> Void)? { get set }

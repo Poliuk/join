@@ -1,9 +1,12 @@
 APP = build/Join.app
+# Picks the macOS SDK for SwiftPM (scripts/select-sdk.sh): SDKROOT when set, else one that builds with
+# the developer tools in use.
+SELECT_SDK = . scripts/select-sdk.sh &&
 
 .PHONY: build app icon release run test clean
 
 build:
-	swift build -c release --product Join
+	$(SELECT_SDK) swift build -c release --product Join
 
 app:
 	scripts/build-app.sh
@@ -19,7 +22,7 @@ run: app
 	open $(APP)
 
 test:
-	swift test
+	$(SELECT_SDK) swift test
 
 clean:
 	rm -rf .build build

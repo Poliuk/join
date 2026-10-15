@@ -5,7 +5,6 @@ import JoinCore
 /// The drop-down panel: a header with today's date and two menus, then a scrolling body with one hero
 /// card, the Today | 7 Days switch and the list. Its natural height is reported to the window, which
 /// fits it up to a cap.
-@MainActor
 struct MenuBarPanelView: View {
     static let fadeHeight: CGFloat = 32
     /// How faint the last visible row gets while there is more to scroll to.
@@ -159,7 +158,6 @@ struct MenuBarPanelView: View {
 /// The frost between the glass and the content: it pins what's behind the text to a known surface while
 /// some of the glass's color and depth still shows through. Opaque with Reduce Transparency, thicker
 /// with Increase Contrast, lighter over the pre-Liquid Glass menu blur.
-@MainActor
 private struct PanelFrost: View {
     @Environment(AppModel.self) private var model
     @Environment(\.colorSchemeContrast) private var contrast
@@ -206,7 +204,6 @@ private struct ScrollOffsetKey: PreferenceKey {
 
 // MARK: Header
 
-@MainActor
 private struct PanelHeader: View {
     let context: MenuBarPanelContext
     @Environment(AppModel.self) private var model
@@ -245,7 +242,6 @@ private struct PanelHeader: View {
 }
 
 /// "Fixture" next to the date when the app runs on fixture calendars, so it can't be taken for the real thing.
-@MainActor
 private struct FixtureBadge: View {
     var body: some View {
         Text("Fixture")
@@ -261,7 +257,6 @@ private struct FixtureBadge: View {
 }
 
 /// A 28 pt icon button that opens an AppKit menu below itself, or acts directly.
-@MainActor
 private struct HeaderButton: View {
     enum Kind {
         case menu((NSView) -> Void)
@@ -328,7 +323,6 @@ private struct HeaderButton: View {
 
 /// Holds the AppKit view behind a SwiftUI button, so a menu can be positioned against it: the header's
 /// buttons, and a repeating event's Dismiss and Restore.
-@MainActor
 final class ViewAnchor {
     weak var view: NSView?
 }
@@ -349,7 +343,6 @@ struct AnchorView: NSViewRepresentable {
 
 // MARK: Paused bar
 
-@MainActor
 private struct PausedBar: View {
     let message: String
     let resume: () -> Void
@@ -395,7 +388,6 @@ private struct PausedBar: View {
 /// "Join! 1.1.0 is available" with Install, then the download's progress, then "Install 1.1.0" with
 /// Install and Relaunch until the user clicks it; Download Page after a failed install or Show in Finder
 /// once the new copy waits in a folder. Laid out like the paused bar.
-@MainActor
 private struct UpdateBar: View {
     let message: String
     let buttonTitle: String?
@@ -448,7 +440,6 @@ private struct UpdateBar: View {
 
 // MARK: Calendar permission
 
-@MainActor
 private struct PermissionPrompt: View {
     @Environment(AppModel.self) private var model
     let authorization: CalendarAuthorization

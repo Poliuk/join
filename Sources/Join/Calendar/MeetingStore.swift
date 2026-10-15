@@ -6,7 +6,6 @@ import JoinCore
 private let logger = Logger(subsystem: "com.poliuk.join", category: "calendar")
 
 /// Single source of truth for the meetings the rest of the app sees.
-@MainActor
 @Observable
 final class MeetingStore {
     static let lookBehind: TimeInterval = 60 * 60

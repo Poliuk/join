@@ -4,12 +4,14 @@ import OSLog
 import Security
 import JoinCore
 
-private let logger = Logger(subsystem: "com.poliuk.join", category: "updates")
+/// Nonisolated: a `Logger` is `Sendable`, and the download and install steps log off the main actor.
+nonisolated private let logger = Logger(subsystem: "com.poliuk.join", category: "updates")
 
 /// The two steps of installing an update, so that nothing quits before the user says so: `prepare` when
 /// the user clicks Install, `install` when they click Install and Relaunch. `UpdateInstaller` does the real
 /// work; `FixtureUpdateInstaller` stands in for it in a fixture run with JOIN_FIXTURE_UPDATE=ready.
-protocol UpdateInstalling: Sendable {
+/// Nonisolated, so an installer can do its work off the main actor; `UpdateChecker` calls it from there.
+nonisolated protocol UpdateInstalling: Sendable {
     /// Downloads and verifies the update; `report` gets the download's progress, then `.verifying`. The new
     /// copy then waits, ready for `install`. A failure leaves nothing behind.
     func prepare(report: @escaping @Sendable (UpdateInstallState) -> Void) async throws
@@ -41,7 +43,7 @@ struct ReadyCopyDamaged: Error {
 /// read-only, or the swap fails), the new copy goes to a folder of its own in `revealFolder` for the user to
 /// drag to Applications. Both steps run off the main actor. The working folder is removed when a step fails,
 /// when `install` ends and by `discard`, and one a crash left behind by `removeLeftovers` at a later launch.
-struct UpdateInstaller: UpdateInstalling {
+nonisolated struct UpdateInstaller: UpdateInstalling {
     enum Outcome: Equatable, Sendable {
         /// The new copy is in place, and a helper opens it once this process has quit.
         case relaunching
@@ -88,6 +90,8 @@ struct UpdateInstaller: UpdateInstalling {
     /// The new copy, once unzipped.
     private var app: URL { work.appendingPathComponent("Unzipped/Join.app", isDirectory: true) }
 
+    /// `@concurrent`: hashing the archive and checking the signature take long enough to stall the UI.
+    @concurrent
     func prepare(report: @escaping @Sendable (UpdateInstallState) -> Void) async throws {
         do {
             try await Download.run(from: update.downloadURL, to: archive, userAgent: userAgent) { report(.downloading($0)) }
@@ -117,6 +121,8 @@ struct UpdateInstaller: UpdateInstalling {
         return values?.isRegularFile == true
     }
 
+    /// `@concurrent`, like `prepare`: it checks the copy again before swapping it in.
+    @concurrent
     func install() async throws -> Outcome {
         defer { discard() }
         // The copy may have waited for days in a folder this user can write to: it must still pass. One that
@@ -414,8 +420,9 @@ struct FixtureUpdateInstaller: UpdateInstalling {
 /// One URLSession data task streamed into `destination`, so nothing lands outside the working folder. The
 /// answer must be a 200 (after any redirects); progress is reported as it passes each whole percent; and the
 /// download stops as soon as it's known to be more than `UpdateCheck.maximumDownloadSize`. Its state is
-/// only touched on the session's serial delegate queue.
-private final class Download: NSObject, URLSessionDataDelegate, @unchecked Sendable {
+/// only touched on the session's serial delegate queue, which is why it's nonisolated and can be
+/// `@unchecked Sendable`.
+nonisolated private final class Download: NSObject, URLSessionDataDelegate, @unchecked Sendable {
     /// Gives up after this long in all, or after 20 s without data.
     static let timeout: TimeInterval = 10 * 60
 
