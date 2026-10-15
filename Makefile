@@ -21,8 +21,12 @@ release:
 run: app
 	open $(APP)
 
+# Swift Build in Swift 6.4 sometimes leaves Swift Testing's macro plugin off a test file's compile command
+# ("plugin for module 'TestingMacros' not found"), so name the toolchain's folder for it when it has one.
+TESTING_PLUGINS = "$$(dirname "$$(xcrun -f swift)")/../lib/swift/host/plugins/testing"
+
 test:
-	$(SELECT_SDK) swift test
+	$(SELECT_SDK) plugins=$(TESTING_PLUGINS) && if [ -d "$$plugins" ]; then swift test -Xswiftc -plugin-path -Xswiftc "$$plugins"; else swift test; fi
 
 clean:
 	rm -rf .build build

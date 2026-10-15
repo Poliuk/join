@@ -135,6 +135,13 @@ SDKROOT=/Library/Developer/CommandLineTools/SDKs/MacOSX26.5.sdk swift build
 
 `SDKROOT`, when set, always wins.
 
+With the Command Line Tools' Swift 6.4, a clean `swift test` sometimes fails with "plugin for module 'TestingMacros' not found", in test files that change from run to run: Swift Build leaves Swift Testing's macro plugin off some of their compile commands. `make test` works around it; plain `swift test` needs the plugin's folder named:
+
+```sh
+SDKROOT=/Library/Developer/CommandLineTools/SDKs/MacOSX26.5.sdk swift test \
+    -Xswiftc -plugin-path -Xswiftc /Library/Developer/CommandLineTools/usr/lib/swift/host/plugins/testing
+```
+
 The package has two targets:
 
 - `JoinCore` — pure logic with no UI, EventKit or network dependency: scheduling, link detection, time formatting, preferences, which events show and alert, what the menu bar item and panel say, the full-screen alert's countdown, colors and contrast, and which GitHub release counts as an update. This is what the tests cover. It's nonisolated, so callers decide where its code runs; only `Preferences`, which the app's views observe, is on the main actor.
