@@ -156,12 +156,33 @@ public struct PanelRow: Equatable, Identifiable, Sendable {
         case dismissed(String)
     }
 
-    /// What a row offers besides its action: Dismiss, or Restore once dismissed.
+    /// What a row offers besides its action: Dismiss, or Restore once dismissed. `asksScope` when its button
+    /// opens This Event / All Future Events instead of acting at once: Dismiss on a repeating event; Restore only
+    /// on one dismissed with its series (Dismiss All Future Events). A repeating event dismissed on its own
+    /// restores at once, that occurrence only, even when others of its series are dismissed (the user's ask,
+    /// 2026-10-15). Kept in the case, so a row with nothing to dismiss has no choice to ask about. The card's
+    /// Dismiss is a `dismissable(for:)` too, so the views never decide for themselves whether a button asks.
     public enum Dismissal: Equatable, Sendable {
         /// A meeting that may alert: Dismiss takes it off the alert, the menu bar item and the card.
-        case dismissable
+        case dismissable(asksScope: Bool)
         /// A dismissed meeting, listed until it ends: Restore brings it back everywhere.
-        case dismissed
+        case dismissed(asksScope: Bool)
+
+        /// Dismiss for `meeting`: asks This Event or All Future Events when it repeats.
+        public static func dismissable(for meeting: Meeting) -> Dismissal {
+            .dismissable(asksScope: meeting.isRepeating)
+        }
+
+        public var isDismissed: Bool {
+            if case .dismissed = self { return true }
+            return false
+        }
+
+        public var asksScope: Bool {
+            switch self {
+            case .dismissable(let asks), .dismissed(let asks): return asks
+            }
+        }
     }
 
     public var meeting: Meeting
@@ -198,22 +219,68 @@ public struct PanelRow: Equatable, Identifiable, Sendable {
 }
 
 /// The words for dismissing an event from the menu bar panel, with the card's or a row's Dismiss button,
-/// for a dismissed row, and for bringing it back.
+/// for a dismissed row, and for bringing it back. When a button asks (`PanelRow.Dismissal.asksScope`), it
+/// opens a menu whose choices are worded the way macOS Calendar asks about a repeating event: This Event or
+/// All Future Events. The help tags and labels take that same `asksScope`, so they say a menu opens exactly
+/// when one does.
 public enum DismissCopy {
-    /// The card's Dismiss button, the rows' accessibility action, and the first word of the Dismiss buttons'
-    /// VoiceOver labels.
+    /// The card's Dismiss button, a row's accessibility action when Dismiss doesn't ask, and the first word of
+    /// the Dismiss buttons' VoiceOver labels.
     public static let dismissTitle = "Dismiss"
-    /// A dismissed row's accessibility action, and the first word of its Restore button's label.
+    /// A dismissed row's accessibility action when Restore doesn't ask, and the first word of its Restore
+    /// button's label.
     public static let restoreTitle = "Restore"
     /// A dismissed row's detail line, after its crossed-out bell.
     public static let dismissedTitle = "Dismissed"
 
-    /// The help tag on a row's Dismiss button.
-    public static let rowDismissHelp = "Dismiss: no full-screen alert, and it leaves the menu bar and the top card. It stays in this list until it ends."
-    /// The help tag on the card's Dismiss button.
-    public static let cardDismissHelp = "Dismiss: no full-screen alert, and it leaves the menu bar and this card. It stays in the list until it ends."
-    /// The help tag on a dismissed row's Restore button.
-    public static let restoreHelp = "Restore: its full-screen alert and the menu bar come back."
+    /// The base of a row's Dismiss help tag; `rowDismissHelp(asksScope:)` adds `repeatingHelp` when it asks.
+    static let rowDismissHelp = "Dismiss: no full-screen alert, and it leaves the menu bar and the top card. It stays in this list until it ends."
+    /// The base of the card's Dismiss help tag; `cardDismissHelp(asksScope:)` adds `repeatingHelp` when it asks.
+    static let cardDismissHelp = "Dismiss: no full-screen alert, and it leaves the menu bar and this card. It stays in the list until it ends."
+    /// The base of a dismissed row's Restore help tag; `restoreHelp(asksScope:)` adds `repeatingHelp` when it asks.
+    static let restoreHelp = "Restore: its full-screen alert and the menu bar come back."
+    /// What the help tags add when the button opens a This Event / All Future Events menu (`Dismissal.asksScope`).
+    static let repeatingHelp = "It repeats: the menu offers this event or all future events."
+
+    /// The help tag on a row's Dismiss button: with the menu's note when it asks (`Dismissal.asksScope`, a
+    /// repeating event).
+    public static func rowDismissHelp(asksScope: Bool) -> String {
+        help(rowDismissHelp, asksScope: asksScope)
+    }
+
+    /// The help tag on the card's Dismiss button: with the menu's note when it asks (`Dismissal.asksScope`, a
+    /// repeating event).
+    public static func cardDismissHelp(asksScope: Bool) -> String {
+        help(cardDismissHelp, asksScope: asksScope)
+    }
+
+    /// The help tag on a dismissed row's Restore button: with the menu's note when it asks (`Dismissal.asksScope`,
+    /// an occurrence dismissed with its series), without it for one dismissed on its own.
+    public static func restoreHelp(asksScope: Bool) -> String {
+        help(restoreHelp, asksScope: asksScope)
+    }
+
+    private static func help(_ text: String, asksScope: Bool) -> String {
+        asksScope ? "\(text) \(repeatingHelp)" : text
+    }
+
+    /// The Dismiss menu items of a repeating event, and its card's and row's accessibility actions:
+    /// "Dismiss This Event", "Dismiss All Future Events".
+    public static func dismissChoice(_ scope: DismissScope) -> String {
+        switch scope {
+        case .thisEvent: return "\(dismissTitle) This Event"
+        case .allFutureEvents: return "\(dismissTitle) All Future Events"
+        }
+    }
+
+    /// The Restore menu items of an occurrence dismissed with its series, and its row's accessibility actions:
+    /// "Restore This Event", "Restore All Future Events".
+    public static func restoreChoice(_ scope: DismissScope) -> String {
+        switch scope {
+        case .thisEvent: return "\(restoreTitle) This Event"
+        case .allFutureEvents: return "\(restoreTitle) All Future Events"
+        }
+    }
 
     /// "Dismissed" for a meeting yet to start, "Dismissed · 34 min left" for one in progress, `left` being
     /// the time left as a running row's progress line words it.
@@ -222,14 +289,20 @@ public enum DismissCopy {
         return "\(dismissedTitle) · \(left)"
     }
 
-    /// "Dismiss Workshop", for the card's and a row's Dismiss buttons.
-    public static func dismissAccessibilityLabel(for meeting: Meeting) -> String {
-        "\(dismissTitle) \(meeting.title)"
+    /// "Dismiss Workshop", for the card's and a row's Dismiss buttons; "Dismiss Workshop, opens a menu" when it
+    /// asks (`Dismissal.asksScope`, a repeating event).
+    public static func dismissAccessibilityLabel(for meeting: Meeting, asksScope: Bool) -> String {
+        accessibilityLabel("\(dismissTitle) \(meeting.title)", asksScope: asksScope)
     }
 
-    /// "Restore Workshop", for a dismissed row's Restore button.
-    public static func restoreAccessibilityLabel(for meeting: Meeting) -> String {
-        "\(restoreTitle) \(meeting.title)"
+    /// "Restore Workshop", for a dismissed row's Restore button; "Restore Workshop, opens a menu" when it asks
+    /// (`Dismissal.asksScope`, an occurrence dismissed with its series).
+    public static func restoreAccessibilityLabel(for meeting: Meeting, asksScope: Bool) -> String {
+        accessibilityLabel("\(restoreTitle) \(meeting.title)", asksScope: asksScope)
+    }
+
+    private static func accessibilityLabel(_ label: String, asksScope: Bool) -> String {
+        asksScope ? "\(label), opens a menu" : label
     }
 }
 
@@ -241,15 +314,19 @@ public enum PanelPresenter {
     ///   - alertable: the meetings that may alert (`MeetingFilter.alertable`); only these drive the hero
     ///     card, picked the way the menu bar picks (`MenuBarPresenter.focus`), and only their rows offer
     ///     Dismiss.
-    ///   - dismissed: the Show and alert meetings the user dismissed (`MeetingFilter.dismissedIDs`). They
-    ///     never take the card (any left in `alertable` are dropped), clash with nothing, and are listed
-    ///     until they end, marked dismissed, with Restore.
+    ///   - dismissed: the Show and alert meetings the user dismissed, on their own or with their series
+    ///     (`MeetingFilter.dismissedIDs`). They never take the card (any left in `alertable` are dropped),
+    ///     clash with nothing, and are listed until they end, marked dismissed, with Restore. A repeating
+    ///     event's next occurrence is its own row: it takes the card unless it's dismissed too.
+    ///   - dismissedBySeries: among `dismissed`, those dismissed with their series
+    ///     (`MeetingFilter.dismissedBySeriesIDs`), whose Restore asks This Event or All Future Events.
     ///   - startingSoonWindow: how soon before its start the next meeting gets the starting-soon card,
     ///     the same window as the menu bar pill.
     public static func content(
         meetings: [Meeting],
         alertable: [Meeting],
         dismissed: Set<String> = [],
+        dismissedBySeries: Set<String> = [],
         now: Date,
         startingSoonWindow: TimeInterval = MenuBarPresenter.startingSoonWindow,
         calendar: Calendar = .current,
@@ -260,6 +337,7 @@ public enum PanelPresenter {
             meetings: meetings,
             alertableIDs: Set(alertable.map(\.id)),
             dismissed: dismissed,
+            dismissedBySeries: dismissedBySeries,
             now: now,
             calendar: calendar,
             locale: locale
@@ -352,16 +430,26 @@ public enum PanelPresenter {
         let clashing: [Meeting]
         let alertableIDs: Set<String>
         let dismissed: Set<String>
+        let dismissedBySeries: Set<String>
         let now: Date
         let calendar: Calendar
         let locale: Locale
         let timeFormatter: DateFormatter
 
-        init(meetings: [Meeting], alertableIDs: Set<String>, dismissed: Set<String>, now: Date, calendar: Calendar, locale: Locale) {
+        init(
+            meetings: [Meeting],
+            alertableIDs: Set<String>,
+            dismissed: Set<String>,
+            dismissedBySeries: Set<String>,
+            now: Date,
+            calendar: Calendar,
+            locale: Locale
+        ) {
             self.sorted = PanelPresenter.sortedMeetings(meetings)
             self.clashing = sorted.filter { !dismissed.contains($0.id) }
             self.alertableIDs = alertableIDs
             self.dismissed = dismissed
+            self.dismissedBySeries = dismissedBySeries
             self.now = now
             self.calendar = calendar
             self.locale = locale
@@ -401,10 +489,10 @@ public enum PanelPresenter {
             // (and restored) from its row like any meeting, while staying muted.
             let isDismissed = dismissed.contains(meeting.id)
             if isDismissed {
-                row.dismissal = .dismissed
+                row.dismissal = .dismissed(asksScope: dismissedBySeries.contains(meeting.id))
                 row.detail = .dismissed(DismissCopy.dismissedDetail(left: meeting.isOngoing(at: now) ? timeLeft(meeting) : nil))
             } else if alertableIDs.contains(meeting.id) {
-                row.dismissal = .dismissable
+                row.dismissal = .dismissable(for: meeting)
             }
             guard !meeting.isOutOfOffice else { return row }
             // Joining a dismissed meeting is still allowed; its detail stays "Dismissed".

@@ -42,13 +42,34 @@ final class SettingsWindowController: NSObject, NSWindowDelegate {
     private var tabs: SettingsTabViewController?
 
     /// `pane` nil keeps whichever pane was showing last.
+    ///
+    /// Puts the window in front of every app's windows, new or already open behind them, then asks for
+    /// Join! to become the active app so the window gets the keyboard.
+    ///
+    /// Since macOS 14 activation is cooperative: `NSApp.activate()` is a request the system may turn
+    /// down, and `activate(ignoringOtherApps:)` is deprecated, its flag ignored. Join! is seldom the
+    /// active app when Settings opens, since its panel takes the keyboard without activating it. This
+    /// used to ask for activation first, while Join! had no window on screen (the panel had just closed),
+    /// then call `makeKeyAndOrderFront` alone. When the request was turned down, that left Settings
+    /// behind the app in use: from an app that isn't active, it puts the window in front of the app's own
+    /// windows only, below the active app's.
+    ///
+    /// Now `orderFrontRegardless` puts the window in front of every app's windows whatever becomes of
+    /// the request, and the request waits for the next turn of the main queue. By then the window is on
+    /// screen (the window server doesn't list a window ordered in until the current turn ends, and it
+    /// may turn down a request from an app with no window on screen), and a menu that chose Settings
+    /// has finished closing. After a click or a key in Join! (the gear menu, ⌘, in the panel) or a
+    /// reopen from Finder, the system grants it and the window is key. When it doesn't (a script hook
+    /// while the user is in another app), Settings still shows in front, and the first click on it
+    /// activates Join!.
     func show(model: AppModel, pane: SettingsPane? = nil) {
         let isNew = window == nil
         if isNew { makeWindow(model: model) }
         guard let window, let tabs else { return }
         if let pane { tabs.select(pane) }
-        NSApp.activate()
         window.makeKeyAndOrderFront(nil)
+        window.orderFrontRegardless()
+        DispatchQueue.main.async { NSApp.activate() }
         // Otherwise AppKit focuses the first text field, e.g. the custom minutes, on opening.
         if isNew { window.makeFirstResponder(nil) }
     }

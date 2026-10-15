@@ -8,6 +8,15 @@ final class MenuBarPanelContext {
     var naturalHeightChanged: (CGFloat) -> Void = { _ in }
     var showPauseMenu: (NSView) -> Void = { _ in }
     var showAppMenu: (NSView) -> Void = { _ in }
+    /// A menu of choices below a button in the panel's content, like a repeating event's Dismiss: shown
+    /// the way the header's menus are, so the panel stays open while it's up.
+    var showMenu: ([PanelMenuItem], NSView) -> Void = { _, _ in }
+}
+
+/// One choice in a menu the panel's content opens (`MenuBarPanelContext.showMenu`).
+struct PanelMenuItem {
+    let title: String
+    let action: () -> Void
 }
 
 /// The menu bar item and the panel that drops down from it.
@@ -54,6 +63,7 @@ final class StatusItemController: NSObject, NSWindowDelegate {
         context.naturalHeightChanged = { [weak self] height in self?.naturalHeightDidChange(height) }
         context.showPauseMenu = { [weak self] anchor in self?.popUp(self?.makePauseMenu(), below: anchor) }
         context.showAppMenu = { [weak self] anchor in self?.popUp(self?.makeAppMenu(), below: anchor) }
+        context.showMenu = { [weak self] items, anchor in self?.popUp(self?.makeMenu(items), below: anchor) }
 
         observeChanges(of: { [model] in
             _ = model.menuBarStatus
@@ -283,7 +293,7 @@ final class StatusItemController: NSObject, NSWindowDelegate {
         }
     }
 
-    // MARK: Header menus
+    // MARK: Menus
 
     private func makePauseMenu() -> NSMenu {
         let menu = NSMenu()
@@ -304,7 +314,16 @@ final class StatusItemController: NSObject, NSWindowDelegate {
         return menu
     }
 
-    /// Opens `menu` just below `anchor`, right edges aligned, like the design's header menus.
+    private func makeMenu(_ items: [PanelMenuItem]) -> NSMenu {
+        let menu = NSMenu()
+        for item in items {
+            menu.addItem(ClosureMenuItem(title: item.title, handler: item.action))
+        }
+        return menu
+    }
+
+    /// Opens `menu` just below `anchor`, right edges aligned, like the design's header menus. While it's
+    /// up, the panel doesn't close for losing the keyboard to it (`isTrackingMenu`).
     private func popUp(_ menu: NSMenu?, below anchor: NSView) {
         guard let menu, isOpen else { return }
         menu.minimumWidth = 220

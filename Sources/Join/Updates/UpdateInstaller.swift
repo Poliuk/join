@@ -6,12 +6,42 @@ import JoinCore
 
 private let logger = Logger(subsystem: "com.poliuk.join", category: "updates")
 
-/// Installs an update: downloads Join.zip, checks it against the release's digest, unzips it with ditto,
-/// checks the app inside (bundle identifier, version, minimum macOS, processor, code signature), then swaps
+/// The two steps of installing an update, so that nothing quits before the user says so: `prepare` when
+/// the user clicks Install, `install` when they click Install and Relaunch. `UpdateInstaller` does the real
+/// work; `FixtureUpdateInstaller` stands in for it in a fixture run with JOIN_FIXTURE_UPDATE=ready.
+protocol UpdateInstalling: Sendable {
+    /// Downloads and verifies the update; `report` gets the download's progress, then `.verifying`. The new
+    /// copy then waits, ready for `install`. A failure leaves nothing behind.
+    func prepare(report: @escaping @Sendable (UpdateInstallState) -> Void) async throws
+    /// Whether the copy `prepare` left is still there, with its files.
+    var hasReadyCopy: Bool { get }
+    /// Puts the ready copy in place and starts the helper that opens it once Join! has quit, or reveals it
+    /// when it can't replace the running one. Throws `ReadyCopyDamaged` when the copy no longer passes the
+    /// checks before anything is replaced. Whatever happens, nothing of the download is left but a revealed
+    /// copy.
+    func install() async throws -> UpdateInstaller.Outcome
+    /// Removes the download, ready or still under way: an update that's no longer on offer, or Join!
+    /// quitting without Install and Relaunch.
+    func discard()
+}
+
+/// `install()` found the ready copy no longer passes the checks, before replacing anything: damaged while it
+/// waited (some of its files deleted, say). Nothing was touched and the copy is gone, so the update goes back
+/// to Install, which downloads it again, rather than failing.
+struct ReadyCopyDamaged: Error {
+    /// What the check found.
+    let reason: any Error
+}
+
+/// Installs an update in the two steps of `UpdateInstalling`, in a working folder made when it's created.
+/// `prepare` downloads Join.zip, checks it against the release's digest, unzips it with ditto and checks the
+/// app inside (bundle identifier, version, minimum macOS, processor, code signature); the new copy then
+/// waits in the working folder. `install` checks that copy again, since it may have waited for hours, swaps
 /// it in for the running copy and relaunches. When the running copy can't be swapped (translocated,
 /// read-only, or the swap fails), the new copy goes to a folder of its own in `revealFolder` for the user to
-/// drag to Applications. It all runs off the main actor, in a working folder that is removed at the end.
-struct UpdateInstaller: Sendable {
+/// drag to Applications. Both steps run off the main actor. The working folder is removed when a step fails,
+/// when `install` ends and by `discard`, and one a crash left behind by `removeLeftovers` at a later launch.
+struct UpdateInstaller: UpdateInstalling {
     enum Outcome: Equatable, Sendable {
         /// The new copy is in place, and a helper opens it once this process has quit.
         case relaunching
@@ -25,37 +55,77 @@ struct UpdateInstaller: Sendable {
 
     let update: AvailableUpdate
     /// The running app, which the new copy replaces.
-    var target = Bundle.main.bundleURL
+    let target: URL
     /// The bundle identifier the new copy must have: the running app's.
-    var bundleIdentifier = Bundle.main.bundleIdentifier
+    let bundleIdentifier: String?
     /// Where a copy that can't replace the running one goes: ~/Downloads, or a temporary folder in fixture runs.
     let revealFolder: URL
     /// `open --env` variables for the relaunched copy, so a fixture run comes back as one.
-    var relaunchEnvironment: [String: String] = [:]
+    let relaunchEnvironment: [String: String]
     let userAgent: String
+    /// The working folder, where the download and the ready copy live (`workFolder(for:)`).
+    let work: URL
 
-    /// `report` gets the download's progress, then `.installing` once it's downloaded.
-    func run(report: @escaping @Sendable (UpdateInstallState) -> Void) async throws -> Outcome {
-        let fileManager = FileManager.default
-        let work = try Self.workFolder(for: target)
-        let archive = work.appendingPathComponent(UpdateCheck.assetName)
-        // The archive on its own first: removing the folder stops at anything of an old copy that can't be
-        // deleted (see replaceTarget).
-        defer {
-            try? fileManager.removeItem(at: archive)
-            try? fileManager.removeItem(at: work)
+    /// Makes the working folder; fails with `save` when it can't.
+    init(
+        update: AvailableUpdate,
+        revealFolder: URL,
+        relaunchEnvironment: [String: String] = [:],
+        userAgent: String,
+        target: URL = Bundle.main.bundleURL,
+        bundleIdentifier: String? = Bundle.main.bundleIdentifier
+    ) throws {
+        self.update = update
+        self.revealFolder = revealFolder
+        self.relaunchEnvironment = relaunchEnvironment
+        self.userAgent = userAgent
+        self.target = target
+        self.bundleIdentifier = bundleIdentifier
+        work = try Self.workFolder(for: target)
+    }
+
+    private var archive: URL { work.appendingPathComponent(UpdateCheck.assetName) }
+    /// The new copy, once unzipped.
+    private var app: URL { work.appendingPathComponent("Unzipped/Join.app", isDirectory: true) }
+
+    func prepare(report: @escaping @Sendable (UpdateInstallState) -> Void) async throws {
+        do {
+            try await Download.run(from: update.downloadURL, to: archive, userAgent: userAgent) { report(.downloading($0)) }
+            report(.verifying)
+            if let expected = update.sha256 {
+                guard (try? Self.sha256(of: archive)) == expected else { throw UpdateFailure.checksum }
+            }
+            try await Self.unzip(archive, into: app.deletingLastPathComponent())
+            try verify(app)
+        } catch {
+            discard()
+            throw error
         }
+        // Only the app waits for Install and Relaunch.
+        try? FileManager.default.removeItem(at: archive)
+    }
 
-        try await Download.run(from: update.downloadURL, to: archive, userAgent: userAgent) { report(.downloading($0)) }
-        report(.installing)
-        if let expected = update.sha256 {
-            guard (try? Self.sha256(of: archive)) == expected else { throw UpdateFailure.checksum }
+    /// The app's Info.plist and the executable it names are still files, not only the folders: files can be
+    /// deleted from a copy that waited while its folders stay.
+    var hasReadyCopy: Bool {
+        let contents = app.appendingPathComponent("Contents", isDirectory: true)
+        guard let data = try? Data(contentsOf: contents.appendingPathComponent("Info.plist")),
+              let info = (try? PropertyListSerialization.propertyList(from: data, format: nil)) as? [String: Any],
+              let executable = info["CFBundleExecutable"] as? String, !executable.isEmpty, !executable.contains("/")
+        else { return false }
+        let values = try? contents.appendingPathComponent("MacOS/\(executable)").resourceValues(forKeys: [.isRegularFileKey])
+        return values?.isRegularFile == true
+    }
+
+    func install() async throws -> Outcome {
+        defer { discard() }
+        // The copy may have waited for days in a folder this user can write to: it must still pass. One that
+        // doesn't was damaged while it waited, and nothing has been replaced yet.
+        do {
+            try verify(app)
+        } catch {
+            throw ReadyCopyDamaged(reason: error)
         }
-        let unzipped = work.appendingPathComponent("Unzipped", isDirectory: true)
-        try await Self.unzip(archive, into: unzipped)
-        let app = unzipped.appendingPathComponent("Join.app", isDirectory: true)
-        try verify(app)
-
         if let installed = replaceTarget(with: app) {
             try Self.relaunch(installed, environment: relaunchEnvironment)
             return .relaunching
@@ -66,12 +136,45 @@ struct UpdateInstaller: Sendable {
         return .revealed(try reveal(app))
     }
 
+    /// The archive on its own first: removing the folder stops at anything of an old copy that can't be
+    /// deleted (see replaceTarget).
+    func discard() {
+        let fileManager = FileManager.default
+        try? fileManager.removeItem(at: archive)
+        try? fileManager.removeItem(at: work)
+    }
+
     // MARK: Working folder
 
-    /// An item-replacement folder on the running app's volume, so the swap is a rename; a temporary folder
-    /// when there's none (a read-only volume, a translocated app).
+    /// Where working folders go first: ~/Library/Application Support/com.poliuk.join/Updates.noindex. Not the
+    /// temporary folder, where a ready copy would wait for days: macOS deletes the files there that are more
+    /// than three days old, and an unzipped copy's files are as old as the release from the start, since
+    /// ditto keeps the archive's dates. ".noindex" keeps Spotlight from indexing the waiting copy as a second
+    /// Join!.
+    static var updatesFolder: URL? {
+        FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first?
+            .appendingPathComponent(Bundle.main.bundleIdentifier ?? "com.poliuk.join", isDirectory: true)
+            .appendingPathComponent("Updates.noindex", isDirectory: true)
+    }
+
+    /// Working folders in `updatesFolder` are "Update-<process id>-<UUID>", so `removeLeftovers` can tell
+    /// which ones a process still running may be using.
+    private static let workFolderPrefix = "Update-"
+
+    /// A folder of its own in `updatesFolder`, when that's on the running app's volume, so the swap is a
+    /// rename, or when the running app can't be swapped anyway (translocated, say), so the copy will be
+    /// revealed. Otherwise an item-replacement folder on the app's volume, or a temporary folder when there's
+    /// none (a read-only volume).
     private static func workFolder(for target: URL) throws -> URL {
         let fileManager = FileManager.default
+        if let updates = updatesFolder, (try? fileManager.createDirectory(at: updates, withIntermediateDirectories: true)) != nil,
+           !canReplace(target) || isOnSameVolume(updates, target.deletingLastPathComponent()) {
+            let name = "\(workFolderPrefix)\(ProcessInfo.processInfo.processIdentifier)-\(UUID().uuidString)"
+            let folder = updates.appendingPathComponent(name, isDirectory: true)
+            if (try? fileManager.createDirectory(at: folder, withIntermediateDirectories: false)) != nil {
+                return folder
+            }
+        }
         if let folder = try? fileManager.url(for: .itemReplacementDirectory, in: .userDomainMask, appropriateFor: target, create: true) {
             return folder
         }
@@ -82,6 +185,29 @@ struct UpdateInstaller: Sendable {
             throw UpdateFailure.save
         }
         return folder
+    }
+
+    private static func isOnSameVolume(_ first: URL, _ second: URL) -> Bool {
+        guard let one = try? first.resourceValues(forKeys: [.volumeIdentifierKey]).volumeIdentifier,
+              let other = try? second.resourceValues(forKeys: [.volumeIdentifierKey]).volumeIdentifier
+        else { return false }
+        return one.isEqual(other)
+    }
+
+    /// Removes the working folders in `updatesFolder` whose process isn't running any more: a crash or a force
+    /// quit skips the discard at quit, and nothing else cleans that folder. One whose process is running is
+    /// kept, as it may hold a ready copy: this process's own, or another copy's (a fixture run next to the
+    /// real app, say). Run at launch, off the main actor.
+    static func removeLeftovers() {
+        let fileManager = FileManager.default
+        guard let updates = updatesFolder, let names = try? fileManager.contentsOfDirectory(atPath: updates.path) else { return }
+        for name in names where name.hasPrefix(workFolderPrefix) {
+            guard let pid = pid_t(name.dropFirst(workFolderPrefix.count).prefix(while: { $0 != "-" })), pid > 0,
+                  kill(pid, 0) != 0, errno == ESRCH
+            else { continue }
+            logger.notice("Removing a download left by process \(pid, privacy: .public)")
+            try? fileManager.removeItem(at: updates.appendingPathComponent(name, isDirectory: true))
+        }
     }
 
     // MARK: Checks
@@ -224,7 +350,7 @@ struct UpdateInstaller: Sendable {
     /// copy with the same identifier may be running, on a developer's Mac). It gets a session of its own,
     /// so it outlives the app instead of going down with its process group, and no open files but
     /// /dev/null.
-    private static func relaunch(_ app: URL, environment: [String: String]) throws {
+    static func relaunch(_ app: URL, environment: [String: String]) throws {
         let script = #"while /bin/kill -0 "$1" 2>/dev/null; do /bin/sleep 0.2; done; shift; exec /usr/bin/open -n "$@""#
         var arguments = ["/bin/sh", "-c", script, "sh", String(ProcessInfo.processInfo.processIdentifier)]
         for (key, value) in environment.sorted(by: { $0.key < $1.key }) {
@@ -253,6 +379,36 @@ struct UpdateInstaller: Sendable {
             throw UpdateFailure.relaunch
         }
     }
+}
+
+/// Install in a fixture run with JOIN_FIXTURE_UPDATE=ready, so the ready state can be seen without the
+/// network: a pretend download of about three seconds and a pretend check, then a ready copy that isn't
+/// there. Install and Relaunch relaunches the fixture as it is, through the same helper as a real install,
+/// and replaces nothing. Nothing touches the network or the disk.
+struct FixtureUpdateInstaller: UpdateInstalling {
+    /// `open --env` variables for the relaunched copy, so it comes back as the same fixture.
+    let relaunchEnvironment: [String: String]
+
+    func prepare(report: @escaping @Sendable (UpdateInstallState) -> Void) async throws {
+        for step in 0...10 {
+            report(.downloading(Double(step) / 10))
+            try await Task.sleep(for: .milliseconds(250))
+        }
+        report(.verifying)
+        try await Task.sleep(for: .seconds(1))
+    }
+
+    var hasReadyCopy: Bool { true }
+
+    func install() async throws -> UpdateInstaller.Outcome {
+        // A `swift run` build has no bundle to open again.
+        let app = Bundle.main.bundleURL
+        guard app.pathExtension == "app" else { throw UpdateFailure.relaunch }
+        try UpdateInstaller.relaunch(app, environment: relaunchEnvironment)
+        return .relaunching
+    }
+
+    func discard() {}
 }
 
 /// One URLSession data task streamed into `destination`, so nothing lands outside the working folder. The

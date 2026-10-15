@@ -72,6 +72,9 @@ final class EventKitCalendarService: CalendarService {
         else { return nil }
 
         let identifier = event.eventIdentifier ?? event.calendarItemIdentifier
+        // Every occurrence of a repeating event shares its event identifier, so it names the series. An
+        // occurrence edited on its own is detached and may report no rules, but it still belongs to the series.
+        let repeats = event.hasRecurrenceRules || event.isDetached
         return Meeting(
             id: Meeting.occurrenceID(eventIdentifier: identifier, start: start),
             title: event.title?.trimmingCharacters(in: .whitespacesAndNewlines).nilIfEmpty ?? "Untitled event",
@@ -85,7 +88,8 @@ final class EventKitCalendarService: CalendarService {
             notes: event.notes?.nilIfEmpty,
             url: event.url,
             myStatus: myStatus,
-            hasParticipants: hasParticipants(event)
+            hasParticipants: hasParticipants(event),
+            seriesID: repeats ? identifier : nil
         )
     }
 

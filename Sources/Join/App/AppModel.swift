@@ -29,6 +29,12 @@ final class AppModel {
         let defaults = fixture.flatMap { _ in UserDefaults(suiteName: FixtureCalendarService.defaultsSuite) } ?? .standard
         let service: CalendarService = fixture.map { FixtureCalendarService(scenario: $0) } ?? EventKitCalendarService()
         let preferences = Preferences(defaults: defaults)
+        if fixture != nil, preferences.dismissedEvents.withoutSeriesRules != preferences.dismissedEvents {
+            // A fixture's series ids ("workshop", "planning", "rev") are the same every launch, and a rule for all
+            // future events never expires, so it would dismiss every later run's occurrences: each fixture launch
+            // starts without rules, and without the exceptions that only matter inside one.
+            preferences.dismissedEvents = preferences.dismissedEvents.withoutSeriesRules
+        }
         let store = MeetingStore(service: service, preferences: preferences)
         self.isFixture = fixture != nil
         self.preferences = preferences
@@ -104,6 +110,7 @@ final class AppModel {
             meetings: meetingStore.meetings,
             alertable: meetingStore.alertableMeetings,
             dismissed: meetingStore.dismissedMeetingIDs,
+            dismissedBySeries: meetingStore.dismissedBySeriesMeetingIDs,
             now: now,
             startingSoonWindow: preferences.startingSoonPill.window
         )
@@ -135,18 +142,21 @@ final class AppModel {
         }
     }
 
-    /// The card's and a row's Dismiss buttons: no full-screen alert for this occurrence, and the menu
-    /// bar item and the card move on to what comes next. The panel stays open and lists it as dismissed
-    /// until it ends. Only a meeting that may alert can be dismissed; anything else is left alone.
-    func dismiss(_ meeting: Meeting) {
+    /// The card's and a row's Dismiss buttons, or the choice made in a repeating event's Dismiss menu: no
+    /// full-screen alert for this occurrence, and with All Future Events for its series' later ones too
+    /// (`DismissedEvents.dismissing`), and the menu bar item and the card move on to what comes next. The
+    /// panel stays open and lists them as dismissed until they end. Only a meeting that may alert can be
+    /// dismissed; anything else is left alone.
+    func dismiss(_ meeting: Meeting, scope: DismissScope = .thisEvent) {
         guard meetingStore.alertableMeetings.contains(where: { $0.id == meeting.id }) else { return }
-        updateDismissedEvents(preferences.dismissedEvents.dismissing(meeting))
+        updateDismissedEvents(preferences.dismissedEvents.dismissing(meeting, scope: scope))
     }
 
-    /// A dismissed row's Restore: the menu bar item and the card take the meeting back, and its full-screen
-    /// alert comes at once if it's still due (the scheduler's usual late grace and snooze rules).
-    func restore(_ meeting: Meeting) {
-        updateDismissedEvents(preferences.dismissedEvents.restoring(meeting.id))
+    /// A dismissed row's Restore, or the choice made in a repeating event's Restore menu: the menu bar item
+    /// and the card take the meeting back, with All Future Events its series' later occurrences too, and its
+    /// full-screen alert comes at once if it's still due (the scheduler's usual late grace and snooze rules).
+    func restore(_ meeting: Meeting, scope: DismissScope = .thisEvent) {
+        updateDismissedEvents(preferences.dismissedEvents.restoring(meeting, scope: scope))
     }
 
     /// The alert coordinator, the menu bar item and the panel all follow `MeetingStore.alertableMeetings`,
@@ -161,13 +171,15 @@ final class AppModel {
         preferences.dismissedEvents = pruned
     }
 
-    /// The update bar's button: Install, Download Page after a failed install, Show in Finder once the
-    /// new copy waits in a folder.
+    /// The update bar's button: Install, Install and Relaunch once the new copy is downloaded and verified,
+    /// Download Page after a failed install, Show in Finder once the new copy waits in a folder.
     func performUpdateAction() {
         guard let update = updateChecker.offeredUpdate else { return }
         switch updateChecker.install {
         case .idle:
             updateChecker.installUpdate()
+        case .ready:
+            updateChecker.installAndRelaunch()
         case .failed:
             closePanel?()
             NSWorkspace.shared.open(update.pageURL)
@@ -179,7 +191,7 @@ final class AppModel {
             }
             closePanel?()
             NSWorkspace.shared.activateFileViewerSelecting([app])
-        case .downloading, .installing:
+        case .downloading, .verifying, .installing:
             break
         }
     }

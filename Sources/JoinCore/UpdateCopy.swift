@@ -9,7 +9,11 @@ public enum UpdateCopy {
     public static let automaticChecksTitle = "Check for updates automatically"
     public static let checkNowTitle = "Check Now"
     public static let installTitle = "Install"
-    /// Under Install in a fixture run (unless JOIN_FIXTURE_UPDATE=live), in the same words as Open at login's note.
+    /// The button once the new copy is downloaded and verified: only this click replaces the app and
+    /// relaunches it, in the words macOS uses for it.
+    public static let installAndRelaunchTitle = "Install and Relaunch"
+    /// Under Install in a fixture run (unless JOIN_FIXTURE_UPDATE is live or ready), in the same words as
+    /// Open at login's note.
     public static let installFixtureNote = "Not available in fixture mode."
 
     /// The line beside Check Now: "Join! 1.0.0 · Checked 5 minutes ago", "Join! 1.0.0 · Checking…",
@@ -51,6 +55,12 @@ public enum UpdateCopy {
         "Join! \(version) is available"
     }
 
+    /// "Install 1.1.0", once it's downloaded and verified: the user's wording (2026-10-15), beside Install and
+    /// Relaunch, which says what the click does.
+    public static func ready(_ version: AppVersion) -> String {
+        "Install \(version)"
+    }
+
     /// "Join! 1.2.0 needs macOS 15.0 or later".
     public static func unsupported(_ version: AppVersion, minimumSystem: String) -> String {
         "Join! \(version) needs macOS \(minimumSystem) or later"
@@ -79,8 +89,9 @@ public enum UpdateCopy {
     public static let showInFinderTitle = "Show in Finder"
 
     /// "Join! 1.1.0 is available", "Downloading Join! 1.1.0… 45%" (no percent while the size is unknown),
-    /// "Installing Join! 1.1.0…", "Couldn't install Join! 1.1.0", or, once revealed,
-    /// "Quit Join!, then move Join! 1.1.0 to Applications".
+    /// "Verifying Join! 1.1.0…", "Install 1.1.0", "Installing Join! 1.1.0…" (after Install
+    /// and Relaunch), "Couldn't install Join! 1.1.0", or, once revealed, "Quit Join!, then move Join! 1.1.0
+    /// to Applications".
     public static func barMessage(version: AppVersion, install: UpdateInstallState) -> String {
         switch install {
         case .idle:
@@ -88,6 +99,10 @@ public enum UpdateCopy {
         case .downloading(let fraction):
             guard let percent = fraction.flatMap(wholePercent) else { return "Downloading Join! \(version)…" }
             return "Downloading Join! \(version)… \(percent)%"
+        case .verifying:
+            return "Verifying Join! \(version)…"
+        case .ready:
+            return ready(version)
         case .installing:
             return "Installing Join! \(version)…"
         case .failed:
@@ -97,15 +112,44 @@ public enum UpdateCopy {
         }
     }
 
-    /// Install, then Download Page after a failure or Show in Finder once revealed; none while downloading
-    /// or installing.
+    /// Install, Install and Relaunch once the copy is ready, then Download Page after a failure or Show in
+    /// Finder once revealed; none while downloading, verifying or installing.
     public static func barButtonTitle(install: UpdateInstallState) -> String? {
         switch install {
         case .idle: return installTitle
-        case .downloading, .installing: return nil
+        case .ready: return installAndRelaunchTitle
+        case .downloading, .verifying, .installing: return nil
         case .failed: return downloadPageTitle
         case .revealed: return showInFinderTitle
         }
+    }
+
+    /// Whether the bar's button, and its copy in Settings, can be clicked. Install and Install and Relaunch
+    /// wait for a check under way, which may change the offer, and Install is off where it can't install
+    /// (a fixture run, unless JOIN_FIXTURE_UPDATE allows it).
+    public static func barButtonEnabled(install: UpdateInstallState, canInstall: Bool, isChecking: Bool) -> Bool {
+        switch install {
+        case .idle: return canInstall && !isChecking
+        case .ready: return !isChecking
+        case .downloading, .verifying, .installing: return false
+        case .failed, .revealed: return true
+        }
+    }
+
+    /// The button's tooltip: what Install and Relaunch does, why an install failed, or why Install is off
+    /// in a fixture run.
+    public static func barButtonHelp(version: AppVersion, install: UpdateInstallState, canInstall: Bool) -> String? {
+        switch install {
+        case .idle: return canInstall ? nil : installFixtureNote
+        case .ready: return installAndRelaunchHelp(version)
+        case .failed(let failure): return failureReason(failure)
+        case .downloading, .verifying, .installing, .revealed: return nil
+        }
+    }
+
+    /// Install and Relaunch's tooltip: "Replaces Join! with version 1.1.0 and opens it again."
+    public static func installAndRelaunchHelp(_ version: AppVersion) -> String {
+        "Replaces Join! with version \(version) and opens it again."
     }
 
     /// 0 to 100, to the nearest whole percent; nil for a fraction that isn't a number.

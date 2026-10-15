@@ -7,18 +7,18 @@ import JoinCore
 struct PanelHeroView: View {
     let hero: PanelHero
     let perform: (PanelAction) -> Void
-    let dismiss: (Meeting) -> Void
+    let dismissActions: PanelDismissActions
 
     var body: some View {
         switch hero {
         case .nothingToday(let detail):
             NothingTodayCard(detail: detail)
         case .next(let card):
-            MeetingCard(card: card, style: .neutral, perform: perform, dismiss: dismiss)
+            MeetingCard(card: card, style: .neutral, perform: perform, dismissActions: dismissActions)
         case .startingSoon(let card):
-            MeetingCard(card: card, style: .startingSoon, perform: perform, dismiss: dismiss)
+            MeetingCard(card: card, style: .startingSoon, perform: perform, dismissActions: dismissActions)
         case .now(let card):
-            MeetingCard(card: card, style: .now, perform: perform, dismiss: dismiss)
+            MeetingCard(card: card, style: .now, perform: perform, dismissActions: dismissActions)
         }
     }
 }
@@ -63,9 +63,14 @@ private struct MeetingCard: View {
     let card: PanelCard
     let style: Style
     let perform: (PanelAction) -> Void
-    let dismiss: (Meeting) -> Void
+    let dismissActions: PanelDismissActions
+
+    @State private var dismissAnchor = ViewAnchor()
 
     private var calendarColor: Color { Color(card.meeting.calendarColor) }
+    /// The card's meeting is never a dismissed one (they don't take the card), so its button is Dismiss, asking
+    /// by the same rule as a row's.
+    private var dismissal: PanelRow.Dismissal { .dismissable(for: card.meeting) }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -139,10 +144,13 @@ private struct MeetingCard: View {
     /// switch or the list's rows under the pointer. So this button and every control that can move in below
     /// it (the switch's halves, the rows' Join or Directions, Dismiss and Restore) ignore a repeated click
     /// (`NSEvent.isRepeatedClick`): a double click acts once, never on what moves in.
+    ///
+    /// When it asks (`Dismissal.asksScope`, a repeating event) it opens Dismiss This Event / Dismiss All Future
+    /// Events below itself instead, and the choice acts (`PanelDismissActions`); its look doesn't change.
     private var dismissButton: some View {
         Button {
             guard !NSEvent.isRepeatedClick else { return }
-            dismiss(card.meeting)
+            dismissActions.click(dismissal, of: card.meeting, anchor: dismissAnchor.view)
         } label: {
             HStack(spacing: 6) {
                 Image(systemName: DismissSymbols.dismiss)
@@ -160,8 +168,15 @@ private struct MeetingCard: View {
             hoverFill: PanelColors.buttonHoverFill
         ))
         .fixedSize()
-        .help(DismissCopy.cardDismissHelp)
-        .accessibilityLabel(DismissCopy.dismissAccessibilityLabel(for: card.meeting))
+        .background(AnchorView(anchor: dismissAnchor))
+        .help(DismissCopy.cardDismissHelp(asksScope: dismissal.asksScope))
+        .accessibilityLabel(DismissCopy.dismissAccessibilityLabel(for: card.meeting, asksScope: dismissal.asksScope))
+        .modifier(DismissalAccessibilityActions(
+            meeting: card.meeting,
+            dismissal: dismissal,
+            namesOneOffAction: false,
+            actions: dismissActions
+        ))
     }
 
     private func detailLine(symbol: String, text: String, color: Color) -> some View {

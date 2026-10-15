@@ -89,7 +89,8 @@ final class MeetingStore {
         )
         // Events dismissed from the panel are forgotten once they end, at their ends as the calendar has them
         // now. The fetch holds every event still on, so one missing from it has ended, moved or gone, or its
-        // calendar was unchecked; its entry stays until its stored end.
+        // calendar was unchecked; its entry stays until its stored end. A rule for all future events of a
+        // repeating event stays until it's restored (`DismissedEvents.pruned`).
         let dismissed = preferences.dismissedEvents.pruned(at: now, meetings: fetched)
         if dismissed != preferences.dismissedEvents {
             preferences.dismissedEvents = dismissed
@@ -97,9 +98,10 @@ final class MeetingStore {
     }
 
     /// The meetings that may produce full-screen alerts, drive the menu bar title and take the panel's card:
-    /// those whose Events choice is Show and alert, less the ones dismissed from the panel. Reads both
-    /// choices and the dismissed events, so observers (the alert coordinator, the menu bar item, the panel)
-    /// follow them too: a dismissal cancels a pending alert and moves the menu bar on at once.
+    /// those whose Events choice is Show and alert, less the ones dismissed from the panel, on their own or
+    /// with all future events of their series (`DismissedEvents.isDismissed`). Reads both choices and the
+    /// dismissed events, so observers (the alert coordinator, the menu bar item, the panel) follow them too:
+    /// a dismissal cancels a pending alert and moves the menu bar on at once.
     var alertableMeetings: [Meeting] {
         MeetingFilter.alertable(
             meetings,
@@ -109,10 +111,21 @@ final class MeetingStore {
         )
     }
 
-    /// The Show and alert meetings dismissed from the panel, by id: the panel lists them as dismissed, with
-    /// Restore, until they end.
+    /// The Show and alert meetings dismissed from the panel, on their own or with their series, by id: the
+    /// panel lists them as dismissed, with Restore, until they end.
     var dismissedMeetingIDs: Set<String> {
         MeetingFilter.dismissedIDs(
+            meetings,
+            eventsWithoutParticipants: preferences.eventsWithoutParticipants,
+            outOfOfficeEvents: preferences.outOfOfficeEvents,
+            dismissed: preferences.dismissedEvents
+        )
+    }
+
+    /// Among `dismissedMeetingIDs`, the ones dismissed with their series (Dismiss All Future Events): their
+    /// Restore asks This Event or All Future Events; one dismissed on its own restores at once.
+    var dismissedBySeriesMeetingIDs: Set<String> {
+        MeetingFilter.dismissedBySeriesIDs(
             meetings,
             eventsWithoutParticipants: preferences.eventsWithoutParticipants,
             outOfOfficeEvents: preferences.outOfOfficeEvents,

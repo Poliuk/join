@@ -106,10 +106,51 @@ struct PanelDayHeading: View {
     }
 }
 
-/// What a row's Dismiss and Restore buttons do (`AppModel.dismiss`, `AppModel.restore`).
+/// What the card's and the rows' Dismiss and Restore buttons do (`AppModel.dismiss`, `AppModel.restore`), as
+/// their `PanelRow.Dismissal` says, which JoinCore decides once. When there's no choice to make they act at once,
+/// as they always have. When there is (`Dismissal.asksScope`: Dismiss on a repeating event, Restore on one
+/// dismissed with its series) they open a menu of This Event and All Future Events below the button, shown like
+/// the header's menus (`MenuBarPanelContext.showMenu`), so the panel stays open while it's up; the choice acts
+/// and the panel stays.
 struct PanelDismissActions {
-    let dismiss: (Meeting) -> Void
-    let restore: (Meeting) -> Void
+    let dismiss: (Meeting, DismissScope) -> Void
+    let restore: (Meeting, DismissScope) -> Void
+    let showMenu: ([PanelMenuItem], NSView) -> Void
+
+    /// What `dismissal`'s button does to `meeting` for `scope`: Dismiss, or Restore once it's dismissed.
+    func perform(_ dismissal: PanelRow.Dismissal, of meeting: Meeting, scope: DismissScope) {
+        if dismissal.isDismissed {
+            restore(meeting, scope)
+        } else {
+            dismiss(meeting, scope)
+        }
+    }
+
+    /// A click on `dismissal`'s button for `meeting`, whose view is `anchor`: it acts at once, or asks This Event
+    /// or All Future Events when `dismissal.asksScope`. `menuOpen` follows the menu, for a button that would
+    /// otherwise hide while it's up.
+    @MainActor
+    func click(_ dismissal: PanelRow.Dismissal, of meeting: Meeting, anchor: NSView?, menuOpen: @escaping (Bool) -> Void = { _ in }) {
+        // Without its button's view, which the button always has, it acts on this event alone.
+        guard dismissal.asksScope, let anchor else {
+            perform(dismissal, of: meeting, scope: .thisEvent)
+            return
+        }
+        let items = DismissScope.allCases.map { scope in
+            PanelMenuItem(title: dismissal.isDismissed ? DismissCopy.restoreChoice(scope) : DismissCopy.dismissChoice(scope)) {
+                // With no room below the button (a row at the bottom of the screen), the menu opens over it,
+                // so the second click of a double click could land on an item: it chooses nothing.
+                guard !NSEvent.isRepeatedClick else { return }
+                perform(dismissal, of: meeting, scope: scope)
+            }
+        }
+        menuOpen(true)
+        // Let the pressed look render before the menu's tracking loop takes over, as the header's buttons do.
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.01) {
+            showMenu(items, anchor)
+            menuOpen(false)
+        }
+    }
 }
 
 /// Start over end time, a calendar-colored bar, the title with an optional second line, and a button.
@@ -117,15 +158,20 @@ struct PanelDismissActions {
 @MainActor
 struct PanelRowView: View {
     static let dismissButtonSize: CGFloat = 22
+    static let actionButtonSize: CGFloat = 30
 
     let row: PanelRow
     let perform: (PanelAction) -> Void
     let dismissActions: PanelDismissActions
 
     @State private var isHovered = false
+    /// While a repeating event's Dismiss menu is up, its button stays, though the pointer has left the row
+    /// for the menu.
+    @State private var isMenuOpen = false
+    @State private var dismissAnchor = ViewAnchor()
 
     private var meeting: Meeting { row.meeting }
-    private var isDismissed: Bool { row.dismissal == .dismissed }
+    private var isDismissed: Bool { row.dismissal?.isDismissed ?? false }
     /// Out-of-office blocks and dismissed meetings: tertiary title, regular-weight start time.
     private var isDimmed: Bool { row.isMuted || isDismissed }
     /// Dismiss shows under the pointer only, to keep the list calm; Restore always shows on a dismissed row,
@@ -134,8 +180,8 @@ struct PanelRowView: View {
     /// action button, which stays put.
     private var showsDismissButton: Bool {
         switch row.dismissal {
-        case .dismissed: return true
-        case .dismissable: return isHovered
+        case .dismissed?: return true
+        case .dismissable?: return isHovered || isMenuOpen
         case nil: return false
         }
     }
@@ -182,6 +228,12 @@ struct PanelRowView: View {
                     }
                     if let action = row.action {
                         actionButton(action)
+                    } else if showsDismissButton {
+                        // The action button's place, kept empty: the bell sits in the same column on every
+                        // row, with or without Join or Directions beside it (the user's ask, 2026-10-15).
+                        Color.clear
+                            .frame(width: Self.actionButtonSize, height: Self.actionButtonSize)
+                            .accessibilityHidden(true)
                     }
                 }
             }
@@ -198,8 +250,13 @@ struct PanelRowView: View {
         }
         .onHover { isHovered = $0 }
         .accessibilityElement(children: .contain)
-        // The button only shows under the pointer, so VoiceOver gets the same choice as an action.
-        .modifier(DismissalAccessibilityAction(dismissal: row.dismissal, perform: toggleDismissal))
+        // The button only shows under the pointer, so VoiceOver gets the same choices as actions.
+        .modifier(DismissalAccessibilityActions(
+            meeting: meeting,
+            dismissal: row.dismissal,
+            namesOneOffAction: true,
+            actions: dismissActions
+        ))
     }
 
     /// Join or Directions. Dismissing the card can pull a row, even the dismissed meeting's own, up under the
@@ -212,7 +269,7 @@ struct PanelRowView: View {
         } label: {
             Image(systemName: action.symbolName)
                 .font(.system(size: 13, weight: .medium))
-                .frame(width: 30, height: 30)
+                .frame(width: Self.actionButtonSize, height: Self.actionButtonSize)
         }
         .buttonStyle(PanelFillButtonStyle(
             fill: PanelColors.rowButtonFill,
@@ -228,30 +285,25 @@ struct PanelRowView: View {
     /// itself can move: dismissing or restoring the card's meeting changes the card, and its height, and can
     /// add or remove the Now section above, as when a meeting in progress takes the card from, or gives it
     /// back to, one starting soon. So a double click acts once (`NSEvent.isRepeatedClick`), never on the row
-    /// that moves in.
+    /// that moves in. When it asks (`Dismissal.asksScope`) it opens This Event / All Future Events instead
+    /// (`PanelDismissActions`).
     private func dismissButton(_ dismissal: PanelRow.Dismissal) -> some View {
-        let restores = dismissal == .dismissed
+        let restores = dismissal.isDismissed
+        let asksScope = dismissal.asksScope
         return Button {
             guard !NSEvent.isRepeatedClick else { return }
-            toggleDismissal()
+            dismissActions.click(dismissal, of: meeting, anchor: dismissAnchor.view) { isMenuOpen = $0 }
         } label: {
             Image(systemName: restores ? DismissSymbols.restore : DismissSymbols.dismiss)
                 .font(.system(size: 11, weight: .semibold))
                 .frame(width: Self.dismissButtonSize, height: Self.dismissButtonSize)
         }
         .buttonStyle(PanelIconButtonStyle(cornerRadius: 6))
-        .help(restores ? DismissCopy.restoreHelp : DismissCopy.rowDismissHelp)
+        .background(AnchorView(anchor: dismissAnchor))
+        .help(restores ? DismissCopy.restoreHelp(asksScope: asksScope) : DismissCopy.rowDismissHelp(asksScope: asksScope))
         .accessibilityLabel(restores
-            ? DismissCopy.restoreAccessibilityLabel(for: meeting)
-            : DismissCopy.dismissAccessibilityLabel(for: meeting))
-    }
-
-    private func toggleDismissal() {
-        switch row.dismissal {
-        case .dismissable: dismissActions.dismiss(meeting)
-        case .dismissed: dismissActions.restore(meeting)
-        case nil: break
-        }
+            ? DismissCopy.restoreAccessibilityLabel(for: meeting, asksScope: asksScope)
+            : DismissCopy.dismissAccessibilityLabel(for: meeting, asksScope: asksScope))
     }
 
     @ViewBuilder
@@ -292,17 +344,39 @@ struct PanelRowView: View {
     }
 }
 
-/// "Dismiss" on a row that may alert, "Restore" on a dismissed one, nothing on the others.
-private struct DismissalAccessibilityAction: ViewModifier {
+/// VoiceOver's actions for `meeting`'s Dismiss or Restore (`dismissal`; nil when there's nothing to dismiss):
+/// when the button asks (`Dismissal.asksScope`), the menu's two choices, "Dismiss This Event" and "Dismiss All
+/// Future Events" (or Restore's), so they don't need the menu; otherwise "Dismiss" or "Restore" when
+/// `namesOneOffAction`, as on a row, whose Dismiss only shows under the pointer, and nothing on the card, whose
+/// button is always there.
+struct DismissalAccessibilityActions: ViewModifier {
+    let meeting: Meeting
     let dismissal: PanelRow.Dismissal?
-    let perform: () -> Void
+    let namesOneOffAction: Bool
+    let actions: PanelDismissActions
 
     func body(content: Content) -> some View {
-        // One branch for both states, so dismissing doesn't rebuild the row under the pointer.
-        if let dismissal {
-            content.accessibilityAction(named: dismissal == .dismissed ? DismissCopy.restoreTitle : DismissCopy.dismissTitle, perform)
-        } else {
-            content
+        // Only the actions vary, never the row: `content` stays one view in every state, so dismissing or
+        // restoring (even a repeating event on its own, whose choices go from two to one) doesn't rebuild the
+        // row under the pointer.
+        content.accessibilityActions {
+            if let dismissal {
+                if dismissal.asksScope {
+                    ForEach(DismissScope.allCases, id: \.self) { scope in
+                        Button(title(scope, of: dismissal)) {
+                            actions.perform(dismissal, of: meeting, scope: scope)
+                        }
+                    }
+                } else if namesOneOffAction {
+                    Button(dismissal.isDismissed ? DismissCopy.restoreTitle : DismissCopy.dismissTitle) {
+                        actions.perform(dismissal, of: meeting, scope: .thisEvent)
+                    }
+                }
+            }
         }
+    }
+
+    private func title(_ scope: DismissScope, of dismissal: PanelRow.Dismissal) -> String {
+        dismissal.isDismissed ? DismissCopy.restoreChoice(scope) : DismissCopy.dismissChoice(scope)
     }
 }

@@ -162,13 +162,38 @@ public enum UpdateFailure: Error, Equatable, Sendable {
     case relaunch
 }
 
-/// Where installing an available update has got to.
+/// Where installing an available update has got to. Install downloads and verifies the new copy, which
+/// then waits, `ready`, until Install and Relaunch puts it in place: nothing quits before that click.
 public enum UpdateInstallState: Equatable, Sendable {
     case idle
     /// The fraction downloaded, or nil while the size is unknown.
     case downloading(Double?)
+    /// Downloaded: checking the archive and the app in it.
+    case verifying
+    /// Downloaded and verified, waiting for Install and Relaunch.
+    case ready
+    /// Install and Relaunch was clicked: checking the copy again and putting it in place.
     case installing
     /// Couldn't replace the running copy: the new one waits here for the user to move to Applications.
     case revealed(URL)
     case failed(UpdateFailure)
+
+    /// From Install until the copy is ready, and from Install and Relaunch on: no check starts meanwhile,
+    /// and the offer stays as it is. Not while ready, which can last: checks go on, and a newer release
+    /// takes the ready one's place.
+    public var isInProgress: Bool {
+        switch self {
+        case .downloading, .verifying, .installing: return true
+        case .idle, .ready, .revealed, .failed: return false
+        }
+    }
+
+    /// What an install that isn't in progress becomes after a successful check. An offer that changed (a
+    /// newer release, or none any more) starts again from Install, so a ready copy of the old one is
+    /// dropped; the same offer keeps a ready or revealed copy, and gets Install back after a failure.
+    public func afterCheck(offerChanged: Bool) -> UpdateInstallState {
+        if offerChanged { return .idle }
+        if case .failed = self { return .idle }
+        return self
+    }
 }

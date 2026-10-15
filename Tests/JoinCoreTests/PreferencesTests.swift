@@ -432,11 +432,35 @@ final class PreferencesTests: XCTestCase {
         let second = Preferences(defaults: defaults)
         XCTAssertEqual(second.dismissedEvents, dismissed)
 
-        second.dismissedEvents = dismissed.restoring(MenuBarFixtures.workshop.id)
-        XCTAssertEqual(Preferences(defaults: defaults).dismissedEvents.ids, [MenuBarFixtures.review.id])
+        second.dismissedEvents = dismissed.restoring(MenuBarFixtures.workshop)
+        XCTAssertEqual(Set(Preferences(defaults: defaults).dismissedEvents.occurrences.keys), [MenuBarFixtures.review.id])
         second.dismissedEvents = DismissedEvents()
         XCTAssertNil(defaults.object(forKey: Preferences.Keys.dismissedEvents))
         XCTAssertTrue(Preferences(defaults: defaults).dismissedEvents.isEmpty)
+    }
+
+    /// All future events of a repeating event, and an occurrence restored inside them, survive a relaunch;
+    /// what 1.2.0 saved still loads.
+    @MainActor
+    func testDismissedSeriesPersistAndSavedBy120Load() throws {
+        let start = MenuBarFixtures.date(6, 9)
+        let standup = Meeting(id: Meeting.occurrenceID(eventIdentifier: "standup", start: start), title: "Standup",
+                              start: start, end: start.addingTimeInterval(15 * 60), seriesID: "standup")
+        let tomorrow = start.addingTimeInterval(24 * 60 * 60)
+        let next = Meeting(id: Meeting.occurrenceID(eventIdentifier: "standup", start: tomorrow), title: "Standup",
+                           start: tomorrow, end: tomorrow.addingTimeInterval(15 * 60), seriesID: "standup")
+        let dismissed = DismissedEvents().dismissing(standup, scope: .allFutureEvents).restoring(next)
+        Preferences(defaults: defaults).dismissedEvents = dismissed
+        let reloaded = Preferences(defaults: defaults).dismissedEvents
+        XCTAssertEqual(reloaded, dismissed)
+        XCTAssertTrue(reloaded.isDismissed(standup))
+        XCTAssertFalse(reloaded.isDismissed(next))
+
+        let workshop = MenuBarFixtures.workshop
+        defaults.set(try JSONEncoder().encode([workshop.id: workshop.end]), forKey: Preferences.Keys.dismissedEvents)
+        let saved = Preferences(defaults: defaults).dismissedEvents
+        XCTAssertTrue(saved.isDismissed(workshop))
+        XCTAssertEqual(saved.occurrences[workshop.id]?.end, workshop.end)
     }
 
     @MainActor

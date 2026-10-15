@@ -6,10 +6,11 @@ final class PanelPresenterTests: XCTestCase {
 
     /// `alertable` defaults to the meetings that aren't out-of-office blocks or `dismissed`, as the store passes them.
     private func content(at now: Date, meetings: [Meeting] = F.week, alertable: [Meeting]? = nil, dismissed: Set<String> = [],
+                         dismissedBySeries: Set<String> = [],
                          startingSoonWindow: TimeInterval = MenuBarPresenter.startingSoonWindow,
                          locale: Locale = F.us) -> PanelContent {
         PanelPresenter.content(meetings: meetings, alertable: alertable ?? meetings.filter { !$0.isOutOfOffice && !dismissed.contains($0.id) },
-                               dismissed: dismissed, now: now,
+                               dismissed: dismissed, dismissedBySeries: dismissedBySeries, now: now,
                                startingSoonWindow: startingSoonWindow, calendar: F.calendar, locale: locale)
     }
 
@@ -387,7 +388,7 @@ final class PanelPresenterTests: XCTestCase {
         XCTAssertEqual(result.sections.first.map(ids), ["ooo", "lunch", "val", "plan"])
 
         guard let lunch = row("lunch", in: result) else { return XCTFail("expected lunch's row") }
-        XCTAssertEqual(lunch.dismissal, .dismissed)
+        XCTAssertEqual(lunch.dismissal, .dismissed(asksScope: false))
         XCTAssertEqual(lunch.detail, .dismissed("Dismissed"), "in place of its location")
         XCTAssertEqual(lunch.action, .directions(LocationFormatter.directionsURL(to: F.lunch.location!)!), "joining is still allowed")
         XCTAssertFalse(lunch.isMuted, "muted is for out-of-office blocks")
@@ -419,7 +420,7 @@ final class PanelPresenterTests: XCTestCase {
         XCTAssertEqual(result.sections.first?.title, "Also now")
         XCTAssertEqual(result.sections.first.map(ids), ["val"])
         let workshop = row("val", in: result)
-        XCTAssertEqual(workshop?.dismissal, .dismissed)
+        XCTAssertEqual(workshop?.dismissal, .dismissed(asksScope: false))
         XCTAssertEqual(workshop?.detail, .dismissed("Dismissed · \(left)"), "the time left as the progress line words it, without the bar")
         XCTAssertEqual(workshop?.action, .join(F.meet))
 
@@ -462,7 +463,7 @@ final class PanelPresenterTests: XCTestCase {
     func testDismissedMeetingsLeftInAlertableNeverTakeTheCard() {
         let result = content(at: F.date(6, 10, 45), alertable: F.alertable, dismissed: [F.lunch.id])
         XCTAssertEqual(result.hero.card?.meeting.id, "val")
-        XCTAssertEqual(row("lunch", in: result)?.dismissal, .dismissed)
+        XCTAssertEqual(row("lunch", in: result)?.dismissal, .dismissed(asksScope: false))
     }
 
     // Dismiss follows what alerts: a Show and alert meeting offers it, a dismissed one offers Restore, and one
@@ -484,24 +485,24 @@ final class PanelPresenterTests: XCTestCase {
         let listOnly = panel(withoutParticipants: .listOnly)
         let dismissals = Dictionary(uniqueKeysWithValues: listOnly.sections.flatMap(\.rows).map { ($0.id, $0.dismissal) })
         XCTAssertEqual(dismissals, [
-            "ooo": nil, "focus": nil, "lunch": .dismissed, "val": .dismissable, "plan": .dismissable,
-            "rev": .dismissable, "one": .dismissable, "road": .dismissable, "thu": .dismissable,
+            "ooo": nil, "focus": nil, "lunch": .dismissed(asksScope: false), "val": .dismissable(asksScope: false), "plan": .dismissable(asksScope: false),
+            "rev": .dismissable(asksScope: false), "one": .dismissable(asksScope: false), "road": .dismissable(asksScope: false), "thu": .dismissable(asksScope: false),
         ])
         XCTAssertNil(row("focus", in: listOnly)?.detail, "a list-only event isn't shown as dismissed")
         XCTAssertEqual(row("lunch", in: listOnly)?.detail, .dismissed("Dismissed"))
 
         let showAndAlert = panel(withoutParticipants: .showAndAlert)
-        XCTAssertEqual(row("focus", in: showAndAlert)?.dismissal, .dismissed, "back to Show and alert, it's dismissed again")
+        XCTAssertEqual(row("focus", in: showAndAlert)?.dismissal, .dismissed(asksScope: false), "back to Show and alert, it's dismissed again")
         XCTAssertEqual(row("focus", in: showAndAlert)?.detail, .dismissed("Dismissed"))
 
         // An out-of-office block set to Show and alert can take the card, so its row offers Dismiss too (and Restore),
         // while staying muted.
         let outOfOffice = panel(withoutParticipants: .listOnly, outOfOffice: .showAndAlert)
-        XCTAssertEqual(row("ooo", in: outOfOffice)?.dismissal, .dismissable)
+        XCTAssertEqual(row("ooo", in: outOfOffice)?.dismissal, .dismissable(asksScope: false))
         XCTAssertEqual(row("ooo", in: outOfOffice)?.isMuted, true)
         XCTAssertNil(row("ooo", in: outOfOffice)?.action)
         let dismissedBlock = content(at: F.date(5, 21, 30), alertable: F.week, dismissed: [F.outOfOffice.id])
-        XCTAssertEqual(row("ooo", in: dismissedBlock)?.dismissal, .dismissed)
+        XCTAssertEqual(row("ooo", in: dismissedBlock)?.dismissal, .dismissed(asksScope: false))
         XCTAssertEqual(row("ooo", in: dismissedBlock)?.detail, .dismissed("Dismissed"))
     }
 
@@ -558,14 +559,141 @@ final class PanelPresenterTests: XCTestCase {
         XCTAssertEqual(row("val", in: evening)?.detail, .dismissed("Dismissed · 2 h left"))
     }
 
+    // MARK: Repeating events
+
+    /// The planning call as a repeating event: Tuesday's (the artboards' "plan"), Wednesday's and Thursday's,
+    /// all at 4:00 PM, one series.
+    private func planning(_ day: Int) -> Meeting {
+        Meeting(id: day == 6 ? "plan" : "plan\(day)", title: F.planning.title, start: F.date(day, 16), end: F.date(day, 17),
+                joinURL: F.meet, seriesID: "planning")
+    }
+
+    private var weekWithSeries: [Meeting] {
+        F.week.map { $0.id == "plan" ? planning(6) : $0 } + [planning(7), planning(8)]
+    }
+
+    /// The panel for `stored` dismissals, through the same filters as the store.
+    private func content(at now: Date, stored: DismissedEvents) -> PanelContent {
+        let meetings = weekWithSeries
+        return content(
+            at: now,
+            meetings: meetings,
+            alertable: MeetingFilter.alertable(meetings, eventsWithoutParticipants: .showAndAlert, outOfOfficeEvents: .listOnly, dismissed: stored),
+            dismissed: MeetingFilter.dismissedIDs(meetings, eventsWithoutParticipants: .showAndAlert, outOfOfficeEvents: .listOnly, dismissed: stored),
+            dismissedBySeries: MeetingFilter.dismissedBySeriesIDs(
+                meetings, eventsWithoutParticipants: .showAndAlert, outOfOfficeEvents: .listOnly, dismissed: stored)
+        )
+    }
+
+    // Whether a row's button asks This Event or All Future Events: Dismiss on any repeating event; Restore only on
+    // an occurrence dismissed with its series. One dismissed on its own restores at once (the user's ask), even
+    // though it repeats; a one-off never asks.
+    func testWhichButtonsAskThisEventOrAllFutureEvents() {
+        let none = content(at: F.date(6, 15, 56), stored: DismissedEvents())
+        XCTAssertEqual(dismissals(none), [
+            "val": .dismissable(asksScope: false), "plan": .dismissable(asksScope: true), "rev": .dismissable(asksScope: false),
+            "one": .dismissable(asksScope: false), "plan7": .dismissable(asksScope: true), "road": .dismissable(asksScope: false),
+            "plan8": .dismissable(asksScope: true), "thu": .dismissable(asksScope: false),
+        ], "Dismiss asks on the planning calls only")
+        // The card's Dismiss, which has no row, asks by the same rule.
+        XCTAssertEqual(PanelRow.Dismissal.dismissable(for: planning(6)), .dismissable(asksScope: true))
+        XCTAssertEqual(PanelRow.Dismissal.dismissable(for: F.workshop), .dismissable(asksScope: false))
+
+        let one = content(at: F.date(6, 15, 56), stored: DismissedEvents().dismissing(planning(7)))
+        XCTAssertEqual(row("plan7", in: one)?.dismissal, .dismissed(asksScope: false), "dismissed on its own: Restore acts at once")
+        XCTAssertEqual(row("plan8", in: one)?.dismissal, .dismissable(asksScope: true), "Thursday's Dismiss still asks")
+
+        let rule = content(at: F.date(6, 15, 56), stored: DismissedEvents().dismissing(planning(7), scope: .allFutureEvents))
+        XCTAssertEqual(row("plan7", in: rule)?.dismissal, .dismissed(asksScope: true), "dismissed with its series: Restore asks")
+        XCTAssertEqual(row("plan8", in: rule)?.dismissal, .dismissed(asksScope: true))
+
+        // Restored on its own inside the rule, Wednesday's is a plain repeating row again, whose Dismiss asks;
+        // dismissed again with This Event, the rule covers it once more, so its Restore asks.
+        let excepted = DismissedEvents().dismissing(planning(7), scope: .allFutureEvents).restoring(planning(7))
+        XCTAssertEqual(row("plan7", in: content(at: F.date(6, 15, 56), stored: excepted))?.dismissal, .dismissable(asksScope: true))
+        XCTAssertEqual(row("plan7", in: content(at: F.date(6, 15, 56), stored: excepted.dismissing(planning(7))))?.dismissal,
+                       .dismissed(asksScope: true))
+    }
+
+    private func dismissals(_ content: PanelContent) -> [String: PanelRow.Dismissal?] {
+        Dictionary(uniqueKeysWithValues: content.sections.flatMap(\.rows).map { ($0.id, $0.dismissal) })
+    }
+
+    // Busy artboard, 3:56 PM, Planning starting soon. All Future Events: the Workshop in progress takes the card,
+    // and Wednesday's and Thursday's planning calls are listed as dismissed too, so Wednesday's no longer
+    // clashes with the roadmap review.
+    func testAllFutureEventsOfASeriesAreListedAsDismissed() {
+        let undismissed = content(at: F.date(6, 15, 56), stored: DismissedEvents())
+        guard case .startingSoon(let soon) = undismissed.hero else { return XCTFail("expected startingSoon, got \(undismissed.hero)") }
+        XCTAssertEqual(soon.meeting.id, "plan")
+        XCTAssertEqual(row("road", in: undismissed)?.detail, .overlap("Overlaps Ana/Luis: Product Planning"))
+
+        let result = content(at: F.date(6, 15, 56), stored: DismissedEvents().dismissing(planning(6), scope: .allFutureEvents))
+        guard case .now(let card) = result.hero else { return XCTFail("expected now, got \(result.hero)") }
+        XCTAssertEqual(card.meeting.id, "val")
+        XCTAssertEqual(dismissals(result), [
+            "plan": .dismissed(asksScope: true), "rev": .dismissable(asksScope: false), "one": .dismissable(asksScope: false),
+            "plan7": .dismissed(asksScope: true), "road": .dismissable(asksScope: false), "plan8": .dismissed(asksScope: true),
+            "thu": .dismissable(asksScope: false),
+        ], "the Workshop has the card, so it isn't listed")
+        XCTAssertEqual(row("plan7", in: result)?.detail, .dismissed("Dismissed"))
+        XCTAssertNil(row("road", in: result)?.detail, "a dismissed occurrence clashes with nothing")
+
+        // This Event: Tuesday's only.
+        let one = content(at: F.date(6, 15, 56), stored: DismissedEvents().dismissing(planning(6)))
+        guard case .now(let oneCard) = one.hero else { return XCTFail("expected now, got \(one.hero)") }
+        XCTAssertEqual(oneCard.meeting.id, "val")
+        XCTAssertEqual(row("plan", in: one)?.dismissal, .dismissed(asksScope: false))
+        XCTAssertEqual(row("plan7", in: one)?.dismissal, .dismissable(asksScope: true))
+        XCTAssertEqual(row("plan8", in: one)?.dismissal, .dismissable(asksScope: true))
+        XCTAssertEqual(row("road", in: one)?.detail, .overlap("Overlaps Ana/Luis: Product Planning"))
+    }
+
+    // Wednesday 3:58 PM: Wednesday's planning call and the roadmap review both start at 4:00. With the series
+    // dismissed from Tuesday on, the review takes the starting-soon card, with no overlap to warn about.
+    func testTheCardSkipsADismissedSeriesOccurrence() {
+        let undismissed = content(at: F.date(7, 15, 58), stored: DismissedEvents())
+        guard case .startingSoon(let first) = undismissed.hero else { return XCTFail("expected startingSoon, got \(undismissed.hero)") }
+        XCTAssertEqual(first.meeting.id, "plan7")
+
+        let result = content(at: F.date(7, 15, 58), stored: DismissedEvents().dismissing(planning(6), scope: .allFutureEvents))
+        guard case .startingSoon(let card) = result.hero else { return XCTFail("expected startingSoon, got \(result.hero)") }
+        XCTAssertEqual(card.meeting.id, "road")
+        XCTAssertNil(card.overlap)
+        XCTAssertEqual(row("plan7", in: result)?.dismissal, .dismissed(asksScope: true))
+    }
+
+    // Restore This Event on Wednesday's: that one comes back and the rest of the series stays dismissed. Restore
+    // All Future Events on Wednesday's: Wednesday's and Thursday's come back, while Tuesday's, earlier and still
+    // listed, stays dismissed.
+    func testRestoringPartOfADismissedSeries() {
+        let rule = DismissedEvents().dismissing(planning(6), scope: .allFutureEvents)
+
+        let thisEvent = content(at: F.date(6, 15, 56), stored: rule.restoring(planning(7)))
+        XCTAssertEqual(row("plan", in: thisEvent)?.dismissal, .dismissed(asksScope: true))
+        XCTAssertEqual(row("plan7", in: thisEvent)?.dismissal, .dismissable(asksScope: true))
+        XCTAssertEqual(row("plan8", in: thisEvent)?.dismissal, .dismissed(asksScope: true))
+        XCTAssertEqual(row("road", in: thisEvent)?.detail, .overlap("Overlaps Ana/Luis: Product Planning"))
+
+        let future = content(at: F.date(6, 15, 56), stored: rule.restoring(planning(7), scope: .allFutureEvents))
+        guard case .now(let card) = future.hero else { return XCTFail("expected now, got \(future.hero)") }
+        XCTAssertEqual(card.meeting.id, "val", "Tuesday's is still dismissed")
+        XCTAssertEqual(row("plan", in: future)?.dismissal, .dismissed(asksScope: true))
+        XCTAssertEqual(row("plan7", in: future)?.dismissal, .dismissable(asksScope: true))
+        XCTAssertEqual(row("plan8", in: future)?.dismissal, .dismissable(asksScope: true))
+
+        let all = content(at: F.date(6, 15, 56), stored: rule.restoring(planning(6), scope: .allFutureEvents))
+        XCTAssertEqual(all, content(at: F.date(6, 15, 56), stored: DismissedEvents()))
+    }
+
     func testDismissCopy() {
         XCTAssertEqual(DismissCopy.dismissTitle, "Dismiss")
         XCTAssertEqual(DismissCopy.restoreTitle, "Restore")
         XCTAssertEqual(DismissCopy.dismissedTitle, "Dismissed")
         XCTAssertEqual(DismissCopy.dismissedDetail(left: nil), "Dismissed")
         XCTAssertEqual(DismissCopy.dismissedDetail(left: "34 min left"), "Dismissed · 34 min left")
-        XCTAssertEqual(DismissCopy.dismissAccessibilityLabel(for: F.workshop), "Dismiss Workshop")
-        XCTAssertEqual(DismissCopy.restoreAccessibilityLabel(for: F.workshop), "Restore Workshop")
+        XCTAssertEqual(DismissCopy.dismissAccessibilityLabel(for: F.workshop, asksScope: false), "Dismiss Workshop")
+        XCTAssertEqual(DismissCopy.restoreAccessibilityLabel(for: F.workshop, asksScope: false), "Restore Workshop")
         XCTAssertEqual(DismissCopy.rowDismissHelp,
                        "Dismiss: no full-screen alert, and it leaves the menu bar and the top card. It stays in this list until it ends.")
         XCTAssertEqual(DismissCopy.cardDismissHelp,
@@ -574,5 +702,28 @@ final class PanelPresenterTests: XCTestCase {
         for help in [DismissCopy.rowDismissHelp, DismissCopy.cardDismissHelp, DismissCopy.restoreHelp] {
             XCTAssertFalse(help.contains("Don’t") || help.contains("Don't"), help)
         }
+        XCTAssertEqual(DismissCopy.rowDismissHelp(asksScope: false), DismissCopy.rowDismissHelp)
+        XCTAssertEqual(DismissCopy.cardDismissHelp(asksScope: false), DismissCopy.cardDismissHelp)
+        XCTAssertEqual(DismissCopy.restoreHelp(asksScope: false), DismissCopy.restoreHelp)
+    }
+
+    // A repeating event's buttons open a menu worded like macOS Calendar's question; its labels and help tags say so.
+    func testDismissCopyForARepeatingEvent() {
+        let repeating = planning(6)
+        XCTAssertEqual(DismissScope.allCases, [.thisEvent, .allFutureEvents], "the menus' order")
+        XCTAssertEqual(DismissCopy.dismissChoice(.thisEvent), "Dismiss This Event")
+        XCTAssertEqual(DismissCopy.dismissChoice(.allFutureEvents), "Dismiss All Future Events")
+        XCTAssertEqual(DismissCopy.restoreChoice(.thisEvent), "Restore This Event")
+        XCTAssertEqual(DismissCopy.restoreChoice(.allFutureEvents), "Restore All Future Events")
+        XCTAssertEqual(DismissCopy.dismissAccessibilityLabel(for: repeating, asksScope: true), "Dismiss Ana/Luis: Product Planning, opens a menu")
+        XCTAssertEqual(DismissCopy.restoreAccessibilityLabel(for: repeating, asksScope: true), "Restore Ana/Luis: Product Planning, opens a menu")
+        XCTAssertEqual(DismissCopy.restoreAccessibilityLabel(for: repeating, asksScope: false), "Restore Ana/Luis: Product Planning",
+                       "dismissed on its own, Restore acts at once")
+        XCTAssertEqual(DismissCopy.rowDismissHelp(asksScope: true),
+                       "Dismiss: no full-screen alert, and it leaves the menu bar and the top card. It stays in this list until it ends. It repeats: the menu offers this event or all future events.")
+        XCTAssertEqual(DismissCopy.cardDismissHelp(asksScope: true),
+                       "Dismiss: no full-screen alert, and it leaves the menu bar and this card. It stays in the list until it ends. It repeats: the menu offers this event or all future events.")
+        XCTAssertEqual(DismissCopy.restoreHelp(asksScope: true),
+                       "Restore: its full-screen alert and the menu bar come back. It repeats: the menu offers this event or all future events.")
     }
 }

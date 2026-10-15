@@ -36,7 +36,8 @@ public final class Preferences {
         public static let outOfOfficeKeywords = "outOfOfficeKeywords"
         public static let startingSoonPill = "startingSoonPill"
         public static let panelListFilter = "panelListFilter"
-        /// The occurrences dismissed from the menu bar panel, as JSON; absent while there are none.
+        /// The occurrences and series dismissed from the menu bar panel, as JSON (1.2.0's plain object of
+        /// occurrence id → end still reads); absent while there are none.
         public static let dismissedEvents = "dismissedEvents"
         public static let checksForUpdates = "checksForUpdates"
         public static let lastUpdateCheck = "lastUpdateCheck"
@@ -364,10 +365,10 @@ public final class Preferences {
         }
     }
 
-    /// The event occurrences dismissed from the menu bar panel: no full-screen alert, off the menu bar item
-    /// and the card, listed as dismissed until they end. Not a setting, so Restore Defaults and the other
-    /// resets leave it alone; the meeting store prunes it as events end (`DismissedEvents.pruned`). Empty
-    /// by default, and when what's stored can't be read.
+    /// The event occurrences dismissed from the menu bar panel, on their own or with all future events of
+    /// their series: no full-screen alert, off the menu bar item and the card, listed as dismissed until they
+    /// end. Not a setting, so Restore Defaults and the other resets leave it alone; the meeting store prunes
+    /// it as events end (`DismissedEvents.pruned`). Empty by default, and when what's stored can't be read.
     public var dismissedEvents: DismissedEvents {
         get { access(keyPath: \.dismissedEvents); return _dismissedEvents }
         set {

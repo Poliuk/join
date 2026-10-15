@@ -59,14 +59,18 @@ extension URLSessionConfiguration {
 
 /// The update check in a fixture run, picked with JOIN_FIXTURE_UPDATE: `current` (the default) finds the
 /// running version, `available` a release one minor version above it with a Join.zip, and `failed` can't
-/// be reached. `live` asks GitHub instead and lets Install really install, for end-to-end tests only;
-/// otherwise a fixture run never touches the network.
-struct FixtureReleaseFeed: ReleaseFeed {
+/// be reached. `ready` finds what `available` finds, then one patch version more at each later check (Check
+/// Now), and lets Install go through a pretend download to the ready state (`FixtureUpdateInstaller`), so
+/// Install and Relaunch, and a newer release taking the place of a ready one, can be seen offline. `live`
+/// asks GitHub instead and lets Install really install, for end-to-end tests only; otherwise a fixture run
+/// never touches the network.
+actor FixtureReleaseFeed: ReleaseFeed {
     static let environmentKey = "JOIN_FIXTURE_UPDATE"
 
     enum Mode: String, CaseIterable {
         case current
         case available
+        case ready
         case failed
         case live
     }
@@ -84,14 +88,23 @@ struct FixtureReleaseFeed: ReleaseFeed {
 
     let mode: Mode
     let current: AppVersion
+    /// How many checks `ready` has answered.
+    private var checks = 0
+
+    init(mode: Mode, current: AppVersion) {
+        self.mode = mode
+        self.current = current
+    }
 
     func latestRelease() async throws -> GitHubRelease {
+        let asset = GitHubRelease.Asset(name: UpdateCheck.assetName, size: 2_500_000)
+        let patch = checks
+        checks += 1
         // Long enough to see "Checking…".
         try await Task.sleep(for: .seconds(1))
-        let asset = GitHubRelease.Asset(name: UpdateCheck.assetName, size: 2_500_000)
         switch mode {
-        case .available:
-            let next = AppVersion(major: current.major, minor: current.minor + 1, patch: 0)
+        case .available, .ready:
+            let next = AppVersion(major: current.major, minor: current.minor + 1, patch: mode == .ready ? patch : 0)
             return GitHubRelease(tagName: next.tag, assets: [asset])
         case .failed:
             throw URLError(.notConnectedToInternet)

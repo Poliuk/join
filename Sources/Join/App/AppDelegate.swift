@@ -29,6 +29,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
     }
 
+    /// Quitting without Install and Relaunch installs nothing: a downloaded update goes, and the next
+    /// launch offers it again.
+    func applicationWillTerminate(_ notification: Notification) {
+        model.updateChecker.discardDownload()
+    }
+
     func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
         model.openSettings()
         return false
@@ -57,7 +63,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 guard let filter = argument.flatMap(PanelListFilter.init(rawValue:)) else { return }
                 delegate.model.preferences.panelListFilter = filter
             }),
-            // Dismiss or restore an event as the panel's buttons do; the argument names it (`listedMeeting`).
+            // Dismiss or restore an event as the panel's buttons do, or as a repeating event's menu does with
+            // This Event and All Future Events; the argument names it (`listedMeeting`).
             ("dismissEvent", { delegate, argument in
                 guard let meeting = delegate.listedMeeting(matching: argument) else { return }
                 delegate.model.dismiss(meeting)
@@ -66,13 +73,23 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 guard let meeting = delegate.listedMeeting(matching: argument) else { return }
                 delegate.model.restore(meeting)
             }),
+            ("dismissFutureEvents", { delegate, argument in
+                guard let meeting = delegate.listedMeeting(matching: argument) else { return }
+                delegate.model.dismiss(meeting, scope: .allFutureEvents)
+            }),
+            ("restoreFutureEvents", { delegate, argument in
+                guard let meeting = delegate.listedMeeting(matching: argument) else { return }
+                delegate.model.restore(meeting, scope: .allFutureEvents)
+            }),
             ("panelFrost", { delegate, argument in
                 // An opacity from 0 to 1 to try on the real panel; anything else goes back to the palette's.
                 delegate.model.panelFrostOverride = argument.flatMap(Double.init).flatMap { (0...1).contains($0) ? $0 : nil }
             }),
-            // Against the fixture feed (JOIN_FIXTURE_UPDATE); installing only does anything with =live.
+            // Against the fixture feed (JOIN_FIXTURE_UPDATE); installing only does anything with =ready (a
+            // pretend download, then a relaunch as the same fixture) or =live.
             ("checkForUpdates", { delegate, _ in delegate.model.updateChecker.checkNow() }),
             ("installUpdate", { delegate, _ in delegate.model.updateChecker.installUpdate() }),
+            ("installAndRelaunch", { delegate, _ in delegate.model.updateChecker.installAndRelaunch() }),
             ("appearance", { _, argument in
                 switch argument {
                 case "light": NSApp.appearance = NSAppearance(named: .aqua)

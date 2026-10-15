@@ -69,8 +69,12 @@ struct MenuBarPanelView: View {
                 }
                 updateBar(topPadding: pausedMessage == nil ? 10 : 8)
                 let filter = content.filtered(by: model.preferences.panelListFilter)
-                let dismissActions = PanelDismissActions(dismiss: model.dismiss, restore: model.restore)
-                PanelHeroView(hero: content.hero, perform: model.perform, dismiss: model.dismiss)
+                let dismissActions = PanelDismissActions(
+                    dismiss: { model.dismiss($0, scope: $1) },
+                    restore: { model.restore($0, scope: $1) },
+                    showMenu: context.showMenu
+                )
+                PanelHeroView(hero: content.hero, perform: model.perform, dismissActions: dismissActions)
                     .padding(.horizontal, 10)
                     .padding(.top, pausedMessage == nil && !showsUpdate ? 10 : 8)
                     .padding(.bottom, 2)
@@ -113,22 +117,16 @@ struct MenuBarPanelView: View {
         let checker = model.updateChecker
         if let update = checker.offeredUpdate {
             let install = checker.install
-            let installUnavailable = install == .idle && !checker.canInstall
             UpdateBar(
                 message: UpdateCopy.barMessage(version: update.version, install: install),
                 buttonTitle: UpdateCopy.barButtonTitle(install: install),
-                // Install waits for a check under way, which may change the offer.
-                buttonEnabled: !installUnavailable && !(install == .idle && checker.isChecking),
-                help: installUnavailable ? UpdateCopy.installFixtureNote : failureReason(install),
+                // Install and Install and Relaunch wait for a check under way, which may change the offer.
+                buttonEnabled: UpdateCopy.barButtonEnabled(install: install, canInstall: checker.canInstall, isChecking: checker.isChecking),
+                help: UpdateCopy.barButtonHelp(version: update.version, install: install, canInstall: checker.canInstall),
                 action: model.performUpdateAction
             )
             .padding(.top, topPadding)
         }
-    }
-
-    private func failureReason(_ install: UpdateInstallState) -> String? {
-        if case .failed(let failure) = install { return UpdateCopy.failureReason(failure) }
-        return nil
     }
 
     /// Fades the list out at the bottom while there is more to scroll to. It fades into the frost, not
@@ -328,13 +326,14 @@ private struct HeaderButton: View {
     }
 }
 
-/// Holds the AppKit view behind a SwiftUI button, so a menu can be positioned against it.
+/// Holds the AppKit view behind a SwiftUI button, so a menu can be positioned against it: the header's
+/// buttons, and a repeating event's Dismiss and Restore.
 @MainActor
-private final class ViewAnchor {
+final class ViewAnchor {
     weak var view: NSView?
 }
 
-private struct AnchorView: NSViewRepresentable {
+struct AnchorView: NSViewRepresentable {
     let anchor: ViewAnchor
 
     func makeNSView(context: Context) -> NSView {
@@ -393,14 +392,16 @@ private struct PausedBar: View {
 
 // MARK: Update bar
 
-/// "Join! 1.1.0 is available" with Install, then the download's progress, and Download Page after a
-/// failed install or Show in Finder once the new copy waits in a folder. Laid out like the paused bar.
+/// "Join! 1.1.0 is available" with Install, then the download's progress, then "Install 1.1.0" with
+/// Install and Relaunch until the user clicks it; Download Page after a failed install or Show in Finder
+/// once the new copy waits in a folder. Laid out like the paused bar.
 @MainActor
 private struct UpdateBar: View {
     let message: String
     let buttonTitle: String?
     var buttonEnabled = true
-    /// The button's tooltip: why an install failed, or why Install is off in a fixture run.
+    /// The button's tooltip: what Install and Relaunch does, why an install failed, or why Install is off
+    /// in a fixture run.
     let help: String?
     let action: () -> Void
 

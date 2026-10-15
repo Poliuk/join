@@ -220,6 +220,65 @@ final class MeetingFilterTests: XCTestCase {
         }
     }
 
+    // A repeating event's occurrences: alertable and dismissedIDs ask `DismissedEvents.isDismissed`, so All Future
+    // Events, and an occurrence restored inside it, count like an occurrence dismissed on its own.
+    func testDismissedSeriesAreLeftOutOfAlertable() {
+        func standup(_ day: Int, participants: Bool = true) -> Meeting {
+            let date = start.addingTimeInterval(Double(day) * 86400)
+            return Meeting(id: Meeting.occurrenceID(eventIdentifier: "standup", start: date), title: "Standup", start: date,
+                           end: date.addingTimeInterval(900), hasParticipants: participants, seriesID: "standup")
+        }
+        let week = (0..<5).map { standup($0) }
+        let others = [meeting("call", participants: true)]
+        let stored = DismissedEvents().dismissing(week[2], scope: .allFutureEvents).restoring(week[3])
+        let ids = { (meetings: [Meeting]) in meetings.map(\.id) }
+
+        XCTAssertEqual(
+            MeetingFilter.alertable(week + others, eventsWithoutParticipants: .showAndAlert, outOfOfficeEvents: .showAndAlert, dismissed: stored).map(\.id),
+            ids([week[0], week[1], week[3]]) + ["call"]
+        )
+        XCTAssertEqual(
+            MeetingFilter.dismissedIDs(week + others, eventsWithoutParticipants: .showAndAlert, outOfOfficeEvents: .showAndAlert, dismissed: stored),
+            Set(ids([week[2], week[4]]))
+        )
+        XCTAssertEqual(
+            MeetingFilter.visible(week + others, eventsWithoutParticipants: .showAndAlert, outOfOfficeEvents: .showAndAlert).count,
+            6, "the lists keep them"
+        )
+
+        // An occurrence that can't alert (here, no one else on it, and that kind on Show in the list only) isn't
+        // shown as dismissed, even inside the rule.
+        let solo = standup(4, participants: false)
+        XCTAssertTrue(stored.isDismissed(solo))
+        XCTAssertEqual(
+            MeetingFilter.dismissedIDs([solo], eventsWithoutParticipants: .listOnly, outOfOfficeEvents: .showAndAlert, dismissed: stored),
+            []
+        )
+
+        // Of those, the ones whose Restore asks: dismissed with their series, not one dismissed on its own.
+        let alsoAlone = stored.dismissing(week[0])
+        XCTAssertEqual(
+            MeetingFilter.dismissedBySeriesIDs(week + others, eventsWithoutParticipants: .showAndAlert, outOfOfficeEvents: .showAndAlert, dismissed: alsoAlone),
+            Set(ids([week[2], week[4]])), "Monday's was dismissed on its own"
+        )
+        XCTAssertEqual(
+            MeetingFilter.dismissedBySeriesIDs([solo], eventsWithoutParticipants: .listOnly, outOfOfficeEvents: .showAndAlert, dismissed: stored),
+            [], "not one that can't alert"
+        )
+        XCTAssertEqual(
+            MeetingFilter.dismissedBySeriesIDs(week, eventsWithoutParticipants: .showAndAlert, outOfOfficeEvents: .showAndAlert,
+                                               dismissed: DismissedEvents().dismissing(week[1])),
+            [], "no series rule, nothing asks"
+        )
+    }
+
+    func testRepeatingEventsHaveASeries() {
+        XCTAssertFalse(meeting("call", participants: true).isRepeating)
+        let occurrence = Meeting(id: "standup@1", title: "Standup", start: start, end: start, seriesID: "standup")
+        XCTAssertTrue(occurrence.isRepeating)
+        XCTAssertEqual(occurrence.seriesID, "standup")
+    }
+
     func testOccurrenceIDIncludesStart() {
         let start = Date(timeIntervalSince1970: 1_800_000_000)
         XCTAssertEqual(Meeting.occurrenceID(eventIdentifier: "evt", start: start), "evt@1800000000")

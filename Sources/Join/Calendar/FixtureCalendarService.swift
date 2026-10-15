@@ -12,7 +12,14 @@ import JoinCore
 /// each launch, so one dismissed in an earlier launch usually isn't dismissed in the next (only when it
 /// lands on the same start, as in a relaunch within the minute, is it the same occurrence). The
 /// `dismissEvent` and `restoreEvent` hooks (`AppDelegate`) take the part before "@" ("workshop",
-/// "planning2") or the title, to put the panel in its dismissed states.
+/// "planning2") or the title, to put the panel in its dismissed states. The Workshop and the planning call
+/// repeat, today's and tomorrow's occurrences forming one series each ("workshop", "planning"), and so does
+/// the weekly review, with one occurrence in the week, so a repeating event's Dismiss menu can be checked.
+/// Their ids keep the names above, unlike a real calendar's, where a series' occurrences share the part
+/// before "@": only `seriesID` ties them together. Those series ids are the same in every launch, so a rule
+/// for all future events would dismiss every later run's occurrences: `AppModel` drops the series rules (and
+/// the exceptions inside them) when a fixture run starts, keeping only the occurrences dismissed one by one
+/// (`DismissedEvents.withoutSeriesRules`).
 @MainActor
 final class FixtureCalendarService: CalendarService {
     static let environmentKey = "JOIN_FIXTURE"
@@ -72,10 +79,10 @@ final class FixtureCalendarService: CalendarService {
         }
         func meeting(_ id: String, _ title: String, _ start: Date, _ end: Date, _ info: CalendarInfo,
                      location: String? = nil, notes: String? = nil, status: ParticipationStatus = .accepted,
-                     participants: Bool = true) -> Meeting {
+                     participants: Bool = true, series: String? = nil) -> Meeting {
             Meeting(id: Meeting.occurrenceID(eventIdentifier: id, start: start), title: title, start: start, end: end,
                     calendarID: info.id, calendarTitle: info.title, calendarColor: info.color, location: location,
-                    notes: notes, myStatus: status, hasParticipants: participants)
+                    notes: notes, myStatus: status, hasParticipants: participants, seriesID: series)
         }
         let meet = "Join with Google Meet: https://meet.google.com/abc-defg-hij"
         let zoom = "https://us06web.zoom.us/j/12345678901?pwd=sample"
@@ -85,16 +92,16 @@ final class FixtureCalendarService: CalendarService {
         switch name {
         case "later":
             today_ = [meeting("lunch", "Lunch with Lucía", minutesFromNow(135), minutesFromNow(195), Self.personal, location: address),
-                      meeting("workshop", "Workshop", minutesFromNow(255), minutesFromNow(525), Self.personal, notes: meet)]
+                      meeting("workshop", "Workshop", minutesFromNow(255), minutesFromNow(525), Self.personal, notes: meet, series: "workshop")]
         case "busy":
-            today_ = [meeting("workshop", "Workshop", minutesFromNow(-56), minutesFromNow(214), Self.personal, notes: meet),
-                      meeting("planning", "Ana/Luis: Product Planning", minutesFromNow(4), minutesFromNow(64), Self.work, location: zoom)]
+            today_ = [meeting("workshop", "Workshop", minutesFromNow(-56), minutesFromNow(214), Self.personal, notes: meet, series: "workshop"),
+                      meeting("planning", "Ana/Luis: Product Planning", minutesFromNow(4), minutesFromNow(64), Self.work, location: zoom, series: "planning")]
         case "meeting":
-            today_ = [meeting("workshop", "Workshop", minutesFromNow(-80), minutesFromNow(190), Self.personal, notes: meet),
-                      meeting("planning", "Ana/Luis: Product Planning", minutesFromNow(-20), minutesFromNow(40), Self.work, location: zoom)]
+            today_ = [meeting("workshop", "Workshop", minutesFromNow(-80), minutesFromNow(190), Self.personal, notes: meet, series: "workshop"),
+                      meeting("planning", "Ana/Luis: Product Planning", minutesFromNow(-20), minutesFromNow(40), Self.work, location: zoom, series: "planning")]
         case "maybe":
-            today_ = [meeting("workshop", "Workshop", minutesFromNow(-18), minutesFromNow(252), Self.personal, notes: meet, status: .tentative),
-                      meeting("planning", "Ana/Luis: Product Planning", minutesFromNow(47), minutesFromNow(107), Self.work, location: zoom)]
+            today_ = [meeting("workshop", "Workshop", minutesFromNow(-18), minutesFromNow(252), Self.personal, notes: meet, status: .tentative, series: "workshop"),
+                      meeting("planning", "Ana/Luis: Product Planning", minutesFromNow(47), minutesFromNow(107), Self.work, location: zoom, series: "planning")]
         default:
             today_ = []
         }
@@ -102,9 +109,9 @@ final class FixtureCalendarService: CalendarService {
         let later: [Meeting] = [
             meeting("ooo1", "Fuera de la oficina", day(1, 12, 30), day(1, 14, 30), Self.ooo, participants: false),
             meeting("lunch2", "Lunch with Lucía", day(1, 13), day(1, 14), Self.personal, location: address),
-            meeting("workshop2", "Workshop", day(1, 15), day(1, 19, 30), Self.personal, notes: meet),
-            meeting("planning2", "Ana/Luis: Product Planning", day(1, 16), day(1, 17), Self.work, location: zoom),
-            meeting("rev", "Revisión semanal", day(2, 9, 10), day(2, 10, 10), Self.personal, notes: meet),
+            meeting("workshop2", "Workshop", day(1, 15), day(1, 19, 30), Self.personal, notes: meet, series: "workshop"),
+            meeting("planning2", "Ana/Luis: Product Planning", day(1, 16), day(1, 17), Self.work, location: zoom, series: "planning"),
+            meeting("rev", "Revisión semanal", day(2, 9, 10), day(2, 10, 10), Self.personal, notes: meet, series: "rev"),
             meeting("one", "1:1 Marta / Andrés", day(2, 12), day(2, 12, 45), Self.work, notes: meet),
             meeting("focus", "Focus time", day(2, 14), day(2, 15), Self.personal, participants: false),
             meeting("roadmap", "Quarterly Roadmap Review", day(2, 16), day(2, 17), Self.work, location: zoom),

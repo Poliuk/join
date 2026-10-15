@@ -24,6 +24,7 @@ final class UpdateCopyTests: XCTestCase {
         XCTAssertEqual(UpdateCopy.automaticChecksTitle, "Check for updates automatically")
         XCTAssertEqual(UpdateCopy.checkNowTitle, "Check Now")
         XCTAssertEqual(UpdateCopy.installTitle, "Install")
+        XCTAssertEqual(UpdateCopy.installAndRelaunchTitle, "Install and Relaunch")
     }
 
     func testInstallFixtureNoteMatchesOpenAtLogins() {
@@ -131,6 +132,9 @@ final class UpdateCopyTests: XCTestCase {
         XCTAssertEqual(message(.downloading(1.5)), "Downloading Join! 1.1.0… 100%")
         XCTAssertEqual(message(.downloading(nil)), "Downloading Join! 1.1.0…")
         XCTAssertEqual(message(.downloading(.nan)), "Downloading Join! 1.1.0…")
+        XCTAssertEqual(message(.verifying), "Verifying Join! 1.1.0…")
+        XCTAssertEqual(UpdateCopy.ready(newer), "Install 1.1.0")
+        XCTAssertEqual(message(.ready), "Install 1.1.0")
         XCTAssertEqual(message(.installing), "Installing Join! 1.1.0…")
         XCTAssertEqual(message(.failed(.checksum)), "Couldn't install Join! 1.1.0")
         XCTAssertEqual(message(.failed(.unsupportedSystem("15.0"))), "Couldn't install Join! 1.1.0")
@@ -144,8 +148,43 @@ final class UpdateCopyTests: XCTestCase {
         XCTAssertEqual(UpdateCopy.barButtonTitle(install: .idle), "Install")
         XCTAssertNil(UpdateCopy.barButtonTitle(install: .downloading(0.5)))
         XCTAssertNil(UpdateCopy.barButtonTitle(install: .downloading(nil)))
+        XCTAssertNil(UpdateCopy.barButtonTitle(install: .verifying))
+        XCTAssertEqual(UpdateCopy.barButtonTitle(install: .ready), "Install and Relaunch")
         XCTAssertNil(UpdateCopy.barButtonTitle(install: .installing))
         XCTAssertEqual(UpdateCopy.barButtonTitle(install: .failed(.download)), "Download Page")
         XCTAssertEqual(UpdateCopy.barButtonTitle(install: .revealed(URL(fileURLWithPath: "/tmp/Join.app"))), "Show in Finder")
+    }
+
+    func testBarButtonEnabled() {
+        func enabled(_ install: UpdateInstallState, canInstall: Bool = true, isChecking: Bool = false) -> Bool {
+            UpdateCopy.barButtonEnabled(install: install, canInstall: canInstall, isChecking: isChecking)
+        }
+        XCTAssertTrue(enabled(.idle))
+        XCTAssertFalse(enabled(.idle, isChecking: true), "Install waits for a check, which may change the offer")
+        XCTAssertFalse(enabled(.idle, canInstall: false), "a fixture run that can't install")
+        XCTAssertTrue(enabled(.ready))
+        XCTAssertFalse(enabled(.ready, isChecking: true), "a check may find a newer release, which replaces the ready one")
+        XCTAssertFalse(enabled(.downloading(0.5)))
+        XCTAssertFalse(enabled(.verifying))
+        XCTAssertFalse(enabled(.installing))
+        XCTAssertTrue(enabled(.failed(.download)))
+        XCTAssertTrue(enabled(.failed(.download), canInstall: false, isChecking: true), "Download Page only opens a page")
+        XCTAssertTrue(enabled(.revealed(URL(fileURLWithPath: "/tmp/Join.app")), isChecking: true))
+    }
+
+    func testBarButtonHelp() {
+        func help(_ install: UpdateInstallState, canInstall: Bool = true) -> String? {
+            UpdateCopy.barButtonHelp(version: newer, install: install, canInstall: canInstall)
+        }
+        XCTAssertNil(help(.idle))
+        XCTAssertEqual(help(.idle, canInstall: false), "Not available in fixture mode.")
+        XCTAssertEqual(help(.ready), "Replaces Join! with version 1.1.0 and opens it again.")
+        XCTAssertEqual(UpdateCopy.installAndRelaunchHelp(newer), "Replaces Join! with version 1.1.0 and opens it again.")
+        XCTAssertEqual(help(.failed(.checksum)), "The download doesn't match the release's checksum.")
+        XCTAssertEqual(help(.failed(.relaunch)), "Join! couldn't reopen itself. Quit it and open it again to finish.")
+        XCTAssertNil(help(.downloading(nil)))
+        XCTAssertNil(help(.verifying))
+        XCTAssertNil(help(.installing))
+        XCTAssertNil(help(.revealed(URL(fileURLWithPath: "/tmp/Join.app"))))
     }
 }

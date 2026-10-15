@@ -29,6 +29,10 @@ public struct Meeting: Identifiable, Hashable, Sendable, Codable {
     public var joinURL: URL?
     /// Set by the detector; Settings has a choice for such events.
     public var isOutOfOffice: Bool
+    /// The repeating event this is an occurrence of, shared by all its occurrences, one edited on its own
+    /// included (EventKit's event identifier, the part of `id` before "@"); nil for an event that doesn't
+    /// repeat. Dismissing all future events of a series goes by it (`DismissedEvents`).
+    public var seriesID: String?
 
     public init(
         id: String,
@@ -45,7 +49,8 @@ public struct Meeting: Identifiable, Hashable, Sendable, Codable {
         myStatus: ParticipationStatus = .accepted,
         hasParticipants: Bool = true,
         joinURL: URL? = nil,
-        isOutOfOffice: Bool = false
+        isOutOfOffice: Bool = false,
+        seriesID: String? = nil
     ) {
         self.id = id
         self.title = title
@@ -62,12 +67,17 @@ public struct Meeting: Identifiable, Hashable, Sendable, Codable {
         self.hasParticipants = hasParticipants
         self.joinURL = joinURL
         self.isOutOfOffice = isOutOfOffice
+        self.seriesID = seriesID
     }
 
     /// Recurring events share one event identifier, so the occurrence start is part of the id.
     public static func occurrenceID(eventIdentifier: String, start: Date) -> String {
         "\(eventIdentifier)@\(Int(start.timeIntervalSince1970))"
     }
+
+    /// One occurrence of a repeating event: dismissing or restoring it asks whether to act on this event or
+    /// on all future events (`DismissScope`).
+    public var isRepeating: Bool { seriesID != nil }
 
     /// You said yes, or it's your own event. Maybe and unanswered invitations don't count.
     public var isAttending: Bool { myStatus == .accepted }
@@ -110,8 +120,8 @@ public enum MeetingFilter {
     }
 
     /// The meetings that may alert, drive the menu bar item and take the panel's card: those whose choice
-    /// is Show and alert, less the ones the user dismissed from the panel, always a subset of `visible`.
-    /// Keeps the order.
+    /// is Show and alert, less the ones the user dismissed from the panel (`DismissedEvents.isDismissed`:
+    /// on their own or with all future events of their series), always a subset of `visible`. Keeps the order.
     public static func alertable(
         _ meetings: [Meeting],
         eventsWithoutParticipants: EventVisibility,
@@ -119,14 +129,15 @@ public enum MeetingFilter {
         dismissed: DismissedEvents = DismissedEvents()
     ) -> [Meeting] {
         meetings.filter {
-            !dismissed.contains($0.id)
+            !dismissed.isDismissed($0)
                 && visibility(of: $0, eventsWithoutParticipants: eventsWithoutParticipants, outOfOfficeEvents: outOfOfficeEvents).alerts
         }
     }
 
-    /// The Show and alert meetings the user dismissed, by id: left out of `alertable`, and listed by the panel
-    /// as dismissed, with Restore, until they end. Only an event that could alert can be dismissed, so one
-    /// whose choice has since become Show in the list only is listed like any other of its kind: it isn't here.
+    /// The Show and alert meetings the user dismissed, on their own or with their series, by id: left out of
+    /// `alertable`, and listed by the panel as dismissed, with Restore, until they end. Only an event that
+    /// could alert can be dismissed, so one whose choice has since become Show in the list only is listed
+    /// like any other of its kind: it isn't here.
     public static func dismissedIDs(
         _ meetings: [Meeting],
         eventsWithoutParticipants: EventVisibility,
@@ -136,7 +147,24 @@ public enum MeetingFilter {
         guard !dismissed.isEmpty else { return [] }
         return Set(meetings.lazy
             .filter {
-                dismissed.contains($0.id)
+                dismissed.isDismissed($0)
+                    && visibility(of: $0, eventsWithoutParticipants: eventsWithoutParticipants, outOfOfficeEvents: outOfOfficeEvents).alerts
+            }
+            .map(\.id))
+    }
+
+    /// Among `dismissedIDs`, the meetings dismissed by a rule of their series (Dismiss All Future Events), by
+    /// id: their Restore asks This Event or All Future Events (`DismissedEvents.isDismissedBySeries`).
+    public static func dismissedBySeriesIDs(
+        _ meetings: [Meeting],
+        eventsWithoutParticipants: EventVisibility,
+        outOfOfficeEvents: EventVisibility,
+        dismissed: DismissedEvents
+    ) -> Set<String> {
+        guard !dismissed.seriesRules.isEmpty else { return [] }
+        return Set(meetings.lazy
+            .filter {
+                dismissed.isDismissedBySeries($0)
                     && visibility(of: $0, eventsWithoutParticipants: eventsWithoutParticipants, outOfOfficeEvents: outOfOfficeEvents).alerts
             }
             .map(\.id))

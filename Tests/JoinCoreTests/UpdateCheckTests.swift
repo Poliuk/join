@@ -242,4 +242,32 @@ final class UpdateCheckTests: XCTestCase {
         XCTAssertEqual(object, ["version": "1.2.0", "minimumSystem": "15.0"])
         XCTAssertEqual(try JSONDecoder().decode(UnsupportedUpdate.self, from: data), unsupported)
     }
+
+    // MARK: Install state
+
+    private var everyInstallState: [UpdateInstallState] {
+        [.idle, .downloading(nil), .downloading(0.5), .verifying, .ready, .installing,
+         .revealed(URL(fileURLWithPath: "/tmp/Join 1.1.0/Join.app")), .failed(.checksum)]
+    }
+
+    func testInProgressFromInstallUntilReadyAndFromInstallAndRelaunchOn() {
+        let inProgress = everyInstallState.filter(\.isInProgress)
+        XCTAssertEqual(inProgress, [.downloading(nil), .downloading(0.5), .verifying, .installing])
+        XCTAssertFalse(UpdateInstallState.ready.isInProgress, "checks go on while a copy is ready")
+    }
+
+    func testAChangedOfferStartsAgainFromInstall() {
+        for state in everyInstallState where !state.isInProgress {
+            XCTAssertEqual(state.afterCheck(offerChanged: true), .idle, "\(state)")
+        }
+    }
+
+    func testTheSameOfferKeepsAReadyOrRevealedCopyAndOffersInstallAgainAfterAFailure() {
+        XCTAssertEqual(UpdateInstallState.idle.afterCheck(offerChanged: false), .idle)
+        XCTAssertEqual(UpdateInstallState.ready.afterCheck(offerChanged: false), .ready)
+        let revealed = UpdateInstallState.revealed(URL(fileURLWithPath: "/tmp/Join 1.1.0/Join.app"))
+        XCTAssertEqual(revealed.afterCheck(offerChanged: false), revealed)
+        XCTAssertEqual(UpdateInstallState.failed(.download).afterCheck(offerChanged: false), .idle)
+        XCTAssertEqual(UpdateInstallState.failed(.relaunch).afterCheck(offerChanged: false), .idle)
+    }
 }

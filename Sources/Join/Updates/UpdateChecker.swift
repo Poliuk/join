@@ -5,21 +5,22 @@ import JoinCore
 
 private let logger = Logger(subsystem: "com.poliuk.join", category: "updates")
 
-/// Asks for a newer release once a day, or when Check Now is clicked, and installs it when asked. One
-/// check runs at a time, and Install waits for it. What a successful check found is stored in
-/// preferences; a failed one is only remembered here, so the next automatic check waits an hour, and only
-/// Settings mentions it.
+/// Asks for a newer release once a day, or when Check Now is clicked, and installs it when asked, in two
+/// steps: Install downloads and verifies the new copy, which then waits, ready, and only Install and
+/// Relaunch replaces the app and quits. One check runs at a time, and both buttons wait for it. What a
+/// successful check found is stored in preferences; a failed one is only remembered here, so the next
+/// automatic check waits an hour, and only Settings mentions it.
 @MainActor
 @Observable
 final class UpdateChecker {
     private(set) var status: UpdateStatus = .unknown
     private(set) var install: UpdateInstallState = .idle
     /// The update on offer: found by the last check that found one, and kept through later checks that
-    /// fail and while it installs. The panel's update bar shows while there is one.
+    /// fail, while it installs and while it's ready. The panel's update bar shows while there is one.
     private(set) var offeredUpdate: AvailableUpdate?
     /// The running app's version. nil in a build without one (`swift run`), which never checks.
     let currentVersion: AppVersion?
-    /// False in a fixture run, unless JOIN_FIXTURE_UPDATE=live.
+    /// False in a fixture run, unless JOIN_FIXTURE_UPDATE is live or ready.
     let canInstall: Bool
 
     @ObservationIgnored private let preferences: Preferences
@@ -27,6 +28,11 @@ final class UpdateChecker {
     /// The fixture scenario (JOIN_FIXTURE) this run uses, if any.
     @ObservationIgnored private let fixtureScenario: String?
     @ObservationIgnored private var lastFailure: Date?
+    /// The install from Install on, downloading, ready or putting the copy in place, so its download can
+    /// be discarded. nil once it has ended.
+    @ObservationIgnored private var installer: (any UpdateInstalling)?
+    /// JOIN_FIXTURE_UPDATE=ready: Install goes through `FixtureUpdateInstaller`.
+    @ObservationIgnored private let simulatesInstall: Bool
     /// Set while the launch re-check of a remembered offer hasn't succeeded yet, so a failure is retried
     /// within the hour rather than at the next daily check.
     @ObservationIgnored private var recheckingOffer = false
@@ -46,7 +52,8 @@ final class UpdateChecker {
         self.preferences = preferences
         self.fixtureScenario = fixtureScenario
         currentVersion = current
-        canInstall = !usesFixtureFeed
+        simulatesInstall = fixtureMode == .ready
+        canInstall = !usesFixtureFeed || simulatesInstall
         keepsChecksInMemory = usesFixtureFeed
         if let fixtureMode, usesFixtureFeed {
             feed = FixtureReleaseFeed(mode: fixtureMode, current: version)
@@ -95,18 +102,18 @@ final class UpdateChecker {
 
     var isChecking: Bool { status == .checking }
 
-    var isInstalling: Bool {
-        switch install {
-        case .downloading, .installing: return true
-        case .idle, .revealed, .failed: return false
-        }
-    }
+    /// From Install until the copy is ready, and from Install and Relaunch on (`isInProgress`). Not while
+    /// ready: a check may then run, and a newer release takes the ready one's place.
+    var isInstalling: Bool { install.isInProgress }
 
     /// At launch: when the last check offered an update newer than this copy, checks again straight away,
     /// so the offer comes back (as the release stands now) without waiting a day. Until that check
     /// succeeds there's no offer to show; if it fails, it's retried an hour later like any failed check.
-    /// Otherwise checks if the daily check is due.
+    /// Otherwise checks if the daily check is due. Also clears what installs left behind when Join! crashed.
     func start(now: Date) {
+        if canInstall, !simulatesInstall {
+            Task.detached(priority: .utility) { UpdateInstaller.removeLeftovers() }
+        }
         if preferences.checksForUpdates, let currentVersion,
            let offered = offeredVersion.flatMap(AppVersion.init), offered > currentVersion {
             recheckingOffer = true
@@ -166,33 +173,62 @@ final class UpdateChecker {
         offeredVersion = update?.version.description
         // An install under way carries on with the update it started with.
         guard !isInstalling else { return }
-        if update != offeredUpdate {
-            install = .idle
-        } else if case .failed = install {
-            // The same update again: offer Install again.
-            install = .idle
-        }
+        let offerChanged = update != offeredUpdate
+        // A newer release, or none any more: a copy downloaded for the old offer goes.
+        if offerChanged { discardDownload() }
+        install = install.afterCheck(offerChanged: offerChanged)
         offeredUpdate = update
     }
 
-    /// Downloads and installs the offered update, then quits so the helper can open the new copy; or
-    /// reveals it in Finder when it can't replace the running one. Not while a check runs, which may
-    /// change the offer.
+    /// Install: downloads and verifies the offered update, which then waits, ready, for Install and
+    /// Relaunch. Nothing is replaced and nothing quits. Not while a check runs, which may change the offer.
     func installUpdate() {
         guard canInstall, let update = offeredUpdate, let currentVersion, !isChecking, !isInstalling else { return }
-        if case .revealed = install { return }
+        switch install {
+        case .idle, .failed: break
+        case .downloading, .verifying, .ready, .installing, .revealed: return
+        }
+        let installer: any UpdateInstalling
+        do {
+            installer = try makeInstaller(for: update, currentVersion: currentVersion)
+        } catch {
+            installFailed(update, error: error)
+            return
+        }
+        self.installer = installer
         install = .downloading(nil)
-        let installer = UpdateInstaller(
-            update: update,
-            revealFolder: revealFolder,
-            relaunchEnvironment: relaunchEnvironment,
-            userAgent: GitHubReleaseFeed.userAgent(currentVersion)
-        )
         Task {
             do {
-                let outcome = try await installer.run { [weak self] state in
+                try await installer.prepare { [weak self] state in
                     Task { @MainActor [weak self] in self?.installProgressed(state) }
                 }
+                logger.notice("Downloaded and verified \(update.version.description, privacy: .public); ready to install")
+                install = .ready
+            } catch {
+                // A failed download leaves nothing behind.
+                self.installer = nil
+                installFailed(update, error: error)
+            }
+        }
+    }
+
+    /// Install and Relaunch: puts the ready copy in place, then quits so the helper can open it; or
+    /// reveals it in Finder when it can't replace the running one. Not while a check runs, which may
+    /// replace the offer.
+    func installAndRelaunch() {
+        guard case .ready = install, let installer, let update = offeredUpdate, !isChecking else { return }
+        guard installer.hasReadyCopy else {
+            // Removed behind Join!'s back, or some of its files: Install downloads it again.
+            logger.error("The downloaded copy of \(update.version.description, privacy: .public) is gone; offering Install again")
+            discardDownload()
+            install = .idle
+            return
+        }
+        install = .installing
+        Task {
+            do {
+                let outcome = try await installer.install()
+                self.installer = nil
                 switch outcome {
                 case .relaunching:
                     logger.notice("Installed \(update.version.description, privacy: .public); relaunching")
@@ -202,20 +238,55 @@ final class UpdateChecker {
                     install = .revealed(app)
                     NSWorkspace.shared.activateFileViewerSelecting([app])
                 }
+            } catch let damaged as ReadyCopyDamaged {
+                // Damaged while it waited and removed by `install`, with nothing replaced: like a copy that's
+                // gone, Install downloads it again. `discardDownload()` does nothing while installing.
+                logger.error("The downloaded copy of \(update.version.description, privacy: .public) no longer passes its checks (\(String(describing: damaged.reason), privacy: .public)); offering Install again")
+                self.installer = nil
+                install = .idle
             } catch {
-                logger.error("Install failed: \(String(describing: error), privacy: .public)")
-                let failure = error as? UpdateFailure ?? .download
-                if case .unsupportedSystem(let minimum) = failure {
-                    // Not an offer any more: the bar goes, and Settings says which macOS it needs.
-                    unsupportedUpdate = UnsupportedUpdate(version: update.version.description, minimumSystem: minimum)
-                    offeredVersion = nil
-                    status = .unsupported(update.version, minimumSystem: minimum)
-                    offeredUpdate = nil
-                    install = .idle
-                } else {
-                    install = .failed(failure)
-                }
+                // `install` leaves nothing of the download behind, however it ends.
+                self.installer = nil
+                installFailed(update, error: error)
             }
+        }
+    }
+
+    /// Removes the download, under way or ready, so nothing is left of an update that wasn't installed:
+    /// when the offer changes, and when Join! quits without Install and Relaunch (the next launch offers
+    /// the update again, to be downloaded again). Not once Install and Relaunch is putting the copy in
+    /// place: that step removes the folder itself when it ends, and removing it under the swap could put a
+    /// partly deleted copy in place.
+    func discardDownload() {
+        if case .installing = install { return }
+        installer?.discard()
+        installer = nil
+    }
+
+    private func makeInstaller(for update: AvailableUpdate, currentVersion: AppVersion) throws -> any UpdateInstalling {
+        if simulatesInstall {
+            return FixtureUpdateInstaller(relaunchEnvironment: relaunchEnvironment)
+        }
+        return try UpdateInstaller(
+            update: update,
+            revealFolder: revealFolder,
+            relaunchEnvironment: relaunchEnvironment,
+            userAgent: GitHubReleaseFeed.userAgent(currentVersion)
+        )
+    }
+
+    private func installFailed(_ update: AvailableUpdate, error: Error) {
+        logger.error("Install failed: \(String(describing: error), privacy: .public)")
+        let failure = error as? UpdateFailure ?? .download
+        if case .unsupportedSystem(let minimum) = failure {
+            // Not an offer any more: the bar goes, and Settings says which macOS it needs.
+            unsupportedUpdate = UnsupportedUpdate(version: update.version.description, minimumSystem: minimum)
+            offeredVersion = nil
+            status = .unsupported(update.version, minimumSystem: minimum)
+            offeredUpdate = nil
+            install = .idle
+        } else {
+            install = .failed(failure)
         }
     }
 
@@ -226,7 +297,8 @@ final class UpdateChecker {
         install = .idle
     }
 
-    /// Progress hops here in tasks of its own, so a late one may arrive after the next step has begun.
+    /// Progress (and then `.verifying`) hops here in tasks of its own, so a late one may arrive after the
+    /// next step has begun.
     private func installProgressed(_ state: UpdateInstallState) {
         guard case .downloading = install else { return }
         install = state

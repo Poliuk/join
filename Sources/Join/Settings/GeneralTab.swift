@@ -180,9 +180,11 @@ struct GeneralTab: View {
 
     // MARK: Updates
 
-    /// "Join! 1.0.0 · Checked 5 minutes ago" or the update on offer, then how an install is going, with
-    /// Check Now and the update bar's button: Install, Download Page after a failed install, Show in Finder
-    /// once revealed. Install waits for a check under way, which may change the offer.
+    /// "Join! 1.0.0 · Checked 5 minutes ago" or the update on offer, then how an install is going ("Install
+    /// 1.1.0" once downloaded and verified), with Check Now and the update bar's button:
+    /// Install, Install and Relaunch once ready, Download Page after a failed install, Show in Finder once
+    /// revealed. Install and Install and Relaunch wait for a check under way, which may change the offer;
+    /// Check Now works while an update is ready, and a newer release takes its place.
     private var updateStatusRow: some View {
         let checker = model.updateChecker
         let status = checker.status
@@ -205,10 +207,11 @@ struct GeneralTab: View {
             HStack(spacing: 8) {
                 Button(UpdateCopy.checkNowTitle) { checker.checkNow() }
                     .disabled(checker.currentVersion == nil || checker.isChecking || checker.isInstalling)
-                if checker.offeredUpdate != nil {
+                if let update = checker.offeredUpdate {
                     let title = UpdateCopy.barButtonTitle(install: checker.install)
                     Button(title ?? UpdateCopy.installTitle) { model.performUpdateAction() }
-                        .disabled(title == nil || (checker.install == .idle && (!checker.canInstall || checker.isChecking)))
+                        .disabled(!UpdateCopy.barButtonEnabled(install: checker.install, canInstall: checker.canInstall, isChecking: checker.isChecking))
+                        .help(UpdateCopy.barButtonHelp(version: update.version, install: checker.install, canInstall: checker.canInstall) ?? "")
                 }
             }
         }
