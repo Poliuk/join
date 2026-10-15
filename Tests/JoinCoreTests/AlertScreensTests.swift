@@ -2,16 +2,21 @@ import Testing
 @testable import JoinCore
 
 struct AlertScreensTests {
-    /// Show on's pop-up, in order (Secondary after Main, before Pointer, 2026-10-07), with the raw values
-    /// Preferences stores for good.
-    @Test(arguments: [
-        (0, AlertScreens.all, "All screens", "all"),
-        (1, .main, "Main screen only", "main"),
-        (2, .secondary, "Secondary screen only", "secondary"),
-        (3, .pointer, "Screen with the pointer", "pointer"),
-    ] as [(Int, AlertScreens, String, String)])
-    func showOnChoices(position: Int, _ choice: AlertScreens, displayName: String, rawValue: String) {
-        #expect(AlertScreens.allCases.firstIndex(of: choice) == position)
+    /// Show on's pop-up, in order (Secondary after Main, before Pointer, 2026-10-07): the words it shows and the
+    /// raw value Preferences stores for good.
+    static let choices: [(AlertScreens, String, String)] = [
+        (.all, "All screens", "all"),
+        (.main, "Main screen only", "main"),
+        (.secondary, "Secondary screen only", "secondary"),
+        (.pointer, "Screen with the pointer", "pointer"),
+    ]
+
+    @Test func thePopUpOffersTheChoicesInOrder() {
+        #expect(AlertScreens.allCases == Self.choices.map(\.0))
+    }
+
+    @Test(arguments: choices)
+    func showOnChoices(_ choice: AlertScreens, displayName: String, rawValue: String) {
         #expect(choice.displayName == displayName)
         #expect(choice.rawValue == rawValue)
     }

@@ -45,7 +45,7 @@ struct SettingsOptionsTests {
         MinutesPopUp(
             testDescription: "Starting soon",
             presets: SettingsOptions.startingSoonMinutes, expectedPresets: [1, 3, 5, 10],
-            range: StartingSoonPill.minuteRange, expectedRange: StartingSoonPill.minuteRange,
+            range: StartingSoonPill.minuteRange, expectedRange: 1...60,
             defaults: [StartingSoonPill.default.minutes]
         ),
     ]
