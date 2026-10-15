@@ -1,5 +1,11 @@
 import Foundation
+import OSLog
 import JoinCore
+
+/// The fake calendars a fixture run can show (`FixtureCalendarService`), named by JOIN_FIXTURE.
+enum FixtureScenario: String, CaseIterable {
+    case nothing, later, busy, meeting, maybe, denied
+}
 
 /// A fake calendar for checking the UI in a known state, selected with the JOIN_FIXTURE environment
 /// variable (`open --env JOIN_FIXTURE=busy build/Join.app`). Fixture runs use their own defaults
@@ -24,30 +30,32 @@ final class FixtureCalendarService: CalendarService {
     static let environmentKey = "JOIN_FIXTURE"
     static let defaultsSuite = "com.poliuk.join.fixture"
 
-    static let scenarios: Set<String> = ["nothing", "later", "busy", "meeting", "maybe", "denied"]
+    /// This run's scenario, read from the environment once. Only a known scenario name turns fixture mode on,
+    /// so a stray or mistyped value can't silently replace the real calendar.
+    static let scenario: FixtureScenario? = scenarioFromEnvironment()
 
-    /// Only a known scenario name turns fixture mode on, so a stray or mistyped value can't
-    /// silently replace the real calendar.
-    static var scenario: String? {
+    private static func scenarioFromEnvironment() -> FixtureScenario? {
         guard let value = ProcessInfo.processInfo.environment[environmentKey], !value.isEmpty else { return nil }
-        guard scenarios.contains(value) else {
-            NSLog("Join: ignoring unknown %@=%@; known scenarios: %@", environmentKey, value, scenarios.sorted().joined(separator: ", "))
+        guard let scenario = FixtureScenario(rawValue: value) else {
+            // A developer's environment value and the scenario names: nothing personal.
+            let known = FixtureScenario.allCases.map(\.rawValue).joined(separator: ", ")
+            Logger.fixture.error("Ignoring unknown \(environmentKey, privacy: .public)=\(value, privacy: .public); known scenarios: \(known, privacy: .public)")
             return nil
         }
-        return value
+        return scenario
     }
 
-    private let name: String
+    private let scenario: FixtureScenario
     private let anchor = Date()
     var onChange: (@MainActor () -> Void)?
 
-    init(scenario: String) {
-        name = scenario
+    init(scenario: FixtureScenario) {
+        self.scenario = scenario
     }
 
-    var authorization: CalendarAuthorization { name == "denied" ? .denied : .authorized }
+    var authorization: CalendarAuthorization { scenario == .denied ? .denied : .authorized }
 
-    func requestAccess() async -> Bool { authorization == .authorized }
+    func requestAccess() async {}
 
     private static let work = CalendarInfo(id: "work", title: "Work", sourceTitle: "Acme", color: RGBA(rgb: 0x67CBDD))
     private static let personal = CalendarInfo(id: "personal", title: "you@gmail.com", sourceTitle: "you@gmail.com", color: RGBA(rgb: 0x5CCF97))
@@ -87,22 +95,21 @@ final class FixtureCalendarService: CalendarService {
         let zoom = "https://us06web.zoom.us/j/12345678901?pwd=sample"
         let address = "C. de Ruiz de Alarcón, 23, Retiro, 28014 Madrid, España"
 
-        var today_: [Meeting] = []
-        switch name {
-        case "later":
-            today_ = [meeting("lunch", "Lunch with Lucía", minutesFromNow(135), minutesFromNow(195), Self.personal, location: address),
-                      meeting("workshop", "Workshop", minutesFromNow(255), minutesFromNow(525), Self.personal, notes: meet, series: "workshop")]
-        case "busy":
-            today_ = [meeting("workshop", "Workshop", minutesFromNow(-56), minutesFromNow(214), Self.personal, notes: meet, series: "workshop"),
-                      meeting("planning", "Ana/Luis: Product Planning", minutesFromNow(4), minutesFromNow(64), Self.work, location: zoom, series: "planning")]
-        case "meeting":
-            today_ = [meeting("workshop", "Workshop", minutesFromNow(-80), minutesFromNow(190), Self.personal, notes: meet, series: "workshop"),
-                      meeting("planning", "Ana/Luis: Product Planning", minutesFromNow(-20), minutesFromNow(40), Self.work, location: zoom, series: "planning")]
-        case "maybe":
-            today_ = [meeting("workshop", "Workshop", minutesFromNow(-18), minutesFromNow(252), Self.personal, notes: meet, status: .tentative, series: "workshop"),
-                      meeting("planning", "Ana/Luis: Product Planning", minutesFromNow(47), minutesFromNow(107), Self.work, location: zoom, series: "planning")]
-        default:
-            today_ = []
+        let todays: [Meeting] = switch scenario {
+        case .later:
+            [meeting("lunch", "Lunch with Lucía", minutesFromNow(135), minutesFromNow(195), Self.personal, location: address),
+             meeting("workshop", "Workshop", minutesFromNow(255), minutesFromNow(525), Self.personal, notes: meet, series: "workshop")]
+        case .busy:
+            [meeting("workshop", "Workshop", minutesFromNow(-56), minutesFromNow(214), Self.personal, notes: meet, series: "workshop"),
+             meeting("planning", "Ana/Luis: Product Planning", minutesFromNow(4), minutesFromNow(64), Self.work, location: zoom, series: "planning")]
+        case .meeting:
+            [meeting("workshop", "Workshop", minutesFromNow(-80), minutesFromNow(190), Self.personal, notes: meet, series: "workshop"),
+             meeting("planning", "Ana/Luis: Product Planning", minutesFromNow(-20), minutesFromNow(40), Self.work, location: zoom, series: "planning")]
+        case .maybe:
+            [meeting("workshop", "Workshop", minutesFromNow(-18), minutesFromNow(252), Self.personal, notes: meet, status: .tentative, series: "workshop"),
+             meeting("planning", "Ana/Luis: Product Planning", minutesFromNow(47), minutesFromNow(107), Self.work, location: zoom, series: "planning")]
+        case .nothing, .denied:
+            []
         }
 
         let later: [Meeting] = [
@@ -116,6 +123,6 @@ final class FixtureCalendarService: CalendarService {
             meeting("roadmap", "Quarterly Roadmap Review", day(2, 16), day(2, 17), Self.work, location: zoom),
             meeting("crit", "Design Crit", day(3, 10), day(3, 11), Self.work, notes: meet),
         ]
-        return (today_ + later).sorted { ($0.start, $0.title) < ($1.start, $1.title) }
+        return (todays + later).sorted { ($0.start, $0.title) < ($1.start, $1.title) }
     }
 }

@@ -20,7 +20,8 @@ struct CalendarInfo: Identifiable, Hashable {
 protocol CalendarService: AnyObject {
     var authorization: CalendarAuthorization { get }
     var onChange: (@MainActor () -> Void)? { get set }
-    func requestAccess() async -> Bool
+    /// Asks for access once; `authorization` then says what the user chose. Throws when the request itself fails.
+    func requestAccess() async throws
     func calendars() -> [CalendarInfo]
     /// `calendarIDs == nil` means every calendar.
     func meetings(from start: Date, to end: Date, calendarIDs: Set<String>?) -> [Meeting]

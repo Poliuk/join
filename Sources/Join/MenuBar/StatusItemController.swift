@@ -93,7 +93,7 @@ final class StatusItemController: NSObject, NSWindowDelegate {
     }
 
     private func open() {
-        model.refreshNow()
+        model.resetClock()
         panel.contentView?.layoutSubtreeIfNeeded()
         updatePanelFrame(reanchoring: true)
         panel.makeKeyAndOrderFront(nil)

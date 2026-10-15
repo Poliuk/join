@@ -3,14 +3,12 @@ import Observation
 import OSLog
 import JoinCore
 
-private let logger = Logger(subsystem: "com.poliuk.join", category: "calendar")
-
 /// Single source of truth for the meetings the rest of the app sees.
 @Observable
 final class MeetingStore {
-    static let lookBehind: TimeInterval = 60 * 60
-    static let lookAhead: TimeInterval = 7 * 24 * 60 * 60
-    static let safetyNetInterval: TimeInterval = 15 * 60
+    private static let lookBehind: TimeInterval = 60 * 60
+    private static let lookAhead: TimeInterval = 7 * 24 * 60 * 60
+    private static let safetyNetInterval: TimeInterval = 15 * 60
 
     /// The events from the checked calendars that Join! shows: those whose Settings › General › Events
     /// choice is Exclude are left out (`MeetingFilter.visible`).
@@ -32,11 +30,16 @@ final class MeetingStore {
 
     func start() async {
         authorization = service.authorization
-        logger.notice("Calendar authorization at launch: \(String(describing: self.authorization), privacy: .public)")
+        Logger.calendar.notice("Calendar authorization at launch: \(String(describing: self.authorization), privacy: .public)")
         if authorization == .notDetermined {
-            _ = await service.requestAccess()
+            do {
+                try await service.requestAccess()
+            } catch {
+                // An EventKit error's domain and code aren't personal.
+                Logger.calendar.error("Calendar access request failed: \(String(describing: error), privacy: .public)")
+            }
             authorization = service.authorization
-            logger.notice("Calendar authorization after request: \(String(describing: self.authorization), privacy: .public)")
+            Logger.calendar.notice("Calendar authorization after request: \(String(describing: self.authorization), privacy: .public)")
         }
 
         service.onChange = { [weak self] in self?.refresh() }
@@ -44,13 +47,17 @@ final class MeetingStore {
         wakeObserver = NSWorkspace.shared.notificationCenter.addObserver(
             forName: NSWorkspace.didWakeNotification, object: nil, queue: .main
         ) { [weak self] _ in
-            Task { @MainActor [weak self] in self?.refresh() }
+            MainActor.assumeIsolated { self?.refresh() }
         }
 
-        safetyNet = Timer.scheduledTimer(withTimeInterval: Self.safetyNetInterval, repeats: true) { [weak self] _ in
-            Task { @MainActor [weak self] in self?.refresh() }
+        // On the main run loop by name: this runs after an `await`, and `scheduledTimer` would pick the
+        // current thread's run loop.
+        let safetyNet = Timer(timeInterval: Self.safetyNetInterval, repeats: true) { [weak self] _ in
+            MainActor.assumeIsolated { self?.refresh() }
         }
-        safetyNet?.tolerance = 60
+        safetyNet.tolerance = 60
+        RunLoop.main.add(safetyNet, forMode: .default)
+        self.safetyNet = safetyNet
 
         refresh()
     }

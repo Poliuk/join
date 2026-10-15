@@ -25,8 +25,20 @@ final class AppModel {
 
     init() {
         let fixture = FixtureCalendarService.scenario
-        let defaults = fixture.flatMap { _ in UserDefaults(suiteName: FixtureCalendarService.defaultsSuite) } ?? .standard
-        let service: CalendarService = fixture.map { FixtureCalendarService(scenario: $0) } ?? EventKitCalendarService()
+        let defaults: UserDefaults
+        let service: CalendarService
+        if let fixture {
+            // Never `.standard`: a fixture run must not change real settings. Only the app's own bundle id or
+            // the global domain would make this nil.
+            guard let fixtureDefaults = UserDefaults(suiteName: FixtureCalendarService.defaultsSuite) else {
+                preconditionFailure("A fixture run needs its own defaults domain")
+            }
+            defaults = fixtureDefaults
+            service = FixtureCalendarService(scenario: fixture)
+        } else {
+            defaults = .standard
+            service = EventKitCalendarService()
+        }
         let preferences = Preferences(defaults: defaults)
         if fixture != nil, preferences.dismissedEvents.withoutSeriesRules != preferences.dismissedEvents {
             // A fixture's series ids ("workshop", "planning", "rev") are the same every launch, and a rule for all
@@ -50,10 +62,10 @@ final class AppModel {
         let interval: TimeInterval = 30
         let firstTick = Date(timeIntervalSinceReferenceDate: (Date().timeIntervalSinceReferenceDate / interval).rounded(.up) * interval)
         let ticker = Timer(fire: firstTick, interval: interval, repeats: true) { [weak self] _ in
-            Task { @MainActor [weak self] in
+            MainActor.assumeIsolated {
                 guard let self else { return }
-                now = Date()
-                updateChecker.tick(now: now)
+                self.now = Date()
+                self.updateChecker.tick(now: self.now)
             }
         }
         ticker.tolerance = 1
@@ -66,7 +78,7 @@ final class AppModel {
         wakeObserver = NSWorkspace.shared.notificationCenter.addObserver(
             forName: NSWorkspace.didWakeNotification, object: nil, queue: .main
         ) { [weak self] _ in
-            Task { @MainActor [weak self] in self?.updateChecker.tick(now: Date()) }
+            MainActor.assumeIsolated { self?.updateChecker.tick(now: Date()) }
         }
 
         observeChanges(of: { [preferences] in
@@ -121,7 +133,9 @@ final class AppModel {
         alertCoordinator.pauseState.isPaused(at: now)
     }
 
-    func refreshNow() {
+    /// Brings `now` up to the current time, for fresh countdowns; the calendars aren't read again
+    /// (that's `MeetingStore.refresh()`).
+    func resetClock() {
         now = Date()
     }
 

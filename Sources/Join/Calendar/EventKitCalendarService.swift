@@ -15,7 +15,7 @@ final class EventKitCalendarService: CalendarService {
         observer = NotificationCenter.default.addObserver(
             forName: .EKEventStoreChanged, object: store, queue: .main
         ) { [weak self] _ in
-            Task { @MainActor [weak self] in self?.onChange?() }
+            MainActor.assumeIsolated { self?.onChange?() }
         }
     }
 
@@ -30,12 +30,8 @@ final class EventKitCalendarService: CalendarService {
         }
     }
 
-    func requestAccess() async -> Bool {
-        do {
-            return try await store.requestFullAccessToEvents()
-        } catch {
-            return false
-        }
+    func requestAccess() async throws {
+        _ = try await store.requestFullAccessToEvents()
     }
 
     func calendars() -> [CalendarInfo] {
@@ -64,8 +60,11 @@ final class EventKitCalendarService: CalendarService {
             .sorted { ($0.start, $0.title) < ($1.start, $1.title) }
     }
 
-    static func meeting(from event: EKEvent) -> Meeting? {
-        let myStatus = participationStatus(for: event)
+    /// nil for an event Join! doesn't show, and for one without a calendar (`EKEvent.calendar` is implicitly
+    /// unwrapped; fetched events always have one).
+    private static func meeting(from event: EKEvent) -> Meeting? {
+        guard let calendar = event.calendar else { return nil }
+        let myStatus = participationStatus(for: event, calendar: calendar)
         guard MeetingFilter.shouldInclude(isAllDay: event.isAllDay, isCanceled: event.status == .canceled, myStatus: myStatus),
               let start = event.startDate, let end = event.endDate
         else { return nil }
@@ -80,9 +79,9 @@ final class EventKitCalendarService: CalendarService {
             start: start,
             end: end,
             isAllDay: event.isAllDay,
-            calendarID: event.calendar.calendarIdentifier,
-            calendarTitle: event.calendar.title,
-            calendarColor: rgba(from: event.calendar.cgColor),
+            calendarID: calendar.calendarIdentifier,
+            calendarTitle: calendar.title,
+            calendarColor: rgba(from: calendar.cgColor),
             location: event.location?.nilIfEmpty,
             notes: event.notes?.nilIfEmpty,
             url: event.url,
@@ -106,9 +105,9 @@ final class EventKitCalendarService: CalendarService {
     /// or one you're not on, is `unknown`, which ranks below accepted meetings in the menu bar. An event
     /// without attendees is yours only on a calendar you can edit: a subscribed or read-only shared
     /// calendar's blocks are someone else's.
-    private static func participationStatus(for event: EKEvent) -> ParticipationStatus {
+    private static func participationStatus(for event: EKEvent, calendar: EKCalendar) -> ParticipationStatus {
         guard let attendees = event.attendees, !attendees.isEmpty else {
-            return event.calendar?.allowsContentModifications == false ? .unknown : .accepted
+            return calendar.allowsContentModifications ? .accepted : .unknown
         }
         guard let me = attendees.first(where: { $0.isCurrentUser }) else {
             return event.organizer?.isCurrentUser == true ? .accepted : .unknown

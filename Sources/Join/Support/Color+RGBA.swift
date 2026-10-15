@@ -23,8 +23,11 @@ nonisolated extension NSColor {
         self.init(srgbRed: rgba.red, green: rgba.green, blue: rgba.blue, alpha: rgba.alpha)
     }
 
+    /// Traps for a color with no sRGB form (a pattern color, say), whose components AppKit can't give.
     var rgba: RGBA {
-        let color = usingColorSpace(.sRGB) ?? self
+        guard let color = usingColorSpace(.sRGB) else {
+            preconditionFailure("\(self) has no sRGB form")
+        }
         return RGBA(
             red: Double(color.redComponent),
             green: Double(color.greenComponent),

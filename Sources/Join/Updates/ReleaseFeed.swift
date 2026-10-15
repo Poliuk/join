@@ -1,4 +1,5 @@
 import Foundation
+import OSLog
 import JoinCore
 
 /// Where the update check finds the latest release. Nonisolated: `FixtureReleaseFeed` is an actor of its own.
@@ -9,7 +10,7 @@ nonisolated protocol ReleaseFeed: Sendable {
 /// GitHub's latest release, asked for without a token: one GET that sends nothing but the headers below.
 struct GitHubReleaseFeed: ReleaseFeed {
     /// "Join/1.0.0". GitHub refuses requests without a User-Agent.
-    let userAgent: String
+    private let userAgent: String
 
     init(current: AppVersion) {
         userAgent = Self.userAgent(current)
@@ -80,15 +81,16 @@ actor FixtureReleaseFeed: ReleaseFeed {
     static var mode: Mode {
         guard let value = ProcessInfo.processInfo.environment[environmentKey], !value.isEmpty else { return .current }
         guard let mode = Mode(rawValue: value) else {
-            NSLog("Join: ignoring unknown %@=%@; known modes: %@", environmentKey, value,
-                  Mode.allCases.map(\.rawValue).joined(separator: ", "))
+            // A developer's environment value and the mode names: nothing personal.
+            let known = Mode.allCases.map(\.rawValue).joined(separator: ", ")
+            Logger.updates.error("Ignoring unknown \(environmentKey, privacy: .public)=\(value, privacy: .public); known modes: \(known, privacy: .public)")
             return .current
         }
         return mode
     }
 
-    let mode: Mode
-    let current: AppVersion
+    private let mode: Mode
+    private let current: AppVersion
     /// How many checks `ready` has answered.
     private var checks = 0
 

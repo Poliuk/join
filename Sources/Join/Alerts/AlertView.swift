@@ -14,7 +14,7 @@ struct AlertRootView: View {
 }
 
 /// The desktop blurred through the system material, then the tint and the scrim.
-struct AlertBackdrop: View {
+private struct AlertBackdrop: View {
     let appearance: AlertAppearance
 
     var body: some View {
@@ -61,21 +61,39 @@ struct AlertTintAndScrim: View {
 }
 
 struct AlertContentView: View {
+    enum Mode {
+        /// The alert: a clock that ticks every second, buttons to click, and room above and below.
+        case live
+        /// Settings' preview: a fixed clock, and buttons that are drawn with nothing to click or focus. It
+        /// crops close to the content, so it keeps no room above or below.
+        case preview(at: Date)
+    }
+
     let session: AlertSession
-    /// A fixed clock, for the Settings preview. nil ticks every second.
-    var now: Date? = nil
-    /// false for the Settings preview: the buttons are drawn, but there is nothing to click or focus.
-    var isInteractive = true
-    /// The room above and below the content. The Settings preview crops close to the content, so it keeps none.
-    var verticalPadding: CGFloat = 40
+    var mode: Mode = .live
 
     var body: some View {
-        if let now {
-            content(at: now)
-        } else {
+        switch mode {
+        case .live:
             TimelineView(.periodic(from: Self.lastWholeSecond(), by: 1)) { context in
                 content(at: context.date)
             }
+        case .preview(let now):
+            content(at: now)
+        }
+    }
+
+    private var isInteractive: Bool {
+        switch mode {
+        case .live: true
+        case .preview: false
+        }
+    }
+
+    private var verticalPadding: CGFloat {
+        switch mode {
+        case .live: 40
+        case .preview: 0
         }
     }
 
@@ -306,7 +324,7 @@ private struct AlertJoinButton: View {
     }
 }
 
-struct AlertSnoozeOption: Identifiable {
+private struct AlertSnoozeOption: Identifiable {
     let id: String
     let label: String
     let accessibilityLabel: String
@@ -406,10 +424,10 @@ private struct AlertPressableStyle: ButtonStyle {
     }
 }
 
-struct VisualEffectView: NSViewRepresentable {
-    var material: NSVisualEffectView.Material
-    var blendingMode: NSVisualEffectView.BlendingMode
-    var appearance: NSAppearance.Name
+private struct VisualEffectView: NSViewRepresentable {
+    let material: NSVisualEffectView.Material
+    let blendingMode: NSVisualEffectView.BlendingMode
+    let appearance: NSAppearance.Name
 
     func makeNSView(context: Context) -> NSVisualEffectView {
         let view = NSVisualEffectView()

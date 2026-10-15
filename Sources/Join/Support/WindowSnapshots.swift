@@ -1,10 +1,11 @@
 import AppKit
+import OSLog
 
 /// Writes a PNG of every visible window of the app, for checking UI without screen-recording access.
 /// Driven by the fixture-only `snapshot` script hook. Files always go under
 /// `$TMPDIR/JoinSnapshots/<name>`; the name is reduced to a single safe path component.
 enum WindowSnapshots {
-    static var root: URL {
+    private static var root: URL {
         URL(fileURLWithPath: NSTemporaryDirectory(), isDirectory: true).appendingPathComponent("JoinSnapshots", isDirectory: true)
     }
 
@@ -13,7 +14,13 @@ enum WindowSnapshots {
         let cleaned = String((name ?? "").unicodeScalars.filter { allowed.contains($0) }.map(Character.init))
         let folderName = cleaned.trimmingCharacters(in: CharacterSet(charactersIn: ".")).isEmpty ? "latest" : cleaned
         let folder = root.appendingPathComponent(folderName, isDirectory: true)
-        try? FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+        // The folder name comes from the script, and window titles are Settings pane names: nothing personal.
+        do {
+            try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+        } catch {
+            Logger.fixture.error("Couldn't make the snapshot folder \(folderName, privacy: .public): \(error.localizedDescription, privacy: .public)")
+            return
+        }
         for (index, window) in NSApp.windows.enumerated() where window.isVisible {
             guard let view = window.contentView?.superview ?? window.contentView,
                   let rep = view.bitmapImageRepForCachingDisplay(in: view.bounds)
@@ -23,7 +30,11 @@ enum WindowSnapshots {
             let kind = String(describing: type(of: window))
             let title = window.title.isEmpty ? "" : "-" + window.title.replacingOccurrences(of: "/", with: "-")
             let fileName = String(format: "%02d-%@%@.png", index, kind, title)
-            try? data.write(to: folder.appendingPathComponent(fileName))
+            do {
+                try data.write(to: folder.appendingPathComponent(fileName))
+            } catch {
+                Logger.fixture.error("Couldn't write the snapshot \(fileName, privacy: .public) in \(folderName, privacy: .public): \(error.localizedDescription, privacy: .public)")
+            }
         }
     }
 }

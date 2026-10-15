@@ -4,9 +4,6 @@ import OSLog
 import Security
 import JoinCore
 
-/// Nonisolated: a `Logger` is `Sendable`, and the download and install steps log off the main actor.
-nonisolated private let logger = Logger(subsystem: "com.poliuk.join", category: "updates")
-
 /// The two steps of installing an update, so that nothing quits before the user says so: `prepare` when
 /// the user clicks Install, `install` when they click Install and Relaunch. `UpdateInstaller` does the real
 /// work; `FixtureUpdateInstaller` stands in for it in a fixture run with JOIN_FIXTURE_UPDATE=ready.
@@ -32,7 +29,7 @@ nonisolated protocol UpdateInstalling: Sendable {
 /// to Install, which downloads it again, rather than failing.
 struct ReadyCopyDamaged: Error {
     /// What the check found.
-    let reason: any Error
+    let reason: UpdateFailure
 }
 
 /// Installs an update in the two steps of `UpdateInstalling`, in a working folder made when it's created.
@@ -53,20 +50,20 @@ nonisolated struct UpdateInstaller: UpdateInstalling {
 
     /// What the new copy's code signature must satisfy. Releases are signed ad hoc, so the identifier is
     /// all there is to check: the trust is in HTTPS and the project's GitHub releases.
-    static let signingRequirement = #"identifier "com.poliuk.join""#
+    private static let signingRequirement = #"identifier "com.poliuk.join""#
 
-    let update: AvailableUpdate
+    private let update: AvailableUpdate
     /// The running app, which the new copy replaces.
-    let target: URL
+    private let target: URL
     /// The bundle identifier the new copy must have: the running app's.
-    let bundleIdentifier: String?
+    private let bundleIdentifier: String?
     /// Where a copy that can't replace the running one goes: ~/Downloads, or a temporary folder in fixture runs.
-    let revealFolder: URL
+    private let revealFolder: URL
     /// `open --env` variables for the relaunched copy, so a fixture run comes back as one.
-    let relaunchEnvironment: [String: String]
-    let userAgent: String
+    private let relaunchEnvironment: [String: String]
+    private let userAgent: String
     /// The working folder, where the download and the ready copy live (`workFolder(for:)`).
-    let work: URL
+    private let work: URL
 
     /// Makes the working folder; fails with `save` when it can't.
     init(
@@ -98,12 +95,23 @@ nonisolated struct UpdateInstaller: UpdateInstalling {
             report(.verifying)
             switch update.digest {
             case .sha256(let expected):
-                guard (try? Self.sha256(of: archive)) == expected else { throw UpdateFailure.checksum }
+                let actual: String
+                do {
+                    actual = try Self.sha256(of: archive)
+                } catch {
+                    Logger.updates.error("Couldn't read the download to check its digest: \(error.localizedDescription, privacy: .public)")
+                    throw UpdateFailure.checksum
+                }
+                guard actual == expected else {
+                    // Digests aren't personal.
+                    Logger.updates.error("The download's SHA-256 is \(actual, privacy: .public), not the release's \(expected, privacy: .public)")
+                    throw UpdateFailure.checksum
+                }
             case .missing:
                 break
             case .unreadable(let digest):
                 // Treated like a release without one, as before; logged so a bad digest doesn't go unnoticed.
-                logger.error("The release's digest can't be read (\(digest, privacy: .public)); skipping the checksum, the signature is still checked")
+                Logger.updates.error("The release's digest can't be read (\(digest, privacy: .public)); skipping the checksum, the signature is still checked")
             }
             try await Self.unzip(archive, into: app.deletingLastPathComponent())
             try verify(app)
@@ -133,7 +141,7 @@ nonisolated struct UpdateInstaller: UpdateInstalling {
         defer { discard() }
         // The copy may have waited for days in a folder this user can write to: it must still pass. One that
         // doesn't was damaged while it waited, and nothing has been replaced yet.
-        do {
+        do throws(UpdateFailure) {
             try verify(app)
         } catch {
             throw ReadyCopyDamaged(reason: error)
@@ -163,7 +171,7 @@ nonisolated struct UpdateInstaller: UpdateInstalling {
     /// than three days old, and an unzipped copy's files are as old as the release from the start, since
     /// ditto keeps the archive's dates. ".noindex" keeps Spotlight from indexing the waiting copy as a second
     /// Join!.
-    static var updatesFolder: URL? {
+    private static var updatesFolder: URL? {
         FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first?
             .appendingPathComponent(Bundle.main.bundleIdentifier ?? "com.poliuk.join", isDirectory: true)
             .appendingPathComponent("Updates.noindex", isDirectory: true)
@@ -194,6 +202,7 @@ nonisolated struct UpdateInstaller: UpdateInstalling {
         do {
             try fileManager.createDirectory(at: folder, withIntermediateDirectories: true)
         } catch {
+            Logger.updates.error("Couldn't make a working folder at \(folder.path): \(error.localizedDescription, privacy: .public)")
             throw UpdateFailure.save
         }
         return folder
@@ -209,15 +218,16 @@ nonisolated struct UpdateInstaller: UpdateInstalling {
     /// Removes the working folders in `updatesFolder` whose process isn't running any more: a crash or a force
     /// quit skips the discard at quit, and nothing else cleans that folder. One whose process is running is
     /// kept, as it may hold a ready copy: this process's own, or another copy's (a fixture run next to the
-    /// real app, say). Run at launch, off the main actor.
-    static func removeLeftovers() {
+    /// real app, say). Run at launch; `@concurrent`, so its file work stays off the main actor.
+    @concurrent
+    static func removeLeftovers() async {
         let fileManager = FileManager.default
         guard let updates = updatesFolder, let names = try? fileManager.contentsOfDirectory(atPath: updates.path) else { return }
         for name in names where name.hasPrefix(workFolderPrefix) {
             guard let pid = pid_t(name.dropFirst(workFolderPrefix.count).prefix(while: { $0 != "-" })), pid > 0,
                   kill(pid, 0) != 0, errno == ESRCH
             else { continue }
-            logger.notice("Removing a download left by process \(pid, privacy: .public)")
+            Logger.updates.notice("Removing a download left by process \(pid, privacy: .public)")
             try? fileManager.removeItem(at: updates.appendingPathComponent(name, isDirectory: true))
         }
     }
@@ -247,15 +257,19 @@ nonisolated struct UpdateInstaller: UpdateInstalling {
             do {
                 try process.run()
             } catch {
+                Logger.updates.error("Couldn't start ditto: \(error.localizedDescription, privacy: .public)")
                 continuation.resume(throwing: UpdateFailure.unzip)
             }
         }
-        guard status == 0 else { throw UpdateFailure.unzip }
+        guard status == 0 else {
+            Logger.updates.error("ditto couldn't unzip the download: exit status \(status, privacy: .public)")
+            throw UpdateFailure.unzip
+        }
     }
 
     /// `app` must be a real folder holding Join! at the update's version that can run on this Mac (its
     /// macOS and its processor), validly signed in every architecture and every piece of nested code.
-    private func verify(_ app: URL) throws {
+    private func verify(_ app: URL) throws(UpdateFailure) {
         let values = try? app.resourceValues(forKeys: [.isDirectoryKey, .isSymbolicLinkKey])
         guard values?.isDirectory == true, values?.isSymbolicLink == false,
               let data = try? Data(contentsOf: app.appendingPathComponent("Contents/Info.plist")),
@@ -277,7 +291,7 @@ nonisolated struct UpdateInstaller: UpdateInstalling {
         let flags = SecCSFlags(rawValue: SecCSFlags.RawValue(kSecCSStrictValidate | kSecCSCheckAllArchitectures | kSecCSCheckNestedCode))
         let status = SecStaticCodeCheckValidity(code, flags, requirement)
         guard status == errSecSuccess else {
-            logger.error("The downloaded app's signature failed validation: \(status, privacy: .public)")
+            Logger.updates.error("The downloaded app's signature failed validation: \(status, privacy: .public)")
             throw UpdateFailure.signature
         }
     }
@@ -318,10 +332,10 @@ nonisolated struct UpdateInstaller: UpdateInstalling {
                 ?? target
         } catch {
             guard (try? verify(target)) != nil else {
-                logger.error("Couldn't replace the running copy: \(error.localizedDescription, privacy: .public)")
+                Logger.updates.error("Couldn't replace the running copy: \(error.localizedDescription, privacy: .public)")
                 return nil
             }
-            logger.error("Replaced the running copy, but couldn't delete the old one: \(error.localizedDescription, privacy: .public)")
+            Logger.updates.error("Replaced the running copy, but couldn't delete the old one: \(error.localizedDescription, privacy: .public)")
             try? FileManager.default.removeItem(at: app)
             return target
         }
@@ -343,7 +357,8 @@ nonisolated struct UpdateInstaller: UpdateInstalling {
             try fileManager.moveItem(at: app, to: destination)
             return destination
         } catch {
-            logger.error("Couldn't move the new copy to \(revealFolder.path, privacy: .public): \(error.localizedDescription, privacy: .public)")
+            // The folder's name only: its path names the user's account.
+            Logger.updates.error("Couldn't move the new copy to \(revealFolder.lastPathComponent, privacy: .public): \(error.localizedDescription, privacy: .public)")
             throw UpdateFailure.save
         }
     }
@@ -379,7 +394,7 @@ nonisolated struct UpdateInstaller: UpdateInstalling {
         var pid: pid_t = 0
         let result = posix_spawn(&pid, "/bin/sh", &actions, &attributes, argv, envp)
         guard result == 0 else {
-            logger.error("Couldn't start the relaunch helper: \(result, privacy: .public)")
+            Logger.updates.error("Couldn't start the relaunch helper: \(result, privacy: .public)")
             throw UpdateFailure.relaunch
         }
     }
@@ -519,7 +534,7 @@ nonisolated private final class Download: NSObject, URLSessionDataDelegate, @unc
         }
         file = nil
         if let error, failure == nil {
-            logger.error("The download failed: \(error.localizedDescription, privacy: .public)")
+            Logger.updates.error("The download failed: \(error.localizedDescription, privacy: .public)")
         }
         if let failure {
             continuation?.resume(throwing: failure)

@@ -3,8 +3,6 @@ import Observation
 import OSLog
 import JoinCore
 
-private let logger = Logger(subsystem: "com.poliuk.join", category: "updates")
-
 /// Asks for a newer release once a day, or when Check Now is clicked, and installs it when asked, in two
 /// steps: Install downloads and verifies the new copy, which then waits, ready, and only Install and
 /// Relaunch replaces the app and quits. One check runs at a time, and both buttons wait for it. What a
@@ -25,7 +23,7 @@ final class UpdateChecker {
     @ObservationIgnored private let preferences: Preferences
     @ObservationIgnored private let feed: any ReleaseFeed
     /// The fixture scenario (JOIN_FIXTURE) this run uses, if any.
-    @ObservationIgnored private let fixtureScenario: String?
+    @ObservationIgnored private let fixtureScenario: FixtureScenario?
     @ObservationIgnored private var lastFailure: Date?
     /// The install from Install on, downloading, ready or putting the copy in place, so its download can
     /// be discarded. nil once it has ended.
@@ -35,15 +33,25 @@ final class UpdateChecker {
     /// Set while the launch re-check of a remembered offer hasn't succeeded yet, so a failure is retried
     /// within the hour rather than at the next daily check.
     @ObservationIgnored private var recheckingOffer = false
-    /// True in a fixture run with a fixture feed, which keeps what its checks find in the properties below
-    /// instead of the fixture defaults, so every fixture launch checks once and JOIN_FIXTURE_UPDATE decides
-    /// what it finds.
-    @ObservationIgnored private let keepsChecksInMemory: Bool
-    private var lastCheckInMemory: Date?
-    @ObservationIgnored private var offeredVersionInMemory: AppVersion?
-    @ObservationIgnored private var unsupportedUpdateInMemory: UnsupportedUpdate?
+    /// Where what checks find is kept. Observed: Settings' "Last checked" reads `lastCheck` in fixture runs too.
+    private var checkRecords: CheckRecords
 
-    init(preferences: Preferences, fixtureScenario: String?) {
+    /// What the last successful check found.
+    private struct CheckRecord {
+        var lastCheck: Date?
+        var offeredVersion: AppVersion?
+        var unsupportedUpdate: UnsupportedUpdate?
+    }
+
+    private enum CheckRecords {
+        /// In preferences, from one launch to the next.
+        case preferences
+        /// Here, in a fixture run with a fixture feed, instead of the fixture defaults: so every fixture launch
+        /// checks once, and JOIN_FIXTURE_UPDATE decides what it finds.
+        case memory(CheckRecord)
+    }
+
+    init(preferences: Preferences, fixtureScenario: FixtureScenario?) {
         let current = (Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String).flatMap(AppVersion.init)
         let version = current ?? AppVersion(major: 0, minor: 0, patch: 0)
         let fixtureMode = fixtureScenario.map { _ in FixtureReleaseFeed.mode }
@@ -53,7 +61,7 @@ final class UpdateChecker {
         currentVersion = current
         simulatesInstall = fixtureMode == .ready
         canInstall = !usesFixtureFeed || simulatesInstall
-        keepsChecksInMemory = usesFixtureFeed
+        checkRecords = usesFixtureFeed ? .memory(CheckRecord()) : .preferences
         if let fixtureMode, usesFixtureFeed {
             feed = FixtureReleaseFeed(mode: fixtureMode, current: version)
         } else {
@@ -67,26 +75,59 @@ final class UpdateChecker {
 
     /// When the last check succeeded.
     private(set) var lastCheck: Date? {
-        get { keepsChecksInMemory ? lastCheckInMemory : preferences.lastUpdateCheck }
+        get {
+            switch checkRecords {
+            case .preferences: preferences.lastUpdateCheck
+            case .memory(let record): record.lastCheck
+            }
+        }
         set {
-            if keepsChecksInMemory { lastCheckInMemory = newValue } else { preferences.lastUpdateCheck = newValue }
+            switch checkRecords {
+            case .preferences:
+                preferences.lastUpdateCheck = newValue
+            case .memory(var record):
+                record.lastCheck = newValue
+                checkRecords = .memory(record)
+            }
         }
     }
 
     /// The version the last successful check offered, so a relaunch can bring the offer back.
     private var offeredVersion: AppVersion? {
-        get { keepsChecksInMemory ? offeredVersionInMemory : preferences.offeredUpdateVersion }
+        get {
+            switch checkRecords {
+            case .preferences: preferences.offeredUpdateVersion
+            case .memory(let record): record.offeredVersion
+            }
+        }
         set {
-            if keepsChecksInMemory { offeredVersionInMemory = newValue } else { preferences.offeredUpdateVersion = newValue }
+            switch checkRecords {
+            case .preferences:
+                preferences.offeredUpdateVersion = newValue
+            case .memory(var record):
+                record.offeredVersion = newValue
+                checkRecords = .memory(record)
+            }
         }
     }
 
     /// A release whose install found it needs a newer macOS. Kept while checks keep finding it, and not
     /// offered meanwhile.
     private var unsupportedUpdate: UnsupportedUpdate? {
-        get { keepsChecksInMemory ? unsupportedUpdateInMemory : preferences.unsupportedUpdate }
+        get {
+            switch checkRecords {
+            case .preferences: preferences.unsupportedUpdate
+            case .memory(let record): record.unsupportedUpdate
+            }
+        }
         set {
-            if keepsChecksInMemory { unsupportedUpdateInMemory = newValue } else { preferences.unsupportedUpdate = newValue }
+            switch checkRecords {
+            case .preferences:
+                preferences.unsupportedUpdate = newValue
+            case .memory(var record):
+                record.unsupportedUpdate = newValue
+                checkRecords = .memory(record)
+            }
         }
     }
 
@@ -108,7 +149,7 @@ final class UpdateChecker {
     /// Otherwise checks if the daily check is due. Also clears what installs left behind when Join! crashed.
     func start(now: Date) {
         if canInstall, !simulatesInstall {
-            Task.detached(priority: .utility) { UpdateInstaller.removeLeftovers() }
+            Task(priority: .utility) { await UpdateInstaller.removeLeftovers() }
         }
         if let currentVersion,
            UpdateCheck.rechecksAtLaunch(enabled: preferences.checksForUpdates, offeredVersion: offeredVersion, current: currentVersion) {
@@ -142,10 +183,10 @@ final class UpdateChecker {
             do {
                 let release = try await feed.latestRelease()
                 let update = UpdateCheck.update(current: currentVersion, release: release)
-                logger.notice("Latest release \(release.tagName, privacy: .public); update: \(update?.version.description ?? "none", privacy: .public)")
+                Logger.updates.notice("Latest release \(release.tagName, privacy: .public); update: \(update?.version.description ?? "none", privacy: .public)")
                 finishCheck(with: update)
             } catch {
-                logger.error("Update check failed: \(String(describing: error), privacy: .public)")
+                Logger.updates.error("Update check failed: \(String(describing: error), privacy: .public)")
                 lastFailure = Date()
                 status = .failed
             }
@@ -187,10 +228,16 @@ final class UpdateChecker {
         install = .downloading(nil)
         Task {
             do {
-                try await installer.prepare { state in
-                    Task { @MainActor in self.installProgressed(state) }
+                // Progress comes through one stream, in order, the newest report replacing one not yet shown.
+                let (states, reporter) = AsyncStream.makeStream(of: UpdateInstallState.self, bufferingPolicy: .bufferingNewest(1))
+                try await withThrowingDiscardingTaskGroup { group in
+                    group.addTask {
+                        for await state in states { await self.installProgressed(state) }
+                    }
+                    defer { reporter.finish() }
+                    try await installer.prepare { reporter.yield($0) }
                 }
-                logger.notice("Downloaded and verified \(update.version.description, privacy: .public); ready to install")
+                Logger.updates.notice("Downloaded and verified \(update.version.description, privacy: .public); ready to install")
                 install = .ready
             } catch {
                 // A failed download leaves nothing behind.
@@ -207,7 +254,7 @@ final class UpdateChecker {
         guard case .ready = install, let installer, let update = offeredUpdate, !isChecking else { return }
         guard installer.hasReadyCopy else {
             // Removed behind Join!'s back, or some of its files: Install downloads it again.
-            logger.error("The downloaded copy of \(update.version.description, privacy: .public) is gone; offering Install again")
+            Logger.updates.error("The downloaded copy of \(update.version.description, privacy: .public) is gone; offering Install again")
             discardDownload()
             install = .idle
             return
@@ -219,17 +266,17 @@ final class UpdateChecker {
                 self.installer = nil
                 switch outcome {
                 case .relaunching:
-                    logger.notice("Installed \(update.version.description, privacy: .public); relaunching")
+                    Logger.updates.notice("Installed \(update.version.description, privacy: .public); relaunching")
                     NSApp.terminate(nil)
                 case .revealed(let app):
-                    logger.notice("Couldn't replace the running copy; revealed \(update.version.description, privacy: .public) instead")
+                    Logger.updates.notice("Couldn't replace the running copy; revealed \(update.version.description, privacy: .public) instead")
                     install = .revealed(app)
                     NSWorkspace.shared.activateFileViewerSelecting([app])
                 }
             } catch let damaged as ReadyCopyDamaged {
                 // Damaged while it waited and removed by `install`, with nothing replaced: like a copy that's
                 // gone, Install downloads it again. `discardDownload()` does nothing while installing.
-                logger.error("The downloaded copy of \(update.version.description, privacy: .public) no longer passes its checks (\(String(describing: damaged.reason), privacy: .public)); offering Install again")
+                Logger.updates.error("The downloaded copy of \(update.version.description, privacy: .public) no longer passes its checks (\(String(describing: damaged.reason), privacy: .public)); offering Install again")
                 self.installer = nil
                 install = .idle
             } catch {
@@ -264,7 +311,7 @@ final class UpdateChecker {
     }
 
     private func installFailed(_ update: AvailableUpdate, error: Error) {
-        logger.error("Install failed: \(String(describing: error), privacy: .public)")
+        Logger.updates.error("Install failed: \(String(describing: error), privacy: .public)")
         let failure = error as? UpdateFailure ?? .download
         if case .unsupportedSystem(let minimum) = failure {
             // Not an offer any more: the bar goes, and Settings says which macOS it needs.
@@ -286,8 +333,8 @@ final class UpdateChecker {
         install = .idle
     }
 
-    /// Progress (and then `.verifying`) hops here in tasks of its own, so a late one may arrive after the
-    /// next step has begun.
+    /// Progress, then `.verifying`, in the order `prepare` reports them (`installUpdate`'s stream). Only while
+    /// downloading, so a report can never take an install that has moved on back to an earlier step.
     private func installProgressed(_ state: UpdateInstallState) {
         guard case .downloading = install else { return }
         install = state
@@ -305,7 +352,7 @@ final class UpdateChecker {
     /// A fixture run relaunches as the same fixture.
     private var relaunchEnvironment: [String: String] {
         guard let fixtureScenario else { return [:] }
-        var environment = [FixtureCalendarService.environmentKey: fixtureScenario]
+        var environment = [FixtureCalendarService.environmentKey: fixtureScenario.rawValue]
         environment[FixtureReleaseFeed.environmentKey] = ProcessInfo.processInfo.environment[FixtureReleaseFeed.environmentKey]
         return environment
     }

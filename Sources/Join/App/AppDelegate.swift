@@ -2,14 +2,14 @@ import AppKit
 import JoinCore
 
 final class AppDelegate: NSObject, NSApplicationDelegate {
-    let model = AppModel()
+    private let model = AppModel()
     private var statusItem: StatusItemController?
     private var hookObservers: [NSObjectProtocol] = []
     private var fixtureExpiry: Timer?
 
     /// A forgotten fixture instance would leave the user without real alerts, so it quits on its own.
-    static let fixtureLifetime: TimeInterval = 2 * 60 * 60
-    static let hookPrefix = "com.poliuk.join.fixture."
+    private static let fixtureLifetime: TimeInterval = 2 * 60 * 60
+    private static let hookPrefix = "com.poliuk.join.fixture."
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         // A fixture run can ask for a Dock icon (JOIN_FIXTURE_REGULAR=1) so UI automation tools can target it.
@@ -23,7 +23,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         if model.isFixture {
             observeScriptHooks()
             fixtureExpiry = Timer.scheduledTimer(withTimeInterval: Self.fixtureLifetime, repeats: false) { _ in
-                Task { @MainActor in NSApp.terminate(nil) }
+                MainActor.assumeIsolated { NSApp.terminate(nil) }
             }
         }
     }
@@ -102,7 +102,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 forName: Notification.Name(Self.hookPrefix + name), object: nil, queue: .main
             ) { [weak self] notification in
                 let argument = notification.object as? String
-                Task { @MainActor [weak self] in
+                MainActor.assumeIsolated {
                     guard let self else { return }
                     action(self, argument)
                 }

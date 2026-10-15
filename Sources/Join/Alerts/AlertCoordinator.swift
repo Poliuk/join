@@ -1,25 +1,26 @@
 import AppKit
 import Observation
+import OSLog
 import JoinCore
 
-struct AlertStateRecord: Codable {
-    var state: AlertState
-    var expiresAt: Date
+/// How an alert's state is saved, so snoozes and dismissals survive a relaunch until the meeting ends.
+private struct AlertStateRecord: Codable {
+    let state: AlertState
+    let expiresAt: Date
 }
 
 /// Turns the pure scheduler's answer into timers, windows and sounds.
 @Observable
 final class AlertCoordinator {
-    static let heartbeatInterval: TimeInterval = 30
-    static let fireLeeway: TimeInterval = 0.5
-    static let appNapGuardWindow: TimeInterval = 5 * 60
-    static let statesKey = "alertStates"
-    static let pauseKey = "pauseState"
+    private static let heartbeatInterval: TimeInterval = 30
+    private static let fireLeeway: TimeInterval = 0.5
+    private static let appNapGuardWindow: TimeInterval = 5 * 60
+    private static let statesKey = "alertStates"
+    private static let pauseKey = "pauseState"
 
     /// Persisted, so "Pause until tomorrow" survives a relaunch.
     private(set) var pauseState: PauseState = .active
     private(set) var activeMeetings: [Meeting] = []
-    private(set) var nextFireAt: Date?
 
     /// Called right before any alert, real or demo, goes on screen.
     @ObservationIgnored var willPresentAlert: (() -> Void)?
@@ -42,13 +43,20 @@ final class AlertCoordinator {
         self.preferences = preferences
         self.windows = windows
         self.defaults = defaults
-        if let data = defaults.data(forKey: Self.statesKey),
-           let decoded = try? JSONDecoder().decode([String: AlertStateRecord].self, from: data) {
-            states = decoded
+        // What can't be read is logged and left out: no snoozes or dismissals, no pause.
+        if let data = defaults.data(forKey: Self.statesKey) {
+            do {
+                states = try JSONDecoder().decode([String: AlertStateRecord].self, from: data)
+            } catch {
+                Logger.alerts.error("Couldn't read the saved snoozes and dismissals: \(String(describing: error))")
+            }
         }
-        if let data = defaults.data(forKey: Self.pauseKey),
-           let decoded = try? JSONDecoder().decode(PauseState.self, from: data) {
-            pauseState = decoded.resolved(at: Date())
+        if let data = defaults.data(forKey: Self.pauseKey) {
+            do {
+                pauseState = try JSONDecoder().decode(PauseState.self, from: data).resolved(at: Date())
+            } catch {
+                Logger.alerts.error("Couldn't read the saved pause: \(String(describing: error))")
+            }
         }
     }
 
@@ -58,14 +66,11 @@ final class AlertCoordinator {
             self?.meetingsDidChange()
         }
         heartbeat = Timer.scheduledTimer(withTimeInterval: Self.heartbeatInterval, repeats: true) { [weak self] _ in
-            Task { @MainActor [weak self] in self?.replan() }
+            MainActor.assumeIsolated { self?.replan() }
         }
         heartbeat?.tolerance = 5
         replan()
     }
-
-    /// Read `pauseState.isPaused(at:)` with a fresh date when rendering; a timed pause ends on its own.
-    var isPaused: Bool { pauseState.isPaused(at: Date()) }
 
     func pause(_ option: PauseOption) {
         setPauseState(option.state(from: Date()))
@@ -77,7 +82,7 @@ final class AlertCoordinator {
 
     private func setPauseState(_ state: PauseState) {
         pauseState = state
-        defaults.set(try? JSONEncoder().encode(state), forKey: Self.pauseKey)
+        save(state, forKey: Self.pauseKey)
         replan()
     }
 
@@ -110,7 +115,6 @@ final class AlertCoordinator {
         )
 
         cancelFireTimer()
-        nextFireAt = plan?.fireAt
         guard let plan else {
             endActivity()
             return
@@ -158,7 +162,6 @@ final class AlertCoordinator {
         }
         persistStates()
         activeMeetings = plan.meetings
-        nextFireAt = nil
 
         let session = AlertSession(
             meetings: plan.meetings,
@@ -176,8 +179,10 @@ final class AlertCoordinator {
         playSound()
 
         if preferences.autoCloseEnabled {
+            // Synchronously: a dismissal left for later could close the next alert, which `closeAlert` may
+            // put up straight away, instead of this one.
             autoCloseTimer = Timer.scheduledTimer(withTimeInterval: preferences.autoCloseAfter, repeats: false) { [weak self] _ in
-                Task { @MainActor [weak self] in self?.dismiss() }
+                MainActor.assumeIsolated { self?.dismiss() }
             }
         }
     }
@@ -274,7 +279,18 @@ final class AlertCoordinator {
     }
 
     private func persistStates() {
-        defaults.set(try? JSONEncoder().encode(states), forKey: Self.statesKey)
+        save(states, forKey: Self.statesKey)
+    }
+
+    /// Saves `value` as JSON. One that can't be encoded is logged, and its key removed, so a relaunch doesn't
+    /// read an older value back.
+    private func save(_ value: some Encodable, forKey key: String) {
+        do {
+            defaults.set(try JSONEncoder().encode(value), forKey: key)
+        } catch {
+            Logger.alerts.error("Couldn't save \(key, privacy: .public): \(String(describing: error))")
+            defaults.removeObject(forKey: key)
+        }
     }
 
     private func cancelFireTimer() {

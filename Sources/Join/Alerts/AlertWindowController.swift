@@ -4,18 +4,19 @@ import SwiftUI
 import JoinCore
 
 struct AlertActions {
-    var dismiss: () -> Void
-    var snooze: (TimeInterval) -> Void
-    var snoozeUntilEvent: () -> Void
-    var join: (Meeting) -> Void
+    let dismiss: () -> Void
+    let snooze: (TimeInterval) -> Void
+    let snoozeUntilEvent: () -> Void
+    let join: (Meeting) -> Void
 }
 
-/// What one presentation of the alert shows. Shared by every screen's window.
+/// What one presentation of the alert shows. Shared by every screen's window. Only the meetings change while
+/// it's up, as some of them are dismissed from the panel or leave the calendar.
 @Observable
 final class AlertSession {
     var meetings: [Meeting]
-    var appearance: AlertAppearance
-    var snoozeDurations: [TimeInterval]
+    let appearance: AlertAppearance
+    let snoozeDurations: [TimeInterval]
     let actions: AlertActions
     let isDemo: Bool
 
@@ -32,7 +33,7 @@ final class AlertSession {
 final class AlertWindowController {
     /// Keys are ignored this long after the alert appears, so a keystroke the user was already typing
     /// in another app can't dismiss the alert or join a call by accident.
-    static let keyArmingDelay: TimeInterval = 0.75
+    private static let keyArmingDelay: TimeInterval = 0.75
 
     private enum KeyCode {
         static let escape: UInt16 = 53
@@ -40,13 +41,19 @@ final class AlertWindowController {
         static let keypadEnter: UInt16 = 76
     }
 
+    /// The alert on screen.
+    private struct Presentation {
+        let session: AlertSession
+        let screens: AlertScreens
+        /// System uptime when the alert became key; compared with each key event's own timestamp.
+        let presentedUptime: TimeInterval
+    }
+
+    /// nil while no alert is up.
+    private var presentation: Presentation?
     private var windows: [AlertWindow] = []
-    private var session: AlertSession?
-    private var screens: AlertScreens = .all
     private var screenObserver: NSObjectProtocol?
     private var keyMonitor: Any?
-    /// System uptime when the alert became key; compared with each key event's own timestamp.
-    private var presentedUptime: TimeInterval = .infinity
 
     init() {
         startObservingScreens()
@@ -56,34 +63,25 @@ final class AlertWindowController {
         screenObserver = NotificationCenter.default.addObserver(
             forName: NSApplication.didChangeScreenParametersNotification, object: nil, queue: .main
         ) { [weak self] _ in
-            Task { @MainActor [weak self] in self?.rebuildIfPresenting() }
+            MainActor.assumeIsolated { self?.rebuildIfPresenting() }
         }
     }
 
-    var isPresenting: Bool { session != nil }
-
     func present(session: AlertSession, screens: AlertScreens) {
         dismiss()
-        self.session = session
-        self.screens = screens
-        buildWindows()
-        presentedUptime = ProcessInfo.processInfo.systemUptime
+        buildWindows(for: session, on: screens)
+        presentation = Presentation(session: session, screens: screens, presentedUptime: ProcessInfo.processInfo.systemUptime)
         installKeyMonitor()
     }
 
     func update(meetings: [Meeting]) {
-        session?.meetings = meetings
+        presentation?.session.meetings = meetings
     }
 
     func dismiss() {
         removeKeyMonitor()
-        presentedUptime = .infinity
-        for window in windows {
-            window.orderOut(nil)
-            window.close()
-        }
-        windows = []
-        session = nil
+        closeWindows()
+        presentation = nil
     }
 
     /// The alert is a non-activating panel: it takes keyboard focus without making Join! the active
@@ -113,8 +111,9 @@ final class AlertWindowController {
     /// that was already down in another app can neither dismiss the alert nor join a call. After
     /// the delay, keys other than Esc and Return pass through so Full Keyboard Access still works.
     private func handleKey(keyCode: UInt16, windowNumber: Int, timestamp: TimeInterval, isRepeat: Bool) -> Bool {
-        guard let session, windows.contains(where: { $0.windowNumber == windowNumber }) else { return false }
-        if isRepeat || timestamp - presentedUptime < Self.keyArmingDelay { return true }
+        guard let presentation, windows.contains(where: { $0.windowNumber == windowNumber }) else { return false }
+        if isRepeat || timestamp - presentation.presentedUptime < Self.keyArmingDelay { return true }
+        let session = presentation.session
         switch keyCode {
         case KeyCode.escape:
             session.actions.dismiss()
@@ -130,17 +129,20 @@ final class AlertWindowController {
     }
 
     private func rebuildIfPresenting() {
-        guard session != nil else { return }
+        guard let presentation else { return }
+        closeWindows()
+        buildWindows(for: presentation.session, on: presentation.screens)
+    }
+
+    private func closeWindows() {
         for window in windows {
             window.orderOut(nil)
             window.close()
         }
         windows = []
-        buildWindows()
     }
 
-    private func buildWindows() {
-        guard let session else { return }
+    private func buildWindows(for session: AlertSession, on screens: AlertScreens) {
         windows = Self.targetScreens(for: screens).map { screen in
             AlertWindow(screen: screen, session: session)
         }
@@ -169,7 +171,7 @@ final class AlertWindow: NSPanel {
         hasShadow = false
         animationBehavior = .none
         setFrame(screen.frame, display: false)
-        let hosting = FirstMouseHostingView(rootView: AnyView(AlertRootView(session: session).ignoresSafeArea()))
+        let hosting = FirstMouseHostingView(rootView: AlertRootView(session: session).ignoresSafeArea())
         // The window is always exactly its screen; the content must not resize it.
         hosting.sizingOptions = []
         contentView = hosting
@@ -182,7 +184,7 @@ extension AlertWindowController {
     /// `AlertScreens` picks by index: `NSScreen.screens` starts with the screen that has the menu bar,
     /// the main display. `NSScreen.main` would be the screen with the key window, which can be a
     /// secondary one, say while Join!'s Settings window sits there.
-    static func targetScreens(for choice: AlertScreens) -> [NSScreen] {
+    private static func targetScreens(for choice: AlertScreens) -> [NSScreen] {
         let screens = NSScreen.screens
         let pointer = NSEvent.mouseLocation
         let pointerIndex = screens.firstIndex { NSMouseInRect(pointer, $0.frame, false) }
