@@ -12,16 +12,20 @@ APP="build/Join.app"
 
 . scripts/select-sdk.sh
 
-# One build per architecture, joined into a single binary. Each binary is copied out as soon as it's built:
-# Swift Build (SwiftPM's build system from 6.4) puts every architecture's at the same path. The native build
-# system (the default before 6.4, as in CI) once failed a rebuild that reused another architecture's cached
-# build manifest, so the build is planned afresh each time.
+# One build per architecture, joined into a single binary, always with SwiftPM's native build system, as CI's
+# Xcode 26 uses by default. The app's look follows the SDK version recorded in the binary: the native build
+# system records the SDK it built with (26.5, so macOS 26 and later draw the app in their current design),
+# while Swift Build, the default from SwiftPM 6.4, records the deployment target (14.0, the older design).
+# Building the same way everywhere keeps a local build looking like the release. The native build system once
+# failed a rebuild that reused another architecture's cached build manifest, so the build is planned afresh
+# each time; each binary is copied out as soon as it's built.
+BUILD="--build-system native"
 STAGE="$(mktemp -d)"
 trap 'rm -rf "$STAGE"' EXIT
 set --
 for ARCH in $ARCHS; do
-    swift build -c "$CONFIG" --product Join --arch "$ARCH" --disable-build-manifest-caching
-    cp "$(swift build -c "$CONFIG" --product Join --arch "$ARCH" --show-bin-path)/Join" "$STAGE/Join-$ARCH"
+    swift build -c "$CONFIG" --product Join --arch "$ARCH" $BUILD --disable-build-manifest-caching
+    cp "$(swift build -c "$CONFIG" --product Join --arch "$ARCH" $BUILD --show-bin-path)/Join" "$STAGE/Join-$ARCH"
     set -- "$@" "$STAGE/Join-$ARCH"
 done
 
