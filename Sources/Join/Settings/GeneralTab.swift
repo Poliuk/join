@@ -1,5 +1,5 @@
 import AppKit
-import ServiceManagement
+import OSLog
 import SwiftUI
 import JoinCore
 
@@ -9,8 +9,9 @@ struct GeneralTab: View {
     @Environment(AppModel.self) private var model
     /// Read from the system on appear and whenever the app or the Settings window comes back, so
     /// approving Join! in System Settings clears the hint. Never read or written in a fixture run.
-    @State private var launchAtLogin = false
-    @State private var launchAtLoginError: String?
+    @State private var loginItem: LoginItemStatus = .notRegistered
+    /// Why the last click on Open at login didn't take; shown in place of the status's hint until the next read.
+    @State private var loginItemFailure: String?
 
     /// Whether the menu bar item's contrast warning has been announced, or was already shown.
     @State private var announcedPillWarning = false
@@ -21,7 +22,7 @@ struct GeneralTab: View {
         VStack(alignment: .leading, spacing: 22) {
             SettingsBox {
                 SettingsSwitchRow(title: "Open at login", isOn: openAtLogin, separator: false, enabled: !model.isFixture)
-                if let note = model.isFixture ? SettingsOptions.openAtLoginFixtureNote : launchAtLoginError {
+                if let note = model.isFixture ? SettingsOptions.openAtLoginFixtureNote : loginItemFailure ?? SettingsOptions.openAtLoginHint(loginItem) {
                     Text(note)
                         .font(.subheadline)
                         .foregroundStyle(model.isFixture ? Color.secondary : Color.red)
@@ -72,36 +73,27 @@ struct GeneralTab: View {
 
     /// Only the user's clicks reach the login item; refreshing from the system just updates the switch.
     private var openAtLogin: Binding<Bool> {
-        Binding(get: { launchAtLogin }, set: { setLaunchAtLogin($0) })
-    }
-
-    private static var loginItemStatus: LoginItemStatus {
-        switch SMAppService.mainApp.status {
-        case .enabled: return .enabled
-        case .requiresApproval: return .requiresApproval
-        case .notFound: return .notFound
-        case .notRegistered: return .notRegistered
-        @unknown default: return .notRegistered
-        }
+        Binding(get: { SettingsOptions.opensAtLogin(loginItem) }, set: { setLaunchAtLogin($0) })
     }
 
     private func refreshLaunchAtLogin() {
         guard !model.isFixture else { return }
-        let status = Self.loginItemStatus
-        launchAtLogin = SettingsOptions.opensAtLogin(status)
-        launchAtLoginError = SettingsOptions.openAtLoginHint(status)
+        loginItem = LaunchAtLogin.status
+        loginItemFailure = nil
     }
 
     private func setLaunchAtLogin(_ enabled: Bool) {
         guard !model.isFixture else { return }
         do {
-            if enabled != SettingsOptions.opensAtLogin(Self.loginItemStatus) {
+            if enabled != SettingsOptions.opensAtLogin(LaunchAtLogin.status) {
                 try LaunchAtLogin.setEnabled(enabled)
             }
             refreshLaunchAtLogin()
         } catch {
+            // The system's error and which way the switch went: nothing personal.
+            Logger.settings.error("Open at login: \(enabled ? "register" : "unregister", privacy: .public) failed: \(String(describing: error), privacy: .public)")
             refreshLaunchAtLogin()
-            launchAtLoginError = error.localizedDescription
+            loginItemFailure = error.localizedDescription
         }
     }
 

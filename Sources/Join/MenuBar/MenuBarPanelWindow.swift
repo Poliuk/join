@@ -35,28 +35,22 @@ final class MenuBarPanelWindow: NSPanel {
     override var canBecomeKey: Bool { true }
     override var canBecomeMain: Bool { false }
 
-    /// The glass view isn't in the SDK this builds against, so it's looked up at runtime.
-    static var glassType: NSView.Type? {
-        guard #available(macOS 26, *) else { return nil }
-        return NSClassFromString("NSGlassEffectView") as? NSView.Type
-    }
-
     /// Whether the panel is Liquid Glass; before macOS 26 it's the menu blur, which is already thick,
     /// so the frost over it is lighter.
-    static var usesGlass: Bool { glassType != nil }
+    static var usesGlass: Bool {
+        if #available(macOS 26, *) { return true }
+        return false
+    }
 
     /// The system menus' material: Liquid Glass on macOS 26 and later, the menu blur before that. The
     /// SwiftUI content lays a frost over it (`PanelFrost`) so text stays readable over any backdrop.
-    /// The glass is set up only through its public properties.
     private static func makeBackground(around content: NSView) -> NSView {
-        if let glassType {
-            let glass = glassType.init(frame: NSRect(x: 0, y: 0, width: width, height: 200))
+        if #available(macOS 26, *) {
+            let glass = NSGlassEffectView(frame: NSRect(x: 0, y: 0, width: width, height: 200))
             // Regular is the default; set it anyway, since clear glass has no luminance adaptation at all.
-            if glass.responds(to: NSSelectorFromString("setStyle:")) {
-                glass.setValue(0, forKey: "style")
-            }
-            glass.setValue(Double(cornerRadius), forKey: "cornerRadius")
-            glass.setValue(content, forKey: "contentView")
+            glass.style = .regular
+            glass.cornerRadius = cornerRadius
+            glass.contentView = content
             glass.autoresizingMask = [.width, .height]
             // The window's shadow follows what the window draws, and the glass counts as its whole
             // rectangle: unclipped, the shadow was square, a dark outline with darkened corners around

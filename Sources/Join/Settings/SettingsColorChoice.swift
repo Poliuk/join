@@ -27,10 +27,15 @@ struct SettingsColorChoice: View {
     /// The well's color, as picked in the color panel.
     let setColor: (RGBA) -> Void
 
-    @State private var otherPicked = false
-    @State private var opensPanel = false
+    @State private var other: OtherItem = .unpicked
     /// The colors as this control's last write left them, to tell its own changes from outside ones.
     @State private var ownWrite: Colors?
+
+    /// Whether Other… was picked here, and, once it is, whether its well still has to open the color panel.
+    private enum OtherItem: Equatable {
+        case unpicked
+        case picked(opensPanel: Bool)
+    }
 
     private struct Colors: Equatable {
         var stored: RGBA?
@@ -39,15 +44,15 @@ struct SettingsColorChoice: View {
 
     var body: some View {
         let current = colors
-        let selected = choice.selection(stored: current.stored, shown: current.shown, otherPicked: otherPicked)
+        let selected = choice.selection(stored: current.stored, shown: current.shown, otherPicked: other != .unpicked)
         HStack(spacing: 8) {
             if selected == .other {
                 SettingsColorWell(
                     label: wellLabel,
                     color: current.shown,
                     supportsOpacity: supportsOpacity,
-                    opensPanel: opensPanel,
-                    panelDidOpen: { opensPanel = false },
+                    opensPanel: other == .picked(opensPanel: true),
+                    panelDidOpen: { if other == .picked(opensPanel: true) { other = .picked(opensPanel: false) } },
                     onChange: { color in write { setColor(color) } }
                 )
             }
@@ -69,8 +74,7 @@ struct SettingsColorChoice: View {
                 ownWrite = nil
             } else {
                 // A Style card, Restore Defaults or another pane put a color here: show what it is.
-                otherPicked = false
-                opensPanel = false
+                other = .unpicked
             }
         }
     }
@@ -80,8 +84,7 @@ struct SettingsColorChoice: View {
     }
 
     private func select(_ item: ColorChoice.Item) {
-        otherPicked = item == .other
-        opensPanel = item == .other
+        other = item == .other ? .picked(opensPanel: true) : .unpicked
         write { pick(item) }
     }
 
@@ -255,7 +258,7 @@ enum SettingsSwatchDot: Hashable {
 
 /// An `NSColorWell`, which, unlike SwiftUI's ColorPicker, can open the color panel from code: picking
 /// Other… opens it at once. The color panel is shared, so opening it here takes it from any other well.
-struct SettingsColorWell: NSViewRepresentable {
+private struct SettingsColorWell: NSViewRepresentable {
     let label: String
     let color: RGBA
     var supportsOpacity = false
@@ -292,9 +295,11 @@ struct SettingsColorWell: NSViewRepresentable {
         if opensPanel, !coordinator.isOpening {
             coordinator.isOpening = true
             let panelDidOpen = self.panelDidOpen
-            DispatchQueue.main.async { [weak well] in
+            DispatchQueue.main.async {
+                // Dismantled meanwhile (`dismantleNSView` called it off): no panel for a well that's gone.
+                guard coordinator.isOpening else { panelDidOpen(); return }
                 coordinator.isOpening = false
-                well?.activate(true)
+                well.activate(true)
                 panelDidOpen()
             }
         }
@@ -305,7 +310,8 @@ struct SettingsColorWell: NSViewRepresentable {
     }
 
     static func dismantleNSView(_ well: NSColorWell, coordinator: Coordinator) {
-        // The panel would otherwise stay open with no well to change.
+        // A panel about to open on this well doesn't, and an open one closes: either would have no well to change.
+        coordinator.isOpening = false
         guard well.isActive else { return }
         well.deactivate()
         NSColorPanel.shared.orderOut(nil)
@@ -314,6 +320,8 @@ struct SettingsColorWell: NSViewRepresentable {
     final class Coordinator: NSObject {
         var onChange: (RGBA) -> Void = { _ in }
         var supportsOpacity = false
+        /// Between asking for the panel and opening it on the next turn of the main queue; cleared if the
+        /// well is dismantled meanwhile.
         var isOpening = false
 
         func normalized(_ color: RGBA) -> RGBA {

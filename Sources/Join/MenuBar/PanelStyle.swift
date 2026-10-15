@@ -63,7 +63,7 @@ nonisolated enum PanelColors {
     static let accentButtonLabel = palette { PanelPalette.accentButton($0.accent, dark: $0.dark).label }
 
     /// What a color is worked out from: the palette for the drawing appearance, and the accent in it.
-    struct Resolved {
+    private struct Resolved {
         let palette: PanelPalette
         let increasedContrast: Bool
         let accent: RGBA

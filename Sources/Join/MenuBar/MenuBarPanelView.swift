@@ -6,9 +6,9 @@ import JoinCore
 /// card, the Today | 7 Days switch and the list. Its natural height is reported to the window, which
 /// fits it up to a cap.
 struct MenuBarPanelView: View {
-    static let fadeHeight: CGFloat = 32
+    private static let fadeHeight: CGFloat = 32
     /// How faint the last visible row gets while there is more to scroll to.
-    static let fadeFloor: CGFloat = 0.4
+    private static let fadeFloor: CGFloat = 0.4
 
     let context: MenuBarPanelContext
     @Environment(AppModel.self) private var model
@@ -118,11 +118,15 @@ struct MenuBarPanelView: View {
             let install = checker.install
             UpdateBar(
                 message: UpdateCopy.barMessage(version: update.version, install: install),
-                buttonTitle: UpdateCopy.barButtonTitle(install: install),
-                // Install and Install and Relaunch wait for a check under way, which may change the offer.
-                buttonEnabled: UpdateCopy.barButtonEnabled(install: install, canInstall: checker.canInstall, isChecking: checker.isChecking),
-                help: UpdateCopy.barButtonHelp(version: update.version, install: install, canInstall: checker.canInstall),
-                action: model.performUpdateAction
+                button: UpdateCopy.barButtonTitle(install: install).map { title in
+                    UpdateBar.BarButton(
+                        title: title,
+                        // Install and Install and Relaunch wait for a check under way, which may change the offer.
+                        isEnabled: UpdateCopy.barButtonEnabled(install: install, canInstall: checker.canInstall, isChecking: checker.isChecking),
+                        help: UpdateCopy.barButtonHelp(version: update.version, install: install, canInstall: checker.canInstall),
+                        action: model.performUpdateAction
+                    )
+                }
             )
             .padding(.top, topPadding)
         }
@@ -322,9 +326,10 @@ private struct HeaderButton: View {
 }
 
 /// Holds the AppKit view behind a SwiftUI button, so a menu can be positioned against it: the header's
-/// buttons, and a repeating event's Dismiss and Restore.
+/// buttons, and a repeating event's Dismiss and Restore. Strong: the view never refers back to its anchor,
+/// so there is no cycle, and once the button has rendered the anchor can't lose its view.
 final class ViewAnchor {
-    weak var view: NSView?
+    var view: NSView?
 }
 
 struct AnchorView: NSViewRepresentable {
@@ -389,13 +394,18 @@ private struct PausedBar: View {
 /// Install and Relaunch until the user clicks it; Download Page after a failed install or Show in Finder
 /// once the new copy waits in a folder. Laid out like the paused bar.
 private struct UpdateBar: View {
+    /// The bar's button, when the install's state offers one.
+    struct BarButton {
+        let title: String
+        let isEnabled: Bool
+        /// The tooltip: what Install and Relaunch does, why an install failed, or why Install is off in a
+        /// fixture run.
+        let help: String?
+        let action: () -> Void
+    }
+
     let message: String
-    let buttonTitle: String?
-    var buttonEnabled = true
-    /// The button's tooltip: what Install and Relaunch does, why an install failed, or why Install is off
-    /// in a fixture run.
-    let help: String?
-    let action: () -> Void
+    let button: BarButton?
 
     var body: some View {
         HStack(spacing: 8) {
@@ -410,9 +420,9 @@ private struct UpdateBar: View {
                 .lineLimit(2)
                 .fixedSize(horizontal: false, vertical: true)
                 .frame(maxWidth: .infinity, alignment: .leading)
-            if let buttonTitle {
-                Button(action: action) {
-                    Text(buttonTitle)
+            if let button {
+                Button(action: button.action) {
+                    Text(button.title)
                         .font(.system(size: 12, weight: .semibold))
                         .padding(.horizontal, 10)
                         .frame(height: 24)
@@ -423,9 +433,9 @@ private struct UpdateBar: View {
                     cornerRadius: 6,
                     hoverFill: PanelColors.buttonHoverFill
                 ))
-                .disabled(!buttonEnabled)
-                .opacity(buttonEnabled ? 1 : 0.5)
-                .help(help ?? "")
+                .disabled(!button.isEnabled)
+                .opacity(button.isEnabled ? 1 : 0.5)
+                .help(button.help ?? "")
             }
         }
         // As tall as with a button while there's none, so the bar doesn't jump as the download starts.

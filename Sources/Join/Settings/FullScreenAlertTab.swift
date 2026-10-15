@@ -6,9 +6,6 @@ import JoinCore
 struct FullScreenAlertTab: View {
     @Environment(AppModel.self) private var model
 
-    /// The auto-close pop-up's tag for Never.
-    private static let neverTag = 0
-
     var body: some View {
         @Bindable var preferences = model.preferences
 
@@ -53,11 +50,12 @@ struct FullScreenAlertTab: View {
                         .help("Play the sound")
                         .accessibilityLabel("Play the sound")
                         .disabled(preferences.soundName == nil)
-                        Picker("Sound", selection: soundSelection(preferences)) {
-                            Text("None").tag("")
+                        // The tags are `String?`, the selection's type: a mismatch would show nothing as selected.
+                        Picker("Sound", selection: $preferences.soundName) {
+                            Text("None").tag(String?.none)
                             Divider()
                             ForEach(soundNames(including: preferences.soundName), id: \.self) { name in
-                                Text(name).tag(name)
+                                Text(name).tag(Optional(name))
                             }
                         }
                         .labelsHidden()
@@ -77,9 +75,10 @@ struct FullScreenAlertTab: View {
                 snoozeChoice("First snooze button", \.first, separator: false)
                 snoozeChoice("Second snooze button", \.second, separator: true)
                 SettingsRow(title: SettingsOptions.autoCloseRowTitle) {
+                    // The tags are `Int?`, nil for Never, the selection's type: a mismatch would show nothing as selected.
                     Picker(SettingsOptions.autoCloseRowTitle, selection: autoCloseSelection) {
                         ForEach(autoCloseChoices, id: \.self) { minutes in
-                            Text(SettingsOptions.autoCloseTitle(minutes: minutes == Self.neverTag ? nil : minutes))
+                            Text(SettingsOptions.autoCloseTitle(minutes: minutes))
                                 .tag(minutes)
                         }
                     }
@@ -115,13 +114,6 @@ struct FullScreenAlertTab: View {
 
     // MARK: Sound
 
-    private func soundSelection(_ preferences: Preferences) -> Binding<String> {
-        Binding(
-            get: { preferences.soundName ?? "" },
-            set: { preferences.soundName = $0.isEmpty ? nil : $0 }
-        )
-    }
-
     private func soundNames(including current: String?) -> [String] {
         guard let current, !SystemSounds.names.contains(current) else { return SystemSounds.names }
         return (SystemSounds.names + [current]).sorted()
@@ -152,25 +144,23 @@ struct FullScreenAlertTab: View {
         )
     }
 
-    private var autoCloseChoices: [Int] {
+    /// Never (nil), then the minutes.
+    private var autoCloseChoices: [Int?] {
         let preferences = model.preferences
         let current = SettingsOptions.autoCloseSelection(enabled: preferences.autoCloseEnabled, after: preferences.autoCloseAfter)
-        return [Self.neverTag] + SettingsOptions.autoCloseChoices(including: current)
+        return [nil] + SettingsOptions.autoCloseChoices(including: current)
     }
 
-    private var autoCloseSelection: Binding<Int> {
+    private var autoCloseSelection: Binding<Int?> {
         let preferences = model.preferences
         return Binding(
-            get: {
-                SettingsOptions.autoCloseSelection(enabled: preferences.autoCloseEnabled, after: preferences.autoCloseAfter)
-                    ?? Self.neverTag
-            },
+            get: { SettingsOptions.autoCloseSelection(enabled: preferences.autoCloseEnabled, after: preferences.autoCloseAfter) },
             set: { minutes in
-                if minutes == Self.neverTag {
-                    preferences.autoCloseEnabled = false
-                } else {
+                if let minutes {
                     preferences.autoCloseAfter = TimeInterval(minutes * 60)
                     preferences.autoCloseEnabled = true
+                } else {
+                    preferences.autoCloseEnabled = false
                 }
             }
         )

@@ -71,7 +71,7 @@ struct PanelSectionHeading: View {
 
 /// A day under "Upcoming events": a small caps label followed by a hairline, so the days read as parts
 /// of the list rather than lists of their own. The caps are display only; VoiceOver reads the words.
-struct PanelDayHeading: View {
+private struct PanelDayHeading: View {
     let title: String
     var subtitle: String?
 
@@ -154,8 +154,8 @@ struct PanelDismissActions {
 /// Start over end time, a calendar-colored bar, the title with an optional second line, and a button.
 /// Under the pointer, a meeting that may alert offers Dismiss; a dismissed one always shows Restore.
 struct PanelRowView: View {
-    static let dismissButtonSize: CGFloat = 22
-    static let actionButtonSize: CGFloat = 30
+    private static let dismissButtonSize: CGFloat = 22
+    private static let actionButtonSize: CGFloat = 30
 
     let row: PanelRow
     let perform: (PanelAction) -> Void

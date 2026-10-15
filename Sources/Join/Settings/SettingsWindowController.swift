@@ -37,8 +37,8 @@ extension NSUserInterfaceItemIdentifier {
 /// Hosts Settings in a plain AppKit window with the standard settings toolbar. SwiftUI's `Settings`
 /// scene can't be opened reliably from a menu-bar-only app, so we own the window ourselves.
 final class SettingsWindowController: NSObject, NSWindowDelegate {
-    private var window: NSWindow?
-    private var tabs: SettingsTabViewController?
+    /// The window and its panes, made the first time Settings opens and kept after it closes.
+    private var shown: (window: NSWindow, tabs: SettingsTabViewController)?
 
     /// `pane` nil keeps whichever pane was showing last.
     ///
@@ -62,9 +62,9 @@ final class SettingsWindowController: NSObject, NSWindowDelegate {
     /// while the user is in another app), Settings still shows in front, and the first click on it
     /// activates Join!.
     func show(model: AppModel, pane: SettingsPane? = nil) {
-        let isNew = window == nil
-        if isNew { makeWindow(model: model) }
-        guard let window, let tabs else { return }
+        let isNew = shown == nil
+        let (window, tabs) = shown ?? makeWindow(model: model)
+        shown = (window, tabs)
         if let pane { tabs.select(pane) }
         window.makeKeyAndOrderFront(nil)
         window.orderFrontRegardless()
@@ -73,7 +73,7 @@ final class SettingsWindowController: NSObject, NSWindowDelegate {
         if isNew { window.makeFirstResponder(nil) }
     }
 
-    private func makeWindow(model: AppModel) {
+    private func makeWindow(model: AppModel) -> (window: NSWindow, tabs: SettingsTabViewController) {
         let tabs = SettingsTabViewController(model: model)
         let window = NSWindow(contentViewController: tabs)
         window.styleMask = [.titled, .closable]
@@ -85,13 +85,12 @@ final class SettingsWindowController: NSObject, NSWindowDelegate {
         window.title = tabs.windowTitle
         tabs.fitWindowToSelectedPane()
         window.center()
-        self.tabs = tabs
-        self.window = window
+        return (window, tabs)
     }
 
     func windowWillClose(_ notification: Notification) {
         // Ends editing, so a half-typed value is committed the same way as when the field loses focus.
-        window?.makeFirstResponder(nil)
+        shown?.window.makeFirstResponder(nil)
         // The shared color panel, opened from a color well in Settings, would outlive the window.
         if NSColorPanel.sharedColorPanelExists { NSColorPanel.shared.close() }
     }
@@ -100,20 +99,23 @@ final class SettingsWindowController: NSObject, NSWindowDelegate {
 /// One toolbar item per pane. The window keeps the panes' width and takes the selected pane's
 /// height, scrolling only when that doesn't fit on screen.
 private final class SettingsTabViewController: NSTabViewController {
-    private let panes: [SettingsPane] = SettingsPane.allCases
+    /// One per pane, in the toolbar's order: tab item `i` shows `paneControllers[i]`.
+    private let paneControllers: [SettingsPaneController]
     private let isFixture: Bool
 
     init(model: AppModel) {
         isFixture = model.isFixture
+        paneControllers = SettingsPane.allCases.map { SettingsPaneController(pane: $0, model: model) }
         super.init(nibName: nil, bundle: nil)
         tabStyle = .toolbar
         // Panes switch instantly: no crossfade, and the window takes the new height in one step.
         transitionOptions = []
-        for pane in panes {
-            let controller = SettingsPaneController(pane: pane, model: model)
-            controller.onContentHeightChange = { [weak self, weak controller] in
-                guard let self, let controller, controller === self.selectedPaneController else { return }
-                self.fitWindowToSelectedPane()
+        for controller in paneControllers {
+            let pane = controller.pane
+            // Weak: this controller owns the pane through its tab item, and the pane owns this closure.
+            controller.onContentHeightChange = { [weak self] changed in
+                guard let self, changed === selectedPaneController else { return }
+                fitWindowToSelectedPane()
             }
             let item = NSTabViewItem(viewController: controller)
             item.label = pane.title
@@ -131,11 +133,11 @@ private final class SettingsTabViewController: NSTabViewController {
     }
 
     func select(_ pane: SettingsPane) {
-        guard let index = panes.firstIndex(of: pane) else { return }
+        guard let index = paneControllers.firstIndex(where: { $0.pane == pane }) else { return }
         selectedTabViewItemIndex = index
     }
 
-    var selectedPane: SettingsPane {
+    private var selectedPane: SettingsPane {
         selectedPaneController?.pane ?? .general
     }
 
@@ -144,8 +146,7 @@ private final class SettingsTabViewController: NSTabViewController {
     }
 
     private var selectedPaneController: SettingsPaneController? {
-        guard tabViewItems.indices.contains(selectedTabViewItemIndex) else { return nil }
-        return tabViewItems[selectedTabViewItemIndex].viewController as? SettingsPaneController
+        paneControllers.indices.contains(selectedTabViewItemIndex) ? paneControllers[selectedTabViewItemIndex] : nil
     }
 
     override func tabView(_ tabView: NSTabView, willSelect tabViewItem: NSTabViewItem?) {
@@ -175,7 +176,7 @@ private final class SettingsTabViewController: NSTabViewController {
         let visible = (window.screen ?? NSScreen.main)?.visibleFrame
         var maxContentHeight = visible.map { $0.height - chrome - 40 } ?? contentHeight
         // Fixture runs can pretend the screen is short, to check the scrolling case on a tall display.
-        if FixtureCalendarService.scenario != nil,
+        if isFixture,
            let cap = ProcessInfo.processInfo.environment["JOIN_SETTINGS_MAX_HEIGHT"].flatMap(Double.init) {
             maxContentHeight = min(maxContentHeight, cap)
         }
@@ -198,7 +199,8 @@ private final class SettingsPaneController: NSViewController {
     let pane: SettingsPane
     private let model: AppModel
     private(set) var contentHeight: CGFloat?
-    var onContentHeightChange: (() -> Void)?
+    /// Called with this controller, once per batch of height changes.
+    var onContentHeightChange: ((SettingsPaneController) -> Void)?
 
     init(pane: SettingsPane, model: AppModel) {
         self.pane = pane
@@ -214,6 +216,7 @@ private final class SettingsPaneController: NSViewController {
 
     override func loadView() {
         let pane = self.pane
+        // Weak: this controller owns the hosting view, whose root view holds this closure.
         let root = SettingsPaneScroll(onContentHeightChange: { [weak self] height in
             self?.contentHeightDidChange(height)
         }) {
@@ -250,10 +253,9 @@ private final class SettingsPaneController: NSViewController {
         contentHeight = height
         guard !resizeScheduled else { return }
         resizeScheduled = true
-        DispatchQueue.main.async { [weak self] in
-            guard let self else { return }
+        DispatchQueue.main.async {
             self.resizeScheduled = false
-            self.onContentHeightChange?()
+            self.onContentHeightChange?(self)
         }
     }
 }

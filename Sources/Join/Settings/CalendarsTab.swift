@@ -1,4 +1,5 @@
 import AppKit
+import OSLog
 import SwiftUI
 import JoinCore
 
@@ -172,6 +173,8 @@ struct CalendarsTab: View {
         for candidate in candidates {
             if let url = URL(string: candidate), NSWorkspace.shared.open(url) { return }
         }
+        // Fixed URLs: nothing personal.
+        Logger.settings.error("Couldn't open Internet Accounts; System Settings took none of \(candidates.joined(separator: ", "), privacy: .public)")
     }
 }
 

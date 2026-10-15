@@ -3,30 +3,30 @@ import SwiftUI
 import JoinCore
 
 /// Callbacks from the panel's SwiftUI content to the controller that owns its window.
-final class MenuBarPanelContext {
-    var naturalHeightChanged: (CGFloat) -> Void = { _ in }
-    var showPauseMenu: (NSView) -> Void = { _ in }
-    var showAppMenu: (NSView) -> Void = { _ in }
+struct MenuBarPanelContext {
+    let naturalHeightChanged: (CGFloat) -> Void
+    let showPauseMenu: (NSView) -> Void
+    let showAppMenu: (NSView) -> Void
     /// A menu of choices below a button in the panel's content, like a repeating event's Dismiss: shown
     /// the way the header's menus are, so the panel stays open while it's up.
-    var showMenu: ([PanelMenuItem], NSView) -> Void = { _, _ in }
+    let showMenu: ([PanelMenuItem], NSView) -> Void
 }
 
 /// One choice in a menu the panel's content opens (`MenuBarPanelContext.showMenu`).
 struct PanelMenuItem {
     let title: String
-    let action: () -> Void
+    let action: @MainActor () -> Void
 }
 
 /// The menu bar item and the panel that drops down from it.
 /// The panel is a borderless window sized to its SwiftUI content in both directions (SwiftUI's
 /// MenuBarExtra grows but never shrinks), anchored under the item and capped to the screen.
 final class StatusItemController: NSObject, NSWindowDelegate {
-    static let maxPanelHeight: CGFloat = 640
+    private static let maxPanelHeight: CGFloat = 640
     /// Gap between the menu bar and the panel's top edge.
-    static let panelGap: CGFloat = 6
+    private static let panelGap: CGFloat = 6
     /// Smallest distance kept between the panel and the screen's edges.
-    static let screenMargin: CGFloat = 8
+    private static let screenMargin: CGFloat = 8
 
     private enum KeyCode {
         static let escape: UInt16 = 53
@@ -38,16 +38,19 @@ final class StatusItemController: NSObject, NSWindowDelegate {
         static let two: Set<UInt16> = [19, 84]
     }
 
+    /// A menu of ours that is up over the panel (`popUp`).
+    private struct OpenMenu {
+        /// So closing the panel can close the menu too.
+        let menu: NSMenu
+        /// Set when another window (an alert, Settings) takes the keyboard while the menu is up.
+        var keyTaken = false
+    }
+
     private let model: AppModel
     private let statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
-    private let context = MenuBarPanelContext()
     private lazy var panel: MenuBarPanelWindow = makePanel()
     private var naturalHeight: CGFloat = 200
-    private var isTrackingMenu = false
-    /// The header menu that is open, so closing the panel can close it too.
-    private var trackingMenu: NSMenu?
-    /// Set when another window (an alert, Settings) takes the keyboard while a header menu is open.
-    private var keyTakenWhileTracking = false
+    private var openMenu: OpenMenu?
     private var monitors: [Any] = []
     /// When the panel last closed on its own (outside click, focus change), to tell a click on the
     /// item that already closed it on mouse-down from a click meant to open it.
@@ -58,10 +61,6 @@ final class StatusItemController: NSObject, NSWindowDelegate {
         self.model = model
         super.init()
         configureButton()
-        context.naturalHeightChanged = { [weak self] height in self?.naturalHeightDidChange(height) }
-        context.showPauseMenu = { [weak self] anchor in self?.popUp(self?.makePauseMenu(), below: anchor) }
-        context.showAppMenu = { [weak self] anchor in self?.popUp(self?.makeAppMenu(), below: anchor) }
-        context.showMenu = { [weak self] items, anchor in self?.popUp(self?.makeMenu(items), below: anchor) }
 
         observeChanges(of: { [model] in
             _ = model.menuBarStatus
@@ -77,7 +76,7 @@ final class StatusItemController: NSObject, NSWindowDelegate {
         updateButton()
     }
 
-    var isOpen: Bool { panel.isVisible }
+    private var isOpen: Bool { panel.isVisible }
 
     func toggle() {
         if isOpen { close() } else { open() }
@@ -85,7 +84,7 @@ final class StatusItemController: NSObject, NSWindowDelegate {
 
     /// Safe to call while a header menu is open (an alert about to present closes the panel): the menu goes too.
     func close() {
-        trackingMenu?.cancelTrackingWithoutAnimation()
+        openMenu?.menu.cancelTrackingWithoutAnimation()
         guard isOpen else { return }
         removeMonitors()
         panel.orderOut(nil)
@@ -99,8 +98,8 @@ final class StatusItemController: NSObject, NSWindowDelegate {
         panel.makeKeyAndOrderFront(nil)
         installMonitors()
         // The button un-highlights itself when the click that opened the panel ends; set it afterwards.
-        DispatchQueue.main.async { [weak self] in
-            guard let self, self.isOpen else { return }
+        DispatchQueue.main.async {
+            guard self.isOpen else { return }
             self.statusItem.button?.highlight(true)
         }
     }
@@ -162,7 +161,23 @@ final class StatusItemController: NSObject, NSWindowDelegate {
 
     // MARK: Panel window
 
+    /// The callbacks hold the controller weakly: it owns the panel, whose hosting view holds them.
     private func makePanel() -> MenuBarPanelWindow {
+        let context = MenuBarPanelContext(
+            naturalHeightChanged: { [weak self] height in self?.naturalHeightDidChange(height) },
+            showPauseMenu: { [weak self] anchor in
+                guard let self else { return }
+                popUp(makePauseMenu(), below: anchor)
+            },
+            showAppMenu: { [weak self] anchor in
+                guard let self else { return }
+                popUp(makeAppMenu(), below: anchor)
+            },
+            showMenu: { [weak self] items, anchor in
+                guard let self else { return }
+                popUp(makeMenu(items), below: anchor)
+            }
+        )
         let panel = MenuBarPanelWindow(rootView: MenuBarPanelView(context: context).environment(model))
         panel.delegate = self
         return panel
@@ -172,8 +187,8 @@ final class StatusItemController: NSObject, NSWindowDelegate {
         guard abs(height - naturalHeight) > 0.5 else { return }
         naturalHeight = height
         // Resizing the window from inside a SwiftUI layout pass re-enters layout; do it right after.
-        DispatchQueue.main.async { [weak self] in
-            guard let self, self.isOpen else { return }
+        DispatchQueue.main.async {
+            guard self.isOpen else { return }
             self.updatePanelFrame(reanchoring: false)
         }
     }
@@ -201,7 +216,7 @@ final class StatusItemController: NSObject, NSWindowDelegate {
 
     func windowDidResignKey(_ notification: Notification) {
         // Another window took the keyboard (another app, Settings, an alert); a menu of ours doesn't count.
-        if !isTrackingMenu { closeAutomatically() }
+        if openMenu == nil { closeAutomatically() }
     }
 
     // MARK: Closing on outside clicks and keys
@@ -296,19 +311,19 @@ final class StatusItemController: NSObject, NSWindowDelegate {
     private func makePauseMenu() -> NSMenu {
         let menu = NSMenu()
         if model.isPaused {
-            menu.addItem(ClosureMenuItem(title: "Resume full-screen alerts") { [weak self] in self?.model.resume() })
+            menu.addItem(ClosureMenuItem(title: "Resume full-screen alerts") { [model] in model.resume() })
             menu.addItem(.separator())
         }
         for option in PauseOption.allCases {
-            menu.addItem(ClosureMenuItem(title: option.title) { [weak self] in self?.model.pause(option) })
+            menu.addItem(ClosureMenuItem(title: option.title) { [model] in model.pause(option) })
         }
         return menu
     }
 
     private func makeAppMenu() -> NSMenu {
         let menu = NSMenu()
-        menu.addItem(ClosureMenuItem(title: "Settings", keyEquivalent: ",") { [weak self] in self?.model.openSettings() })
-        menu.addItem(ClosureMenuItem(title: "Quit Join!", keyEquivalent: "q") { [weak self] in self?.model.quit() })
+        menu.addItem(ClosureMenuItem(title: "Settings", keyEquivalent: ",") { [model] in model.openSettings() })
+        menu.addItem(ClosureMenuItem(title: "Quit Join!", keyEquivalent: "q") { [model] in model.quit() })
         return menu
     }
 
@@ -321,21 +336,19 @@ final class StatusItemController: NSObject, NSWindowDelegate {
     }
 
     /// Opens `menu` just below `anchor`, right edges aligned, like the design's header menus. While it's
-    /// up, the panel doesn't close for losing the keyboard to it (`isTrackingMenu`).
-    private func popUp(_ menu: NSMenu?, below anchor: NSView) {
-        guard let menu, isOpen else { return }
+    /// up, the panel doesn't close for losing the keyboard to it (`openMenu`).
+    private func popUp(_ menu: NSMenu, below anchor: NSView) {
+        guard isOpen else { return }
         menu.minimumWidth = 220
         let x = anchor.bounds.maxX - menu.size.width
         let y = anchor.isFlipped ? anchor.bounds.maxY + 4 : anchor.bounds.minY - 4
-        isTrackingMenu = true
-        trackingMenu = menu
-        keyTakenWhileTracking = false
+        openMenu = OpenMenu(menu: menu)
         menu.popUp(positioning: nil, at: NSPoint(x: x, y: y), in: anchor)
-        isTrackingMenu = false
-        trackingMenu = nil
+        let keyTaken = openMenu?.keyTaken ?? false
+        openMenu = nil
         guard isOpen else { return }
         // Taking the keyboard back from a window that appeared meanwhile would leave it deaf to Esc and Return.
-        if keyTakenWhileTracking, let keyWindow = NSApp.keyWindow, keyWindow !== panel {
+        if keyTaken, let keyWindow = NSApp.keyWindow, keyWindow !== panel {
             close()
         } else if !panel.isKeyWindow {
             panel.makeKey()
@@ -346,8 +359,8 @@ final class StatusItemController: NSObject, NSWindowDelegate {
         let token = NotificationCenter.default.addObserver(forName: NSWindow.didBecomeKeyNotification, object: nil, queue: .main) { [weak self] notification in
             let window = notification.object as? NSWindow
             MainActor.assumeIsolated {
-                guard let self, self.isTrackingMenu, let window, window !== self.panel, window.level != .popUpMenu else { return }
-                self.keyTakenWhileTracking = true
+                guard let self, self.openMenu != nil, let window, window !== self.panel, window.level != .popUpMenu else { return }
+                self.openMenu?.keyTaken = true
             }
         }
         observers.append((NotificationCenter.default, token))
@@ -369,9 +382,9 @@ final class StatusItemController: NSObject, NSWindowDelegate {
 /// An NSMenuItem that runs a closure, so menus can be built inline. Nonisolated like NSMenuItem, whose
 /// initializers it overrides; AppKit sends `run` on the main thread when the item is chosen.
 nonisolated private final class ClosureMenuItem: NSMenuItem {
-    private let handler: () -> Void
+    private let handler: @MainActor () -> Void
 
-    init(title: String, keyEquivalent: String = "", handler: @escaping () -> Void) {
+    init(title: String, keyEquivalent: String = "", handler: @escaping @MainActor () -> Void) {
         self.handler = handler
         super.init(title: title, action: #selector(run), keyEquivalent: keyEquivalent)
         target = self
@@ -382,6 +395,9 @@ nonisolated private final class ClosureMenuItem: NSMenuItem {
     }
 
     @objc private func run() {
-        handler()
+        // AppKit sends menu actions on the main thread; this traps if that ever stops being true. The handler
+        // is taken out first: it's main-actor isolated, so it's `Sendable`, where this nonisolated item isn't.
+        let handler = self.handler
+        MainActor.assumeIsolated { handler() }
     }
 }

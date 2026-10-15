@@ -6,7 +6,7 @@ import JoinCore
 /// Menu bar › Color picks another. AppKit runs an image's drawing handler, and asks a dynamic color for its
 /// value, on whatever thread is drawing, so those closures are nonisolated and use only what they capture.
 enum StatusItemImages {
-    static let iconConfiguration = NSImage.SymbolConfiguration(pointSize: 14, weight: .regular)
+    private static let iconConfiguration = NSImage.SymbolConfiguration(pointSize: 14, weight: .regular)
     static let textFont = NSFont.monospacedDigitSystemFont(ofSize: 13, weight: .medium)
     private static let pillFont = NSFont.monospacedDigitSystemFont(ofSize: 13, weight: .semibold)
 

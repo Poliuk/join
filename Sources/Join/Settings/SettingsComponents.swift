@@ -234,9 +234,9 @@ struct SettingsFlowLayout: Layout {
                 lines.append(Line())
             }
             var line = lines[lines.count - 1]
-            if fillMinimum != nil, width.isFinite {
+            if let fillMinimum, width.isFinite {
                 let used = line.width + (line.items.isEmpty ? 0 : spacing)
-                size.width = max(fillMinimum ?? 0, width - used)
+                size.width = max(fillMinimum, width - used)
             }
             line.width += (line.items.isEmpty ? 0 : spacing) + size.width
             line.items.append((index, size))

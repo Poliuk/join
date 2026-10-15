@@ -10,10 +10,10 @@ import JoinCore
 /// pre-Tahoe chrome, it can't share the panel's hover, and window snapshots drop its labels.
 struct PanelFilterToggle: View {
     /// Each half of the 144 × 24 pt track; the thumb is inset 2 pt.
-    static let segmentWidth: CGFloat = 72
-    static let height: CGFloat = 24
-    static let cornerRadius: CGFloat = 7
-    static let inset: CGFloat = 2
+    fileprivate static let segmentWidth: CGFloat = 72
+    fileprivate static let height: CGFloat = 24
+    fileprivate static let cornerRadius: CGFloat = 7
+    fileprivate static let inset: CGFloat = 2
 
     /// The thumb's slide, for a click and for ⌘1 / ⌘2 alike; none with Reduce Motion.
     static func selectionAnimation(reduceMotion: Bool) -> Animation? {
