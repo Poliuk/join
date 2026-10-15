@@ -197,10 +197,11 @@ public struct PanelRow: Equatable, Identifiable, Sendable {
     }
 }
 
-/// The words for dismissing an event from the menu bar panel, with the card's close button or a row's
-/// button, for a dismissed row, and for bringing it back.
+/// The words for dismissing an event from the menu bar panel, with the card's or a row's Dismiss button,
+/// for a dismissed row, and for bringing it back.
 public enum DismissCopy {
-    /// The card's and the rows' accessibility action, and the first word of the Dismiss buttons' labels.
+    /// The card's Dismiss button, the rows' accessibility action, and the first word of the Dismiss buttons'
+    /// VoiceOver labels.
     public static let dismissTitle = "Dismiss"
     /// A dismissed row's accessibility action, and the first word of its Restore button's label.
     public static let restoreTitle = "Restore"
@@ -209,7 +210,7 @@ public enum DismissCopy {
 
     /// The help tag on a row's Dismiss button.
     public static let rowDismissHelp = "Dismiss: no full-screen alert, and it leaves the menu bar and the top card. It stays in this list until it ends."
-    /// The help tag on the card's close button.
+    /// The help tag on the card's Dismiss button.
     public static let cardDismissHelp = "Dismiss: no full-screen alert, and it leaves the menu bar and this card. It stays in the list until it ends."
     /// The help tag on a dismissed row's Restore button.
     public static let restoreHelp = "Restore: its full-screen alert and the menu bar come back."
@@ -221,7 +222,7 @@ public enum DismissCopy {
         return "\(dismissedTitle) · \(left)"
     }
 
-    /// "Dismiss Workshop", for the card's close button and a row's Dismiss button.
+    /// "Dismiss Workshop", for the card's and a row's Dismiss buttons.
     public static func dismissAccessibilityLabel(for meeting: Meeting) -> String {
         "\(dismissTitle) \(meeting.title)"
     }

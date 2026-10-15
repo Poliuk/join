@@ -30,12 +30,6 @@ enum PanelColors {
     static let rowButtonHoverFill = palette { $0.inkAt(PanelPalette.rowButtonHoverFill) }
     static let hoverFill = palette { $0.inkAt(PanelPalette.hoverFill) }
     static let stripe = palette { $0.inkAt(PanelPalette.stripe) }
-    /// The hero card's close button: the card drawn over the opaque frost, so the card's edge and the glass
-    /// don't show through where it overhangs the corner. Under the pointer the hover fill goes on top.
-    static let cardButton = palette { $0.palette.card.composited(over: $0.palette.frost) }
-    static let cardButtonHover = palette {
-        $0.inkAt(PanelPalette.hoverFill).composited(over: $0.palette.card.composited(over: $0.palette.frost))
-    }
     static let track = palette { $0.inkAt(PanelPalette.progressTrack(dark: $0.dark)) }
 
     // The Today | 7 Days switch: a faint track and a raised thumb, no accent color.
@@ -205,7 +199,8 @@ private struct PanelHover: ViewModifier {
 
 extension NSEvent {
     /// Whether the click being handled is the second (or a later) click of a double click. A control whose
-    /// click changes what's under the pointer ignores it, so a double click acts once, not on what moved in.
+    /// click changes what's under the pointer ignores it, and so does every control such a click can move in
+    /// under the pointer, so a double click acts once, not on what moved in.
     @MainActor static var isRepeatedClick: Bool {
         guard let event = NSApp.currentEvent, event.type == .leftMouseDown || event.type == .leftMouseUp else { return false }
         return event.clickCount > 1
@@ -253,6 +248,14 @@ struct PanelStripes: Shape {
         }
         return path
     }
+}
+
+/// Dismissing a meeting: the card's Dismiss button, a row's, and a dismissed row's "Dismissed" line share
+/// the crossed-out bell, since a dismissed meeting no longer alerts. A dismissed row's Restore, the bell
+/// uncrossed, brings the alert back (the user asked for a bell rather than an undo arrow).
+enum DismissSymbols {
+    static let dismiss = "bell.slash"
+    static let restore = "bell"
 }
 
 extension PanelAction {

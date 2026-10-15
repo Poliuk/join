@@ -113,7 +113,7 @@ struct PanelDismissActions {
 }
 
 /// Start over end time, a calendar-colored bar, the title with an optional second line, and a button.
-/// Under the pointer, a meeting that may alert offers Dismiss, and a dismissed one Restore.
+/// Under the pointer, a meeting that may alert offers Dismiss; a dismissed one always shows Restore.
 @MainActor
 struct PanelRowView: View {
     static let dismissButtonSize: CGFloat = 22
@@ -128,9 +128,17 @@ struct PanelRowView: View {
     private var isDismissed: Bool { row.dismissal == .dismissed }
     /// Out-of-office blocks and dismissed meetings: tertiary title, regular-weight start time.
     private var isDimmed: Bool { row.isMuted || isDismissed }
-    /// Shown under the pointer only. It never changes the row's height (it's shorter than the action
-    /// button and the two time lines), and it goes before the action button, which stays put.
-    private var showsDismissButton: Bool { isHovered && row.dismissal != nil }
+    /// Dismiss shows under the pointer only, to keep the list calm; Restore always shows on a dismissed row,
+    /// so the way back is in view for as long as the meeting is listed (the user's ask). It never changes the
+    /// row's height (it's shorter than the action button and the two time lines), and it goes before the
+    /// action button, which stays put.
+    private var showsDismissButton: Bool {
+        switch row.dismissal {
+        case .dismissed: return true
+        case .dismissable: return isHovered
+        case nil: return false
+        }
+    }
 
     var body: some View {
         HStack(alignment: .center, spacing: 10) {
@@ -194,8 +202,12 @@ struct PanelRowView: View {
         .modifier(DismissalAccessibilityAction(dismissal: row.dismissal, perform: toggleDismissal))
     }
 
+    /// Join or Directions. Dismissing the card can pull a row, even the dismissed meeting's own, up under the
+    /// pointer, so the second click of a double click on the card's Dismiss must not open it
+    /// (`NSEvent.isRepeatedClick`).
     private func actionButton(_ action: PanelAction) -> some View {
         Button {
+            guard !NSEvent.isRepeatedClick else { return }
             perform(action)
         } label: {
             Image(systemName: action.symbolName)
@@ -212,7 +224,7 @@ struct PanelRowView: View {
         .accessibilityLabel(action.accessibilityLabel(for: meeting))
     }
 
-    /// Dismiss (a cross), or Restore (a back arrow) on a dismissed row, in the same place on the row. The row
+    /// Dismiss (the card's crossed-out bell), or Restore (the bell, uncrossed) on a dismissed row, in the same place on the row. The row
     /// itself can move: dismissing or restoring the card's meeting changes the card, and its height, and can
     /// add or remove the Now section above, as when a meeting in progress takes the card from, or gives it
     /// back to, one starting soon. So a double click acts once (`NSEvent.isRepeatedClick`), never on the row
@@ -223,7 +235,7 @@ struct PanelRowView: View {
             guard !NSEvent.isRepeatedClick else { return }
             toggleDismissal()
         } label: {
-            Image(systemName: restores ? "arrow.uturn.backward" : "xmark")
+            Image(systemName: restores ? DismissSymbols.restore : DismissSymbols.dismiss)
                 .font(.system(size: 11, weight: .semibold))
                 .frame(width: Self.dismissButtonSize, height: Self.dismissButtonSize)
         }
@@ -250,7 +262,7 @@ struct PanelRowView: View {
         case .overlap(let text):
             iconLine(symbol: "exclamationmark.triangle", text: text, color: PanelColors.warning)
         case .dismissed(let text):
-            iconLine(symbol: "bell.slash", text: text, color: PanelColors.secondary)
+            iconLine(symbol: DismissSymbols.dismiss, text: text, color: PanelColors.secondary)
         case .progress(let fraction, let left):
             HStack(spacing: 8) {
                 PanelProgressBar(fraction: fraction, color: Color(meeting.calendarColor))

@@ -49,6 +49,9 @@ struct PanelFilterToggle: View {
         let isSelected = state.effective == filter
         let isEnabled = filter == .week || state.isTodayAvailable
         return Button {
+            // Dismissing the card can pull the switch up under the pointer, so the second click of a double
+            // click on the card's Dismiss must not land here (`NSEvent.isRepeatedClick`).
+            guard !NSEvent.isRepeatedClick else { return }
             // A click on the segment already shown still stores it: in the evening, clicking 7 Days
             // makes it the choice even though the week was showing anyway.
             withAnimation(Self.selectionAnimation(reduceMotion: reduceMotion)) {

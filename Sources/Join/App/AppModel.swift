@@ -135,7 +135,7 @@ final class AppModel {
         }
     }
 
-    /// The card's close button and a row's Dismiss: no full-screen alert for this occurrence, and the menu
+    /// The card's and a row's Dismiss buttons: no full-screen alert for this occurrence, and the menu
     /// bar item and the card move on to what comes next. The panel stays open and lists it as dismissed
     /// until it ends. Only a meeting that may alert can be dismissed; anything else is left alone.
     func dismiss(_ meeting: Meeting) {

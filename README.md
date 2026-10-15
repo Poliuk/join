@@ -19,7 +19,7 @@ Join! watches the calendars on your Mac and, a few minutes before each meeting, 
 - **Full-screen alert** a few minutes before each meeting, on every display (or just the main one, the one with the menu bar; just the secondary ones, or the main one when it's the only display; or the one with the pointer), above everything else. It shows a live countdown, the title, time and location, and buttons to Join, Snooze, snooze until the start, or Dismiss.
 - **Menu bar item** that tells you where you are in your day: a countdown to the next meeting today ("Next in 11 h 40 min", "Next in 42 min") or its day and time ("Tomorrow at 1:00 PM", "In 3 days at 9:10 AM"), an accent pill when a meeting is about to start (5 minutes before by default), and a draining ring with "40 min left" during a meeting. Event titles are optional.
 - **Menu bar panel** with one card for what matters now (starting soon, in progress, next, or nothing left today), then everything still to come today and in the coming days. Overlapping meetings are flagged, and a Today | 7 Days switch narrows the list to today. It's frosted glass that stays readable over any wallpaper or window, in light and dark mode.
-- **Dismiss a meeting** from the menu bar panel, with the close button on the top card or the button on its row: no full-screen alert for it, and the menu bar item and the card move on to what comes next. It stays in the list, greyed, until it ends, and **Restore** brings it back.
+- **Dismiss a meeting** from the menu bar panel, with **Dismiss** on the top card or the crossed-out bell on its row: no full-screen alert for it, and the menu bar item and the card move on to what comes next. It stays in the list, greyed, until it ends, and **Restore** brings it back.
 - **One-click Join** for Google Meet, Zoom, Microsoft Teams and Webex links found in the event, and **Directions** in Apple Maps for in-person meetings.
 - **Choose what counts**: tick the calendars Join! watches, and decide what happens to events nobody else is invited to (focus time, reminders you add for yourself) and to out-of-office events: show and alert, show in the list only, or exclude.
 - **Pause full-screen alerts** for an hour, until tomorrow, or until you resume. Or set **Alert me** to **Never** to turn them off and keep just the menu bar item and its panel.
@@ -29,7 +29,7 @@ Join! watches the calendars on your Mac and, a few minutes before each meeting, 
 Works with any calendar your Mac knows about (Google, iCloud, Exchange, Outlook, CalDAV) through macOS Calendar. Native Swift and SwiftUI, no third-party dependencies.
 
 <p align="center">
-  <img src="docs/screenshots/panel-light.jpg" alt="The menu bar panel in light mode, under a pill that reads Next in 4 min: a starting-soon card with a Join video call button, the meeting in progress, and the coming days" width="49%">
+  <img src="docs/screenshots/panel-light.jpg" alt="The menu bar panel in light mode, under a pill that reads Next in 4 min: a starting-soon card with Join video call and Dismiss buttons, the meeting in progress, and the coming days" width="49%">
   <img src="docs/screenshots/panel-dark.jpg" alt="The same menu bar panel in dark mode" width="49%">
 </p>
 <p align="center">
@@ -112,7 +112,7 @@ If a meeting starts while its full-screen alert is due (the Mac was asleep, the 
 
 To take a break, click the bell in the menu bar panel and pick **Pause for 1 hour**, **Pause until tomorrow** or **Pause until I resume**. While full-screen alerts are paused, the menu bar shows a crossed-out bell and the panel says until when, with **Resume**. The pause survives a relaunch.
 
-To skip a single meeting, point at it in the menu bar panel and click the cross: the one on the top card's corner, or the one on its row. It gets no full-screen alert, and the menu bar item and the top card move on to what comes next, while the panel still lists it, greyed and marked Dismissed, until it ends. The arrow on its row, **Restore**, brings it back, alert included if it's still due. A repeating meeting's other occurrences aren't affected. This isn't the full-screen alert's own **Dismiss**, which only closes the alert.
+To skip a single meeting, click **Dismiss** on the menu bar panel's top card, or point at its row in the list and click the crossed-out bell. It gets no full-screen alert, and the menu bar item and the top card move on to what comes next, while the panel still lists it, greyed and marked Dismissed, until it ends. The bell on its row, **Restore**, brings it back, alert included if it's still due. A repeating meeting's other occurrences aren't affected. This isn't the full-screen alert's own **Dismiss**, which only closes the alert.
 
 To turn full-screen alerts off altogether, set **Alert me** to **Never** under **Settings › Full-Screen Alert**. The menu bar item, its starting-soon pill and the panel keep working, and **Show Demo** still shows one. **Show on** and **Sound** stay as they were, dimmed until you pick a time again to turn alerts back on.
 
