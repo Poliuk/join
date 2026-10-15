@@ -62,7 +62,7 @@ public enum MenuBarPresenter {
     /// Precedence: paused > starting soon > in a meeting > within the hour > later, among the meetings
     /// in `focus`: a Maybe or unanswered meeting in progress steps aside for one you're attending inside it.
     /// `meetings` are the alertable ones (`MeetingFilter.alertable`): an event whose Settings choice is Show in
-    /// the list only never drives the menu bar.
+    /// the list only never drives the menu bar, and neither does one dismissed from the panel.
     public static func status(
         meetings: [Meeting],
         now: Date,

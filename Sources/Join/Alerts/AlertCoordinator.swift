@@ -132,6 +132,9 @@ final class AlertCoordinator {
         if delay < Self.appNapGuardWindow { beginActivity() } else { endActivity() }
     }
 
+    /// The alertable meetings changed: a calendar edit, an Events choice, or an event dismissed from the
+    /// panel. An alert on screen drops the meetings that are gone, closing once none is left, and the
+    /// replan cancels a pending alert for them.
     private func meetingsDidChange() {
         if !activeMeetings.isEmpty {
             let known = Set(store.alertableMeetings.map(\.id))

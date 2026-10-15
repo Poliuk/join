@@ -1,23 +1,63 @@
+import AppKit
 import SwiftUI
 import JoinCore
 
-/// The single card at the top of the panel.
+/// The single card at the top of the panel. A meeting's card shows a close button while the pointer is over
+/// it, which dismisses the meeting: whatever comes next takes the card.
 @MainActor
 struct PanelHeroView: View {
     let hero: PanelHero
     let perform: (PanelAction) -> Void
+    let dismiss: (Meeting) -> Void
+
+    /// Whether the pointer is over the card. Tracked here rather than per card, so the card that takes a
+    /// dismissed one's place under a still pointer carries on from it instead of starting afresh.
+    @State private var isCardHovered = false
+    /// Whether the pointer is over the close button. Where the button overhangs the card's corner, the
+    /// pointer is off the card, and this alone keeps the button shown.
+    @State private var isCloseHovered = false
+    /// Set by a click on the close button while the pointer is over the card, cleared once it leaves: the
+    /// next card comes in under a still pointer, and the second click of a double click must not dismiss it too.
+    @State private var isCloseSuppressed = false
 
     var body: some View {
-        switch hero {
-        case .nothingToday(let detail):
-            NothingTodayCard(detail: detail)
-        case .next(let card):
-            MeetingCard(card: card, style: .neutral, perform: perform)
-        case .startingSoon(let card):
-            MeetingCard(card: card, style: .startingSoon, perform: perform)
-        case .now(let card):
-            MeetingCard(card: card, style: .now, perform: perform)
+        VStack(spacing: 0) {
+            switch hero {
+            case .nothingToday(let detail):
+                NothingTodayCard(detail: detail)
+            case .next(let card):
+                meetingCard(card, style: .neutral)
+            case .startingSoon(let card):
+                meetingCard(card, style: .startingSoon)
+            case .now(let card):
+                meetingCard(card, style: .now)
+            }
         }
+        .onHover { hovering in
+            isCardHovered = hovering
+            if !hovering { isCloseSuppressed = false }
+        }
+    }
+
+    private func meetingCard(_ card: PanelCard, style: MeetingCard.Style) -> some View {
+        MeetingCard(
+            card: card,
+            style: style,
+            perform: perform,
+            showsClose: (isCardHovered || isCloseHovered) && !isCloseSuppressed,
+            isCloseHovered: $isCloseHovered,
+            close: { close(card.meeting) },
+            dismiss: { dismiss(card.meeting) }
+        )
+    }
+
+    private func close(_ meeting: Meeting) {
+        isCloseSuppressed = isCardHovered
+        // The button goes away under the pointer, so its hover never ends on its own, and its reset of the
+        // cursor on disappearing reads this already cleared: back to the arrow here, or the pointing hand stays.
+        isCloseHovered = false
+        NSCursor.arrow.set()
+        dismiss(meeting)
     }
 }
 
@@ -58,9 +98,23 @@ private struct MeetingCard: View {
         case now
     }
 
+    /// Where the close button's center sits, inside the card's top-left corner: on the rounded edge, so the
+    /// button overhangs the corner like a notification's. The card's 10 pt of panel padding keeps it unclipped.
+    static let closeCenterInset: CGFloat = 4
+    static let closeDiameter: CGFloat = 18
+    /// Around the drawn circle, so the button is easier to hit than it is big.
+    static let closeHitPadding: CGFloat = 2
+
     let card: PanelCard
     let style: Style
     let perform: (PanelAction) -> Void
+    /// While the pointer is over the card or the button (`PanelHeroView` tracks it).
+    let showsClose: Bool
+    @Binding var isCloseHovered: Bool
+    /// The close button.
+    let close: () -> Void
+    /// The card's Dismiss accessibility action, since the close button only shows under the pointer.
+    let dismiss: () -> Void
 
     private var calendarColor: Color { Color(card.meeting.calendarColor) }
 
@@ -119,6 +173,26 @@ private struct MeetingCard: View {
             RoundedRectangle(cornerRadius: 12, style: .continuous)
                 .strokeBorder(style == .startingSoon ? PanelColors.accentLine : PanelColors.separator, lineWidth: 1)
         )
+        .overlay(alignment: .topLeading) {
+            if showsClose {
+                let offset = Self.closeCenterInset - Self.closeDiameter / 2 - Self.closeHitPadding
+                closeButton
+                    .offset(x: offset, y: offset)
+            }
+        }
+        .accessibilityElement(children: .contain)
+        .accessibilityAction(named: DismissCopy.dismissTitle, dismiss)
+    }
+
+    private var closeButton: some View {
+        Button(action: close) {
+            Image(systemName: "xmark")
+                .font(.system(size: 8, weight: .bold))
+        }
+        .buttonStyle(CardCloseButtonStyle(isHovered: isCloseHovered))
+        .panelHover($isCloseHovered)
+        .help(DismissCopy.cardDismissHelp)
+        .accessibilityLabel(DismissCopy.dismissAccessibilityLabel(for: card.meeting))
     }
 
     private func detailLine(symbol: String, text: String, color: Color) -> some View {
@@ -158,5 +232,33 @@ private struct MeetingCard: View {
             hoverFill: prominent ? PanelColors.accentButtonHover : PanelColors.buttonHoverFill
         ))
         .accessibilityLabel(action.accessibilityLabel(for: card.meeting))
+    }
+}
+
+/// The card's close button: a small circle on the card's surface with the card's edge, its cross in secondary
+/// ink, brighter under the pointer. The hover comes from the card, which also needs it (`PanelHeroView`).
+private struct CardCloseButtonStyle: ButtonStyle {
+    let isHovered: Bool
+
+    func makeBody(configuration: Configuration) -> some View {
+        CardCloseButtonBody(configuration: configuration, isHovered: isHovered)
+    }
+}
+
+private struct CardCloseButtonBody: View {
+    let configuration: ButtonStyleConfiguration
+    let isHovered: Bool
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    var body: some View {
+        configuration.label
+            .foregroundStyle(isHovered ? PanelColors.primary : PanelColors.secondary)
+            .frame(width: MeetingCard.closeDiameter, height: MeetingCard.closeDiameter)
+            .background(Circle().fill(isHovered ? PanelColors.cardButtonHover : PanelColors.cardButton))
+            .overlay(Circle().strokeBorder(PanelColors.separator, lineWidth: 1))
+            .padding(MeetingCard.closeHitPadding)
+            .contentShape(Circle())
+            .opacity(configuration.isPressed ? 0.7 : 1)
+            .animation(reduceMotion ? nil : .easeOut(duration: 0.12), value: isHovered)
     }
 }

@@ -69,7 +69,8 @@ struct MenuBarPanelView: View {
                 }
                 updateBar(topPadding: pausedMessage == nil ? 10 : 8)
                 let filter = content.filtered(by: model.preferences.panelListFilter)
-                PanelHeroView(hero: content.hero, perform: model.perform)
+                let dismissActions = PanelDismissActions(dismiss: model.dismiss, restore: model.restore)
+                PanelHeroView(hero: content.hero, perform: model.perform, dismiss: model.dismiss)
                     .padding(.horizontal, 10)
                     .padding(.top, pausedMessage == nil && !showsUpdate ? 10 : 8)
                     .padding(.bottom, 2)
@@ -80,14 +81,19 @@ struct MenuBarPanelView: View {
                 // Only the switch's thumb slides; the list snaps, so the window resizes in one step.
                 Group {
                     if let now = filter.now {
-                        PanelSectionView(section: now, heading: .section, perform: model.perform)
+                        PanelSectionView(section: now, heading: .section, perform: model.perform, dismissActions: dismissActions)
                     }
                     if !filter.upcoming.isEmpty {
                         PanelSectionHeading(title: PanelFilterState.upcomingTitle)
                             .padding(.horizontal, 6)
                             .padding(.top, 2)
                         ForEach(filter.upcoming) { section in
-                            PanelSectionView(section: section, heading: filter.showsDayHeadings ? .day : .none, perform: model.perform)
+                            PanelSectionView(
+                                section: section,
+                                heading: filter.showsDayHeadings ? .day : .none,
+                                perform: model.perform,
+                                dismissActions: dismissActions
+                            )
                         }
                     }
                 }

@@ -36,6 +36,8 @@ public final class Preferences {
         public static let outOfOfficeKeywords = "outOfOfficeKeywords"
         public static let startingSoonPill = "startingSoonPill"
         public static let panelListFilter = "panelListFilter"
+        /// The occurrences dismissed from the menu bar panel, as JSON; absent while there are none.
+        public static let dismissedEvents = "dismissedEvents"
         public static let checksForUpdates = "checksForUpdates"
         public static let lastUpdateCheck = "lastUpdateCheck"
         public static let offeredUpdateVersion = "offeredUpdateVersion"
@@ -66,6 +68,7 @@ public final class Preferences {
     @ObservationIgnored private var _outOfOfficeKeywords: [String]
     @ObservationIgnored private var _startingSoonPill: StartingSoonPill
     @ObservationIgnored private var _panelListFilter: PanelListFilter
+    @ObservationIgnored private var _dismissedEvents: DismissedEvents
     @ObservationIgnored private var _checksForUpdates: Bool
     @ObservationIgnored private var _lastUpdateCheck: Date?
     @ObservationIgnored private var _offeredUpdateVersion: String?
@@ -111,6 +114,8 @@ public final class Preferences {
         _startingSoonPill = defaults.data(forKey: Keys.startingSoonPill)
             .flatMap { try? JSONDecoder().decode(StartingSoonPill.self, from: $0) } ?? .default
         _panelListFilter = defaults.string(forKey: Keys.panelListFilter).flatMap(PanelListFilter.init(rawValue:)) ?? .week
+        _dismissedEvents = defaults.data(forKey: Keys.dismissedEvents)
+            .flatMap { try? JSONDecoder().decode(DismissedEvents.self, from: $0) } ?? DismissedEvents()
         _checksForUpdates = defaults.object(forKey: Keys.checksForUpdates) as? Bool ?? true
         _lastUpdateCheck = defaults.object(forKey: Keys.lastUpdateCheck) as? Date
         _offeredUpdateVersion = defaults.string(forKey: Keys.offeredUpdateVersion)
@@ -355,6 +360,24 @@ public final class Preferences {
             withMutation(keyPath: \.panelListFilter) {
                 _panelListFilter = newValue
                 defaults.set(newValue.rawValue, forKey: Keys.panelListFilter)
+            }
+        }
+    }
+
+    /// The event occurrences dismissed from the menu bar panel: no full-screen alert, off the menu bar item
+    /// and the card, listed as dismissed until they end. Not a setting, so Restore Defaults and the other
+    /// resets leave it alone; the meeting store prunes it as events end (`DismissedEvents.pruned`). Empty
+    /// by default, and when what's stored can't be read.
+    public var dismissedEvents: DismissedEvents {
+        get { access(keyPath: \.dismissedEvents); return _dismissedEvents }
+        set {
+            withMutation(keyPath: \.dismissedEvents) {
+                _dismissedEvents = newValue
+                if newValue.isEmpty {
+                    defaults.removeObject(forKey: Keys.dismissedEvents)
+                } else {
+                    defaults.set(try? JSONEncoder().encode(newValue), forKey: Keys.dismissedEvents)
+                }
             }
         }
     }

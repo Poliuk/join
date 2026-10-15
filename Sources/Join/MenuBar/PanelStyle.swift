@@ -30,6 +30,12 @@ enum PanelColors {
     static let rowButtonHoverFill = palette { $0.inkAt(PanelPalette.rowButtonHoverFill) }
     static let hoverFill = palette { $0.inkAt(PanelPalette.hoverFill) }
     static let stripe = palette { $0.inkAt(PanelPalette.stripe) }
+    /// The hero card's close button: the card drawn over the opaque frost, so the card's edge and the glass
+    /// don't show through where it overhangs the corner. Under the pointer the hover fill goes on top.
+    static let cardButton = palette { $0.palette.card.composited(over: $0.palette.frost) }
+    static let cardButtonHover = palette {
+        $0.inkAt(PanelPalette.hoverFill).composited(over: $0.palette.card.composited(over: $0.palette.frost))
+    }
     static let track = palette { $0.inkAt(PanelPalette.progressTrack(dark: $0.dark)) }
 
     // The Today | 7 Days switch: a faint track and a raised thumb, no accent color.
@@ -131,6 +137,34 @@ private struct PanelFillButtonBody: View {
     }
 }
 
+/// A borderless icon button, like a row's Dismiss: secondary ink at rest; under the pointer the ink turns
+/// primary over a faint fill and the cursor becomes a pointing hand. Dims while pressed.
+struct PanelIconButtonStyle: ButtonStyle {
+    var cornerRadius: CGFloat
+
+    func makeBody(configuration: Configuration) -> some View {
+        PanelIconButtonBody(configuration: configuration, style: self)
+    }
+}
+
+private struct PanelIconButtonBody: View {
+    let configuration: ButtonStyleConfiguration
+    let style: PanelIconButtonStyle
+    @State private var hovering = false
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    var body: some View {
+        let shape = RoundedRectangle(cornerRadius: style.cornerRadius, style: .continuous)
+        configuration.label
+            .foregroundStyle(hovering ? PanelColors.primary : PanelColors.secondary)
+            .background(shape.fill(hovering ? PanelColors.hoverFill : .clear))
+            .contentShape(shape)
+            .opacity(configuration.isPressed ? 0.7 : 1)
+            .animation(reduceMotion ? nil : .easeOut(duration: 0.12), value: hovering)
+            .panelHover($hovering)
+    }
+}
+
 extension View {
     /// A card on the frost: the card fill with a separator edge, which keeps it visible in light mode,
     /// where the white card sits on near-white frost.
@@ -166,6 +200,15 @@ private struct PanelHover: ViewModifier {
             .onDisappear {
                 if isHovered { NSCursor.arrow.set() }
             }
+    }
+}
+
+extension NSEvent {
+    /// Whether the click being handled is the second (or a later) click of a double click. A control whose
+    /// click changes what's under the pointer ignores it, so a double click acts once, not on what moved in.
+    @MainActor static var isRepeatedClick: Bool {
+        guard let event = NSApp.currentEvent, event.type == .leftMouseDown || event.type == .leftMouseUp else { return false }
+        return event.clickCount > 1
     }
 }
 

@@ -57,6 +57,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 guard let filter = argument.flatMap(PanelListFilter.init(rawValue:)) else { return }
                 delegate.model.preferences.panelListFilter = filter
             }),
+            // Dismiss or restore an event as the panel's buttons do; the argument names it (`listedMeeting`).
+            ("dismissEvent", { delegate, argument in
+                guard let meeting = delegate.listedMeeting(matching: argument) else { return }
+                delegate.model.dismiss(meeting)
+            }),
+            ("restoreEvent", { delegate, argument in
+                guard let meeting = delegate.listedMeeting(matching: argument) else { return }
+                delegate.model.restore(meeting)
+            }),
             ("panelFrost", { delegate, argument in
                 // An opacity from 0 to 1 to try on the real panel; anything else goes back to the palette's.
                 delegate.model.panelFrostOverride = argument.flatMap(Double.init).flatMap { (0...1).contains($0) ? $0 : nil }
@@ -84,5 +93,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             }
             hookObservers.append(observer)
         }
+    }
+
+    /// The meeting a hook's argument names, among those shown that haven't ended: by full id, else by the
+    /// id before "@" (a fixture's "workshop"), else by exact title; the first in time order.
+    private func listedMeeting(matching argument: String?) -> Meeting? {
+        guard let argument, !argument.isEmpty else { return nil }
+        let now = Date()
+        let listed = model.meetingStore.meetings
+            .filter { !$0.hasEnded(at: now) }
+            .sorted { ($0.start, $0.title) < ($1.start, $1.title) }
+        return listed.first { $0.id == argument }
+            ?? listed.first { String($0.id.prefix { $0 != "@" }) == argument }
+            ?? listed.first { $0.title == argument }
     }
 }

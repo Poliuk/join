@@ -103,6 +103,7 @@ final class AppModel {
         PanelPresenter.content(
             meetings: meetingStore.meetings,
             alertable: meetingStore.alertableMeetings,
+            dismissed: meetingStore.dismissedMeetingIDs,
             now: now,
             startingSoonWindow: preferences.startingSoonPill.window
         )
@@ -132,6 +133,32 @@ final class AppModel {
         case .join(let url), .directions(let url):
             NSWorkspace.shared.open(url)
         }
+    }
+
+    /// The card's close button and a row's Dismiss: no full-screen alert for this occurrence, and the menu
+    /// bar item and the card move on to what comes next. The panel stays open and lists it as dismissed
+    /// until it ends. Only a meeting that may alert can be dismissed; anything else is left alone.
+    func dismiss(_ meeting: Meeting) {
+        guard meetingStore.alertableMeetings.contains(where: { $0.id == meeting.id }) else { return }
+        updateDismissedEvents(preferences.dismissedEvents.dismissing(meeting))
+    }
+
+    /// A dismissed row's Restore: the menu bar item and the card take the meeting back, and its full-screen
+    /// alert comes at once if it's still due (the scheduler's usual late grace and snooze rules).
+    func restore(_ meeting: Meeting) {
+        updateDismissedEvents(preferences.dismissedEvents.restoring(meeting.id))
+    }
+
+    /// The alert coordinator, the menu bar item and the panel all follow `MeetingStore.alertableMeetings`,
+    /// which reads the dismissed events, so this one write updates all three.
+    private func updateDismissedEvents(_ events: DismissedEvents) {
+        let date = Date()
+        // Pruned as it's written, so entries for events that are over don't wait for the next calendar read.
+        let pruned = events.pruned(at: date, meetings: meetingStore.meetings)
+        // Fresh countdowns for whatever takes the card and the menu bar.
+        now = date
+        guard pruned != preferences.dismissedEvents else { return }
+        preferences.dismissedEvents = pruned
     }
 
     /// The update bar's button: Install, Download Page after a failed install, Show in Finder once the

@@ -87,15 +87,36 @@ final class MeetingStore {
             eventsWithoutParticipants: preferences.eventsWithoutParticipants,
             outOfOfficeEvents: preferences.outOfOfficeEvents
         )
+        // Events dismissed from the panel are forgotten once they end, at their ends as the calendar has them
+        // now. The fetch holds every event still on, so one missing from it has ended, moved or gone, or its
+        // calendar was unchecked; its entry stays until its stored end.
+        let dismissed = preferences.dismissedEvents.pruned(at: now, meetings: fetched)
+        if dismissed != preferences.dismissedEvents {
+            preferences.dismissedEvents = dismissed
+        }
     }
 
     /// The meetings that may produce full-screen alerts, drive the menu bar title and take the panel's card:
-    /// those whose Events choice is Show and alert. Reads both choices, so observers follow them too.
+    /// those whose Events choice is Show and alert, less the ones dismissed from the panel. Reads both
+    /// choices and the dismissed events, so observers (the alert coordinator, the menu bar item, the panel)
+    /// follow them too: a dismissal cancels a pending alert and moves the menu bar on at once.
     var alertableMeetings: [Meeting] {
         MeetingFilter.alertable(
             meetings,
             eventsWithoutParticipants: preferences.eventsWithoutParticipants,
-            outOfOfficeEvents: preferences.outOfOfficeEvents
+            outOfOfficeEvents: preferences.outOfOfficeEvents,
+            dismissed: preferences.dismissedEvents
+        )
+    }
+
+    /// The Show and alert meetings dismissed from the panel, by id: the panel lists them as dismissed, with
+    /// Restore, until they end.
+    var dismissedMeetingIDs: Set<String> {
+        MeetingFilter.dismissedIDs(
+            meetings,
+            eventsWithoutParticipants: preferences.eventsWithoutParticipants,
+            outOfOfficeEvents: preferences.outOfOfficeEvents,
+            dismissed: preferences.dismissedEvents
         )
     }
 

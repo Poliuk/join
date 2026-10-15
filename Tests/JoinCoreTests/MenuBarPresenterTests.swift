@@ -263,4 +263,33 @@ final class MenuBarPresenterTests: XCTestCase {
         XCTAssertEqual(status([hackathon, checkIn], at: F.date(6, 21)).text, "5 h 00 min left")
         XCTAssertEqual(status([hackathon, checkIn], at: F.date(7, 0, 10)).text, "Next in 50 min")
     }
+
+    // A dismissed event leaves the alertable meetings (`MeetingFilter.alertable`), so the bar moves on to what comes next.
+    func testADismissedMeetingLeavesTheMenuBarToTheNextOne() {
+        func alertable(dismissing meetings: [Meeting]) -> [Meeting] {
+            let dismissed = meetings.reduce(DismissedEvents()) { $0.dismissing($1) }
+            return MeetingFilter.alertable(F.week, eventsWithoutParticipants: .showAndAlert, outOfOfficeEvents: .listOnly, dismissed: dismissed)
+        }
+        XCTAssertEqual(alertable(dismissing: []), F.alertable)
+
+        // 12:18 PM: lunch in 42 minutes; dismissed, the Workshop at 3:00 PM is next.
+        let afterLunch = status(alertable(dismissing: [F.lunch]), at: F.date(6, 12, 18))
+        XCTAssertEqual(afterLunch.kind, .later)
+        XCTAssertEqual(afterLunch.text, "Next in 2 h 42 min")
+        XCTAssertEqual(afterLunch.accessibilityLabel, "Join!: Workshop in 2 hours 42 minutes, at 3:00 PM")
+
+        // 3:56 PM: Planning starting soon; dismissed, the Workshop in progress takes the bar.
+        let running = status(alertable(dismissing: [F.planning]), at: F.date(6, 15, 56))
+        XCTAssertEqual(running.text, "3 h 34 min left")
+        guard case .inMeeting = running.kind else { return XCTFail("expected inMeeting, got \(running.kind)") }
+
+        // 4:20 PM: in Planning; dismissed, the ring is the Workshop's.
+        let workshop = status(alertable(dismissing: [F.planning]), at: F.date(6, 16, 20))
+        XCTAssertEqual(workshop.text, "3 h 10 min left")
+        XCTAssertEqual(workshop.accessibilityLabel, "Join!: Workshop ends in 3 hours 10 minutes")
+
+        // Dismissing the Workshop too leaves tomorrow's first meeting.
+        XCTAssertEqual(status(alertable(dismissing: [F.planning, F.workshop]), at: F.date(6, 16, 20)).text, "Tomorrow at 9:10 AM")
+        XCTAssertEqual(status(alertable(dismissing: F.alertable), at: F.date(6, 16, 20)).kind, .idle, "everything dismissed: the icon alone")
+    }
 }

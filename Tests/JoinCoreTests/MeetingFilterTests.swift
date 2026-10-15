@@ -167,6 +167,59 @@ final class MeetingFilterTests: XCTestCase {
         XCTAssertFalse(MeetingFilter.shouldInclude(isAllDay: false, isCanceled: false, myStatus: .declined))
     }
 
+    // MARK: Dismissed events
+
+    func testDismissedMeetingsAreNotAlertableButStayVisible() {
+        let dismissed = DismissedEvents().dismissing(kinds[0])
+        XCTAssertEqual(
+            MeetingFilter.alertable(kinds, eventsWithoutParticipants: .showAndAlert, outOfOfficeEvents: .showAndAlert, dismissed: dismissed).map(\.id),
+            ["focus", "ooo", "ooo-solo"]
+        )
+        XCTAssertEqual(
+            MeetingFilter.alertable(kinds, eventsWithoutParticipants: .showAndAlert, outOfOfficeEvents: .showAndAlert, dismissed: DismissedEvents()),
+            MeetingFilter.alertable(kinds, eventsWithoutParticipants: .showAndAlert, outOfOfficeEvents: .showAndAlert),
+            "nothing dismissed by default"
+        )
+        XCTAssertEqual(
+            MeetingFilter.visible(kinds, eventsWithoutParticipants: .showAndAlert, outOfOfficeEvents: .showAndAlert).map(\.id),
+            ["call", "focus", "ooo", "ooo-solo"], "the lists keep a dismissed event"
+        )
+    }
+
+    // Only an event that could alert is dismissed: one whose choice became Show in the list only (or Exclude)
+    // after it was dismissed is shown according to the new choice.
+    func testDismissedIDsAreTheShowAndAlertOnesOnly() {
+        let dismissed = DismissedEvents().dismissing(kinds[0]).dismissing(kinds[1]).dismissing(kinds[2])
+        func ids(_ withoutParticipants: EventVisibility, _ outOfOffice: EventVisibility) -> Set<String> {
+            MeetingFilter.dismissedIDs(kinds, eventsWithoutParticipants: withoutParticipants, outOfOfficeEvents: outOfOffice, dismissed: dismissed)
+        }
+        XCTAssertEqual(ids(.showAndAlert, .showAndAlert), ["call", "focus", "ooo"])
+        XCTAssertEqual(ids(.showAndAlert, .listOnly), ["call", "focus"])
+        XCTAssertEqual(ids(.listOnly, .listOnly), ["call"])
+        XCTAssertEqual(ids(.exclude, .exclude), ["call"])
+        XCTAssertEqual(
+            MeetingFilter.dismissedIDs(kinds, eventsWithoutParticipants: .showAndAlert, outOfOfficeEvents: .showAndAlert, dismissed: DismissedEvents()),
+            []
+        )
+        XCTAssertEqual(
+            MeetingFilter.dismissedIDs([], eventsWithoutParticipants: .showAndAlert, outOfOfficeEvents: .showAndAlert, dismissed: dismissed),
+            [], "an entry with no meeting (ended, or its calendar unchecked) shows nowhere"
+        )
+
+        for withoutParticipants in EventVisibility.allCases {
+            for outOfOffice in EventVisibility.allCases {
+                let label = "\(withoutParticipants), \(outOfOffice)"
+                let all = MeetingFilter.alertable(kinds, eventsWithoutParticipants: withoutParticipants, outOfOfficeEvents: outOfOffice)
+                let alertable = MeetingFilter.alertable(kinds, eventsWithoutParticipants: withoutParticipants, outOfOfficeEvents: outOfOffice, dismissed: dismissed)
+                XCTAssertEqual(
+                    Set(alertable.map(\.id)).union(ids(withoutParticipants, outOfOffice)), Set(all.map(\.id)),
+                    "the Show and alert events are split between alertable and dismissed: \(label)"
+                )
+                XCTAssertTrue(Set(alertable.map(\.id)).isDisjoint(with: ids(withoutParticipants, outOfOffice)), label)
+            }
+        }
+    }
+
     func testOccurrenceIDIncludesStart() {
         let start = Date(timeIntervalSince1970: 1_800_000_000)
         XCTAssertEqual(Meeting.occurrenceID(eventIdentifier: "evt", start: start), "evt@1800000000")

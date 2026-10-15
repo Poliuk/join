@@ -1,3 +1,4 @@
+import Observation
 import XCTest
 @testable import JoinCore
 
@@ -32,6 +33,7 @@ final class PreferencesTests: XCTestCase {
         XCTAssertNil(preferences.lastUpdateCheck)
         XCTAssertNil(preferences.offeredUpdateVersion)
         XCTAssertNil(preferences.unsupportedUpdate)
+        XCTAssertTrue(preferences.dismissedEvents.isEmpty)
     }
 
     @MainActor
@@ -415,5 +417,67 @@ final class PreferencesTests: XCTestCase {
         XCTAssertNil(Preferences(defaults: defaults).unsupportedUpdate)
         defaults.set(Data(#"{"version": "1.2.0"}"#.utf8), forKey: Preferences.Keys.unsupportedUpdate)
         XCTAssertNil(Preferences(defaults: defaults).unsupportedUpdate, "no minimum system")
+    }
+
+    // MARK: Dismissed events
+
+    @MainActor
+    func testDismissedEventsPersistAndNoneRemovesTheKey() {
+        let dismissed = DismissedEvents().dismissing(MenuBarFixtures.workshop).dismissing(MenuBarFixtures.review)
+        let first = Preferences(defaults: defaults)
+        XCTAssertNil(defaults.object(forKey: Preferences.Keys.dismissedEvents), "nothing is stored until something is dismissed")
+        first.dismissedEvents = dismissed
+        XCTAssertNotNil(defaults.data(forKey: Preferences.Keys.dismissedEvents))
+
+        let second = Preferences(defaults: defaults)
+        XCTAssertEqual(second.dismissedEvents, dismissed)
+
+        second.dismissedEvents = dismissed.restoring(MenuBarFixtures.workshop.id)
+        XCTAssertEqual(Preferences(defaults: defaults).dismissedEvents.ids, [MenuBarFixtures.review.id])
+        second.dismissedEvents = DismissedEvents()
+        XCTAssertNil(defaults.object(forKey: Preferences.Keys.dismissedEvents))
+        XCTAssertTrue(Preferences(defaults: defaults).dismissedEvents.isEmpty)
+    }
+
+    @MainActor
+    func testUnreadableDismissedEventsAreNone() {
+        defaults.set(Data("not json".utf8), forKey: Preferences.Keys.dismissedEvents)
+        XCTAssertTrue(Preferences(defaults: defaults).dismissedEvents.isEmpty)
+        defaults.set(Data(#"{"val": "tonight"}"#.utf8), forKey: Preferences.Keys.dismissedEvents)
+        XCTAssertTrue(Preferences(defaults: defaults).dismissedEvents.isEmpty)
+        defaults.set("val", forKey: Preferences.Keys.dismissedEvents)
+        XCTAssertTrue(Preferences(defaults: defaults).dismissedEvents.isEmpty, "not data at all")
+    }
+
+    /// Dismissed events aren't a setting: Restore Defaults and the other resets leave them alone.
+    @MainActor
+    func testResetsLeaveDismissedEventsAlone() {
+        let dismissed = DismissedEvents().dismissing(MenuBarFixtures.workshop)
+        let preferences = Preferences(defaults: defaults)
+        preferences.dismissedEvents = dismissed
+        preferences.appearance = AlertAppearance(blurMode: .light, join: AlertButtonColors(fill: RGBA(rgb: 0x2563EB)))
+        preferences.outOfOfficeKeywords = ["away"]
+
+        preferences.resetAppearance()
+        preferences.resetOutOfOfficeKeywords()
+        preferences.applyCustomAppearance()
+        XCTAssertEqual(preferences.dismissedEvents, dismissed)
+        XCTAssertEqual(Preferences(defaults: defaults).dismissedEvents, dismissed)
+    }
+
+    /// The meeting store reads `dismissedEvents` in `alertableMeetings`, so a dismissal reaches the alert,
+    /// the menu bar and the card through observation.
+    @MainActor
+    func testDismissingNotifiesObservers() {
+        final class Changes: @unchecked Sendable { var count = 0 }
+        let preferences = Preferences(defaults: defaults)
+        let changes = Changes()
+        withObservationTracking {
+            _ = preferences.dismissedEvents
+        } onChange: {
+            changes.count += 1
+        }
+        preferences.dismissedEvents = preferences.dismissedEvents.dismissing(MenuBarFixtures.workshop)
+        XCTAssertEqual(changes.count, 1)
     }
 }

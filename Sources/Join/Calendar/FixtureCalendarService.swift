@@ -8,6 +8,11 @@ import JoinCore
 /// meeting later today), busy (one starts in 4 min while another runs), meeting (in a meeting),
 /// maybe (a long Maybe block runs while a call you accepted starts in 47 min). Tomorrow's out-of-office
 /// block and Focus time the day after have no participants, for the General pane's Events choices.
+/// Meeting ids are occurrence ids ("workshop@<start>"), like the real calendar's: today's events move with
+/// each launch, so one dismissed in an earlier launch usually isn't dismissed in the next (only when it
+/// lands on the same start, as in a relaunch within the minute, is it the same occurrence). The
+/// `dismissEvent` and `restoreEvent` hooks (`AppDelegate`) take the part before "@" ("workshop",
+/// "planning2") or the title, to put the panel in its dismissed states.
 @MainActor
 final class FixtureCalendarService: CalendarService {
     static let environmentKey = "JOIN_FIXTURE"
@@ -68,8 +73,9 @@ final class FixtureCalendarService: CalendarService {
         func meeting(_ id: String, _ title: String, _ start: Date, _ end: Date, _ info: CalendarInfo,
                      location: String? = nil, notes: String? = nil, status: ParticipationStatus = .accepted,
                      participants: Bool = true) -> Meeting {
-            Meeting(id: id, title: title, start: start, end: end, calendarID: info.id, calendarTitle: info.title,
-                    calendarColor: info.color, location: location, notes: notes, myStatus: status, hasParticipants: participants)
+            Meeting(id: Meeting.occurrenceID(eventIdentifier: id, start: start), title: title, start: start, end: end,
+                    calendarID: info.id, calendarTitle: info.title, calendarColor: info.color, location: location,
+                    notes: notes, myStatus: status, hasParticipants: participants)
         }
         let meet = "Join with Google Meet: https://meet.google.com/abc-defg-hij"
         let zoom = "https://us06web.zoom.us/j/12345678901?pwd=sample"

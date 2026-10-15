@@ -110,14 +110,35 @@ public enum MeetingFilter {
     }
 
     /// The meetings that may alert, drive the menu bar item and take the panel's card: those whose choice
-    /// is Show and alert, always a subset of `visible`. Keeps the order.
+    /// is Show and alert, less the ones the user dismissed from the panel, always a subset of `visible`.
+    /// Keeps the order.
     public static func alertable(
         _ meetings: [Meeting],
         eventsWithoutParticipants: EventVisibility,
-        outOfOfficeEvents: EventVisibility
+        outOfOfficeEvents: EventVisibility,
+        dismissed: DismissedEvents = DismissedEvents()
     ) -> [Meeting] {
         meetings.filter {
-            visibility(of: $0, eventsWithoutParticipants: eventsWithoutParticipants, outOfOfficeEvents: outOfOfficeEvents).alerts
+            !dismissed.contains($0.id)
+                && visibility(of: $0, eventsWithoutParticipants: eventsWithoutParticipants, outOfOfficeEvents: outOfOfficeEvents).alerts
         }
+    }
+
+    /// The Show and alert meetings the user dismissed, by id: left out of `alertable`, and listed by the panel
+    /// as dismissed, with Restore, until they end. Only an event that could alert can be dismissed, so one
+    /// whose choice has since become Show in the list only is listed like any other of its kind: it isn't here.
+    public static func dismissedIDs(
+        _ meetings: [Meeting],
+        eventsWithoutParticipants: EventVisibility,
+        outOfOfficeEvents: EventVisibility,
+        dismissed: DismissedEvents
+    ) -> Set<String> {
+        guard !dismissed.isEmpty else { return [] }
+        return Set(meetings.lazy
+            .filter {
+                dismissed.contains($0.id)
+                    && visibility(of: $0, eventsWithoutParticipants: eventsWithoutParticipants, outOfOfficeEvents: outOfOfficeEvents).alerts
+            }
+            .map(\.id))
     }
 }
