@@ -1,7 +1,8 @@
-import XCTest
+import Foundation
+import Testing
 @testable import JoinCore
 
-final class MenuBarPresenterTests: XCTestCase {
+struct MenuBarPresenterTests {
     typealias F = MenuBarFixtures
 
     private func status(
@@ -25,115 +26,118 @@ final class MenuBarPresenterTests: XCTestCase {
     }
 
     /// General's Starting soon preview reads as the menu bar would, for each Shows choice.
-    func testStartingSoonPreviewText() {
-        XCTAssertNil(MenuBarPresenter.startingSoonPreviewText(display: .iconOnly, pill: .default))
-        XCTAssertEqual(MenuBarPresenter.startingSoonPreviewText(display: .time, pill: .default), "Next in 4 min")
-        XCTAssertEqual(MenuBarPresenter.startingSoonPreviewText(display: .titleAndTime, pill: .default), "Hello, I’m a demo event · in 4 min")
-        XCTAssertEqual(MenuBarPresenter.startingSoonPreviewText(display: .time, pill: StartingSoonPill(minutes: 3)), "Next in 3 min",
-                       "within the pill's own window")
-        XCTAssertEqual(MenuBarPresenter.startingSoonPreviewText(display: .time, pill: StartingSoonPill(minutes: 60)), "Next in 4 min")
-        XCTAssertLessThanOrEqual(MenuBarPresenter.demoEventTitle.count, MenuBarPresenter.maxTitleLength, "shown whole, like a short title")
+    @Test func startingSoonPreviewText() {
+        #expect(MenuBarPresenter.startingSoonPreviewText(display: .iconOnly, pill: .default) == nil)
+        #expect(MenuBarPresenter.startingSoonPreviewText(display: .time, pill: .default) == "Next in 4 min")
+        #expect(MenuBarPresenter.startingSoonPreviewText(display: .titleAndTime, pill: .default) == "Hello, I’m a demo event · in 4 min")
+        #expect(MenuBarPresenter.startingSoonPreviewText(display: .time, pill: StartingSoonPill(minutes: 3)) == "Next in 3 min",
+                "within the pill's own window")
+        #expect(MenuBarPresenter.startingSoonPreviewText(display: .time, pill: StartingSoonPill(minutes: 60)) == "Next in 4 min")
+        #expect(MenuBarPresenter.demoEventTitle.count <= MenuBarPresenter.maxTitleLength, "shown whole, like a short title")
     }
 
-    func testLaterTodayCountsDown() {
+    @Test func laterTodayCountsDown() {
         let today = status(at: F.date(6, 10, 45))
-        XCTAssertEqual(today.kind, .later)
-        XCTAssertEqual(today.text, "Next in 2 h 15 min")
-        XCTAssertEqual(today.accessibilityLabel, "Join!: Lunch with Lucía in 2 hours 15 minutes, at 1:00 PM")
+        #expect(today.kind == .later)
+        #expect(today.text == "Next in 2 h 15 min")
+        #expect(today.accessibilityLabel == "Join!: Lunch with Lucía in 2 hours 15 minutes, at 1:00 PM")
     }
 
-    func testOtherDaysShowTheDayAndTime() {
+    @Test func otherDaysShowTheDayAndTime() {
         let tomorrow = status(at: F.date(5, 21, 30))
-        XCTAssertEqual(tomorrow.kind, .later)
-        XCTAssertEqual(tomorrow.text, "Tomorrow at 1:00 PM")
-        XCTAssertEqual(tomorrow.accessibilityLabel, "Join!: Lunch with Lucía tomorrow at 1:00 PM")
+        #expect(tomorrow.kind == .later)
+        #expect(tomorrow.text == "Tomorrow at 1:00 PM")
+        #expect(tomorrow.accessibilityLabel == "Join!: Lunch with Lucía tomorrow at 1:00 PM")
 
         let laterInTheWeek = status([F.review], at: F.date(5, 21, 30))
-        XCTAssertEqual(laterInTheWeek.text, "In 2 days at 9:10 AM")
-        XCTAssertEqual(laterInTheWeek.accessibilityLabel, "Join!: Revisión semanal in 2 days, Wednesday at 9:10 AM")
+        #expect(laterInTheWeek.text == "In 2 days at 9:10 AM")
+        #expect(laterInTheWeek.accessibilityLabel == "Join!: Revisión semanal in 2 days, Wednesday at 9:10 AM")
     }
 
     // Monday 10:00 AM, and the next meeting is next Monday at 9:00: VoiceOver names the date, not just "Monday".
-    func testAWeekAheadCountsDays() {
+    @Test func aWeekAheadCountsDays() {
         let nextWeek = status([F.nextMonday], at: F.date(5, 10))
-        XCTAssertEqual(nextWeek.kind, .later)
-        XCTAssertEqual(nextWeek.text, "In 7 days at 9:00 AM")
-        XCTAssertEqual(nextWeek.accessibilityLabel, "Join!: Weekly in 7 days, \(F.formatted("EEEEdMMMM", day: 12, locale: F.us)) at 9:00 AM")
-        XCTAssertEqual(status([F.nextMonday], at: F.date(5, 10), locale: F.gb).text, "In 7 days at 09:00")
+        #expect(nextWeek.kind == .later)
+        #expect(nextWeek.text == "In 7 days at 9:00 AM")
+        #expect(nextWeek.accessibilityLabel == "Join!: Weekly in 7 days, \(F.formatted("EEEEdMMMM", day: 12, locale: F.us)) at 9:00 AM")
+        #expect(status([F.nextMonday], at: F.date(5, 10), locale: F.gb).text == "In 7 days at 09:00")
 
         let sixDaysAhead = status([F.sunday], at: F.date(5, 10))
-        XCTAssertEqual(sixDaysAhead.text, "In 6 days at 9:00 AM")
-        XCTAssertEqual(sixDaysAhead.accessibilityLabel, "Join!: Brunch in 6 days, Sunday at 9:00 AM")
+        #expect(sixDaysAhead.text == "In 6 days at 9:00 AM")
+        #expect(sixDaysAhead.accessibilityLabel == "Join!: Brunch in 6 days, Sunday at 9:00 AM")
     }
 
-    func testWithinTheHourCountsDownInMinutes() {
+    @Test func withinTheHourCountsDownInMinutes() {
         let result = status(at: F.date(6, 12, 18))
-        XCTAssertEqual(result.kind, .withinHour)
-        XCTAssertEqual(result.text, "Next in 42 min")
-        XCTAssertEqual(result.accessibilityLabel, "Join!: Lunch with Lucía in 42 minutes")
-        XCTAssertEqual(status(at: F.date(6, 12)).text, "Next in 60 min")
-        XCTAssertEqual(status(at: F.date(6, 11, 59, 59)).kind, .later)
+        #expect(result.kind == .withinHour)
+        #expect(result.text == "Next in 42 min")
+        #expect(result.accessibilityLabel == "Join!: Lunch with Lucía in 42 minutes")
+        #expect(status(at: F.date(6, 12)).text == "Next in 60 min")
+        #expect(status(at: F.date(6, 11, 59, 59)).kind == .later)
     }
 
     // 3:56 PM: Workshop has run since 3:00 and Planning starts at 4:00. Starting soon wins over the meeting in progress.
-    func testStartingSoonIsAnAccentPill() {
+    @Test func startingSoonIsAnAccentPill() {
         let result = status(at: F.date(6, 15, 56))
-        XCTAssertEqual(result.kind, .startingSoon)
-        XCTAssertEqual(result.text, "Next in 4 min")
-        XCTAssertEqual(result.accessibilityLabel, "Join!: Ana/Luis: Product Planning starts in 4 minutes")
-        XCTAssertEqual(status(at: F.date(6, 15, 55)).kind, .startingSoon)
-        XCTAssertEqual(status(at: F.date(6, 15, 54, 59)).text, "3 h 36 min left", "a second before the window, the running Workshop shows")
-        XCTAssertEqual(status(at: F.date(6, 15, 59, 30)).text, "Next in 1 min")
+        #expect(result.kind == .startingSoon)
+        #expect(result.text == "Next in 4 min")
+        #expect(result.accessibilityLabel == "Join!: Ana/Luis: Product Planning starts in 4 minutes")
+        #expect(status(at: F.date(6, 15, 55)).kind == .startingSoon)
+        #expect(status(at: F.date(6, 15, 54, 59)).text == "3 h 36 min left", "a second before the window, the running Workshop shows")
+        #expect(status(at: F.date(6, 15, 59, 30)).text == "Next in 1 min")
     }
 
-    func testInAMeetingShowsTimeLeftAndADrainingRing() {
+    @Test func inAMeetingShowsTimeLeftAndADrainingRing() {
         let result = status(at: F.date(6, 16, 20))
-        XCTAssertEqual(result.text, "40 min left")
-        XCTAssertEqual(result.accessibilityLabel, "Join!: Ana/Luis: Product Planning ends in 40 minutes")
-        guard case .inMeeting(let remaining) = result.kind else { return XCTFail("expected inMeeting, got \(result.kind)") }
-        XCTAssertEqual(remaining, 2.0 / 3.0, accuracy: 0.0001)
+        #expect(result.text == "40 min left")
+        #expect(result.accessibilityLabel == "Join!: Ana/Luis: Product Planning ends in 40 minutes")
+        guard case .inMeeting(let remaining) = result.kind else {
+            Issue.record("expected inMeeting, got \(result.kind)")
+            return
+        }
+        #expect(abs(remaining - 2.0 / 3.0) <= 0.0001)
 
         let long = status([F.workshop], at: F.date(6, 16, 20))
-        XCTAssertEqual(long.text, "3 h 10 min left")
+        #expect(long.text == "3 h 10 min left")
     }
 
-    func testPausedIsIconOnlyAndWinsOverEverything() {
+    @Test func pausedIsIconOnlyAndWinsOverEverything() {
         let paused = status(at: F.date(6, 15, 56), pause: .until(F.date(6, 16, 56)))
-        XCTAssertEqual(paused.kind, .paused)
-        XCTAssertNil(paused.text)
-        XCTAssertEqual(paused.accessibilityLabel, "Join!: full-screen alerts paused")
-        XCTAssertEqual(status(at: F.date(6, 16, 20), pause: .indefinitely).kind, .paused)
-        XCTAssertEqual(status(at: F.date(6, 15, 56), pause: .until(F.date(6, 15, 50))).kind, .startingSoon)
+        #expect(paused.kind == .paused)
+        #expect(paused.text == nil)
+        #expect(paused.accessibilityLabel == "Join!: full-screen alerts paused")
+        #expect(status(at: F.date(6, 16, 20), pause: .indefinitely).kind == .paused)
+        #expect(status(at: F.date(6, 15, 56), pause: .until(F.date(6, 15, 50))).kind == .startingSoon)
     }
 
-    func testNothingUpcomingIsIconOnly() {
+    @Test func nothingUpcomingIsIconOnly() {
         let result = status([], at: F.date(6, 10))
-        XCTAssertEqual(result.kind, .idle)
-        XCTAssertNil(result.text)
-        XCTAssertEqual(status(at: F.date(9, 10)).kind, .idle)
+        #expect(result.kind == .idle)
+        #expect(result.text == nil)
+        #expect(status(at: F.date(9, 10)).kind == .idle)
     }
 
     // The caller passes only alertable meetings. An out-of-office block passed in (the user opted in) drives the bar like any meeting.
-    func testOutOfOfficeBlocksPassedInDriveTheMenuBar() {
-        XCTAssertEqual(status(F.week, at: F.date(6, 12, 28)).kind, .startingSoon)
+    @Test func outOfOfficeBlocksPassedInDriveTheMenuBar() {
+        #expect(status(F.week, at: F.date(6, 12, 28)).kind == .startingSoon)
     }
 
-    func testIconOnlyWhenNextEventIsHiddenButKeepsTheState() {
+    @Test func iconOnlyWhenNextEventIsHiddenButKeepsTheState() {
         let soon = status(at: F.date(6, 15, 56), showsNextEvent: false, showsTitles: true)
-        XCTAssertEqual(soon.kind, .startingSoon)
-        XCTAssertNil(soon.text)
-        XCTAssertEqual(soon.accessibilityLabel, "Join!: Ana/Luis: Product Planning starts in 4 minutes")
-        XCTAssertNil(status(at: F.date(6, 12, 18), showsNextEvent: false).text)
-        XCTAssertNil(status(at: F.date(6, 16, 20), showsNextEvent: false).text)
+        #expect(soon.kind == .startingSoon)
+        #expect(soon.text == nil)
+        #expect(soon.accessibilityLabel == "Join!: Ana/Luis: Product Planning starts in 4 minutes")
+        #expect(status(at: F.date(6, 12, 18), showsNextEvent: false).text == nil)
+        #expect(status(at: F.date(6, 16, 20), showsNextEvent: false).text == nil)
     }
 
-    func testCurrentMeetingIsTheMostRecentlyStarted() {
-        XCTAssertEqual(MenuBarPresenter.currentMeeting(in: F.alertable, now: F.date(6, 16, 20))?.id, "plan")
-        XCTAssertEqual(MenuBarPresenter.currentMeeting(in: F.alertable, now: F.date(6, 15, 30))?.id, "val")
-        XCTAssertNil(MenuBarPresenter.currentMeeting(in: F.alertable, now: F.date(6, 20)))
+    @Test func currentMeetingIsTheMostRecentlyStarted() {
+        #expect(MenuBarPresenter.currentMeeting(in: F.alertable, now: F.date(6, 16, 20))?.id == "plan")
+        #expect(MenuBarPresenter.currentMeeting(in: F.alertable, now: F.date(6, 15, 30))?.id == "val")
+        #expect(MenuBarPresenter.currentMeeting(in: F.alertable, now: F.date(6, 20)) == nil)
     }
 
-    func testDurations() {
+    @Test func durations() {
         // Panel `duration`, menu bar `steadyDuration` (keeps its width past an hour), VoiceOver `spokenDuration`.
         let cases: [(seconds: TimeInterval, panel: String, menuBar: String, spoken: String)] = [
             (1,                   "1 min",       "1 min",       "1 minute"),            // rounds up: never "0 min"
@@ -145,41 +149,41 @@ final class MenuBarPresenterTests: XCTestCase {
             (11 * 3600 + 50 * 60, "11 h 50 min", "11 h 50 min", "11 hours 50 minutes"),
         ]
         for c in cases {
-            XCTAssertEqual(MenuBarPresenter.duration(c.seconds), c.panel, "\(c.seconds) s")
-            XCTAssertEqual(MenuBarPresenter.steadyDuration(c.seconds), c.menuBar, "\(c.seconds) s")
-            XCTAssertEqual(MenuBarPresenter.spokenDuration(c.seconds), c.spoken, "\(c.seconds) s")
+            #expect(MenuBarPresenter.duration(c.seconds) == c.panel, "\(c.seconds) s")
+            #expect(MenuBarPresenter.steadyDuration(c.seconds) == c.menuBar, "\(c.seconds) s")
+            #expect(MenuBarPresenter.spokenDuration(c.seconds) == c.spoken, "\(c.seconds) s")
         }
     }
 
-    func testRemainingFraction() {
-        XCTAssertEqual(MenuBarPresenter.remainingFraction(of: F.planning, now: F.date(6, 16)), 1)
-        XCTAssertEqual(MenuBarPresenter.remainingFraction(of: F.planning, now: F.date(6, 16, 30)), 0.5, accuracy: 0.0001)
-        XCTAssertEqual(MenuBarPresenter.remainingFraction(of: F.planning, now: F.date(6, 18)), 0)
-        XCTAssertEqual(MenuBarPresenter.elapsedFraction(of: F.planning, now: F.date(6, 16, 15)), 0.25, accuracy: 0.0001)
+    @Test func remainingFraction() {
+        #expect(MenuBarPresenter.remainingFraction(of: F.planning, now: F.date(6, 16)) == 1)
+        #expect(abs(MenuBarPresenter.remainingFraction(of: F.planning, now: F.date(6, 16, 30)) - 0.5) <= 0.0001)
+        #expect(MenuBarPresenter.remainingFraction(of: F.planning, now: F.date(6, 18)) == 0)
+        #expect(abs(MenuBarPresenter.elapsedFraction(of: F.planning, now: F.date(6, 16, 15)) - 0.25) <= 0.0001)
     }
 
-    func testPausedMessage() {
+    @Test func pausedMessage() {
         let now = F.date(6, 10, 50)
         func message(_ state: PauseState) -> String? {
             F.squash(MenuBarPresenter.pausedMessage(state, now: now, calendar: F.calendar, locale: F.us))
         }
-        XCTAssertNil(message(.active))
-        XCTAssertNil(message(.until(F.date(6, 10, 49))))
-        XCTAssertEqual(message(.until(F.date(6, 11, 50))), "Full-screen alerts paused until 11:50 AM")
-        XCTAssertEqual(message(.until(F.date(7, 0))), "Full-screen alerts paused until tomorrow")
-        XCTAssertEqual(message(.indefinitely), "Full-screen alerts paused")
+        #expect(message(.active) == nil)
+        #expect(message(.until(F.date(6, 10, 49))) == nil)
+        #expect(message(.until(F.date(6, 11, 50))) == "Full-screen alerts paused until 11:50 AM")
+        #expect(message(.until(F.date(7, 0))) == "Full-screen alerts paused until tomorrow")
+        #expect(message(.indefinitely) == "Full-screen alerts paused")
     }
 
-    func testHeaderDate() {
+    @Test func headerDate() {
         func header(_ locale: Locale) -> String? {
             F.squash(MenuBarPresenter.headerDate(F.date(6, 10), calendar: F.calendar, locale: locale))
         }
         // The full weekday, day and month in each locale's order: "Tuesday 6 October", "Tuesday, October 6".
-        XCTAssertEqual(header(F.gb), F.formatted("EEEEdMMMM", day: 6, locale: F.gb))
-        XCTAssertEqual(header(F.us), F.formatted("EEEEdMMMM", day: 6, locale: F.us))
+        #expect(header(F.gb) == F.formatted("EEEEdMMMM", day: 6, locale: F.gb))
+        #expect(header(F.us) == F.formatted("EEEEdMMMM", day: 6, locale: F.us))
     }
 
-    func testTitlesPrecedeTheTime() {
+    @Test func titlesPrecedeTheTime() {
         let cases: [(meetings: [Meeting], now: Date, expected: String)] = [
             (F.alertable, F.date(6, 12, 18), "Lunch with Lucía · in 42 min"),            // within the hour
             (F.alertable, F.date(6, 10, 45), "Lunch with Lucía · in 2 h 15 min"),        // later today
@@ -190,24 +194,24 @@ final class MenuBarPresenterTests: XCTestCase {
             (F.alertable, F.date(6, 16, 20), "Ana/Luis: Product Plann… · 40 min left"),  // in a meeting; titles cut at 24
         ]
         for c in cases {
-            XCTAssertEqual(status(c.meetings, at: c.now, showsTitles: true).text, c.expected, "at \(c.now)")
+            #expect(status(c.meetings, at: c.now, showsTitles: true).text == c.expected, "at \(c.now)")
         }
     }
 
-    func testMenuBarCountdownsKeepTheirWidth() {
-        XCTAssertEqual(status(at: F.date(6, 11)).text, "Next in 2 h 00 min")              // Lunch at 1:00 PM
-        XCTAssertEqual(status([F.workshop], at: F.date(6, 16, 25)).text, "3 h 05 min left") // ends 7:30 PM
+    @Test func menuBarCountdownsKeepTheirWidth() {
+        #expect(status(at: F.date(6, 11)).text == "Next in 2 h 00 min")              // Lunch at 1:00 PM
+        #expect(status([F.workshop], at: F.date(6, 16, 25)).text == "3 h 05 min left") // ends 7:30 PM
     }
 
-    func testTheStartingSoonWindowComesFromSettings() {
+    @Test func theStartingSoonWindowComesFromSettings() {
         // 12:52 PM, the next meeting starts at 1:00 PM: 8 minutes away.
         let now = F.date(6, 12, 52)
-        XCTAssertEqual(status(at: now).kind, .withinHour)
+        #expect(status(at: now).kind == .withinHour)
         let wider = status(at: now, startingSoonWindow: 10 * 60)
-        XCTAssertEqual(wider.kind, .startingSoon)
-        XCTAssertEqual(wider.text, "Next in 8 min")
-        XCTAssertEqual(status(at: F.date(6, 12, 58), startingSoonWindow: 60).kind, .withinHour, "1 minute: not yet at 2 minutes")
-        XCTAssertEqual(status(at: F.date(6, 12, 59), startingSoonWindow: 60).kind, .startingSoon)
+        #expect(wider.kind == .startingSoon)
+        #expect(wider.text == "Next in 8 min")
+        #expect(status(at: F.date(6, 12, 58), startingSoonWindow: 60).kind == .withinHour, "1 minute: not yet at 2 minutes")
+        #expect(status(at: F.date(6, 12, 59), startingSoonWindow: 60).kind == .startingSoon)
     }
 
     /// `meeting` with your answer set to `status`.
@@ -217,7 +221,7 @@ final class MenuBarPresenterTests: XCTestCase {
         return meeting
     }
 
-    func testAMaybeMeetingInProgressStepsAsideForAnAcceptedOneInsideIt() {
+    @Test func aMaybeMeetingInProgressStepsAsideForAnAcceptedOneInsideIt() {
         let maybeWorkshop = answered(F.workshop, .tentative)
         let lateCall = Meeting(id: "late", title: "Late call", start: F.date(6, 18), end: F.date(6, 18, 30))
         let cases: [(meetings: [Meeting], now: Date, focus: [String], why: String)] = [
@@ -230,66 +234,69 @@ final class MenuBarPresenterTests: XCTestCase {
             ([maybeWorkshop, answered(F.planning, .unknown)], F.date(6, 15, 13), ["val", "plan"], "nothing accepted: everything counts"),
         ]
         for c in cases {
-            XCTAssertEqual(MenuBarPresenter.focus(c.meetings, now: c.now).map(\.id), c.focus, c.why)
+            #expect(MenuBarPresenter.focus(c.meetings, now: c.now).map(\.id) == c.focus, "\(c.why)")
         }
     }
 
     // A Maybe or unanswered block has run since 3:00 PM; a call you accepted starts at 4:00. The call drives the bar.
-    func testAnAcceptedMeetingOutranksAMaybeBlockInProgress() {
+    @Test func anAcceptedMeetingOutranksAMaybeBlockInProgress() {
         for answer in [ParticipationStatus.tentative, .unknown] {
             let meetings = [answered(F.workshop, answer), F.planning]
-            XCTAssertEqual(status(meetings, at: F.date(6, 15, 13)).text, "Next in 47 min", "\(answer)")
-            XCTAssertEqual(status(meetings, at: F.date(6, 16, 20)).text, "40 min left", "\(answer): the call in progress")
-            XCTAssertEqual(status(meetings, at: F.date(6, 17, 5)).text, "2 h 25 min left", "\(answer): after the call, the block shows")
+            #expect(status(meetings, at: F.date(6, 15, 13)).text == "Next in 47 min", "\(answer)")
+            #expect(status(meetings, at: F.date(6, 16, 20)).text == "40 min left", "\(answer): the call in progress")
+            #expect(status(meetings, at: F.date(6, 17, 5)).text == "2 h 25 min left", "\(answer): after the call, the block shows")
         }
     }
 
-    func testAMaybeMeetingInsideAnAcceptedOneGetsItsPillButNotTheRing() {
+    @Test func aMaybeMeetingInsideAnAcceptedOneGetsItsPillButNotTheRing() {
         let meetings = [F.workshop, answered(F.planning, .tentative)]
-        XCTAssertEqual(status(meetings, at: F.date(6, 15, 56)).text, "Next in 4 min", "its alert is coming, so the pill shows")
-        XCTAssertEqual(status(meetings, at: F.date(6, 16, 20)).text, "3 h 10 min left",
-                       "in progress, the Maybe call steps aside: the accepted meeting keeps the ring though it started earlier")
-        XCTAssertEqual(status([answered(F.planning, .tentative), F.review], at: F.date(6, 15, 13)).text, "Next in 47 min",
-                       "a Maybe meeting today still comes before an accepted one tomorrow")
+        #expect(status(meetings, at: F.date(6, 15, 56)).text == "Next in 4 min", "its alert is coming, so the pill shows")
+        #expect(status(meetings, at: F.date(6, 16, 20)).text == "3 h 10 min left",
+                "in progress, the Maybe call steps aside: the accepted meeting keeps the ring though it started earlier")
+        #expect(status([answered(F.planning, .tentative), F.review], at: F.date(6, 15, 13)).text == "Next in 47 min",
+                "a Maybe meeting today still comes before an accepted one tomorrow")
         let unansweredLunch = [answered(F.lunch, .unknown), F.planning]
-        XCTAssertEqual(status(unansweredLunch, at: F.date(6, 12, 57)).kind, .startingSoon, "no clash: an unanswered meeting keeps its pill")
-        XCTAssertEqual(status(unansweredLunch, at: F.date(6, 13, 20)).text, "40 min left", "and its ring")
+        #expect(status(unansweredLunch, at: F.date(6, 12, 57)).kind == .startingSoon, "no clash: an unanswered meeting keeps its pill")
+        #expect(status(unansweredLunch, at: F.date(6, 13, 20)).text == "40 min left", "and its ring")
     }
 
     // A tentative 8 PM to 2 AM block with an accepted 1 AM check-in: the block keeps the ring until the hour before.
-    func testAMaybeBlockAcrossMidnightKeepsItsRingUntilTheHourBefore() {
+    @Test func aMaybeBlockAcrossMidnightKeepsItsRingUntilTheHourBefore() {
         let hackathon = Meeting(id: "hack", title: "Hackathon", start: F.date(6, 20), end: F.date(7, 2), myStatus: .tentative)
         let checkIn = Meeting(id: "check", title: "Check-in", start: F.date(7, 1), end: F.date(7, 1, 15))
-        XCTAssertEqual(status([hackathon, checkIn], at: F.date(6, 21)).text, "5 h 00 min left")
-        XCTAssertEqual(status([hackathon, checkIn], at: F.date(7, 0, 10)).text, "Next in 50 min")
+        #expect(status([hackathon, checkIn], at: F.date(6, 21)).text == "5 h 00 min left")
+        #expect(status([hackathon, checkIn], at: F.date(7, 0, 10)).text == "Next in 50 min")
     }
 
     // A dismissed event leaves the alertable meetings (`MeetingFilter.alertable`), so the bar moves on to what comes next.
-    func testADismissedMeetingLeavesTheMenuBarToTheNextOne() {
+    @Test func aDismissedMeetingLeavesTheMenuBarToTheNextOne() {
         func alertable(dismissing meetings: [Meeting]) -> [Meeting] {
             let dismissed = meetings.reduce(DismissedEvents()) { $0.dismissing($1) }
             return MeetingFilter.alertable(F.week, eventsWithoutParticipants: .showAndAlert, outOfOfficeEvents: .listOnly, dismissed: dismissed)
         }
-        XCTAssertEqual(alertable(dismissing: []), F.alertable)
+        #expect(alertable(dismissing: []) == F.alertable)
 
         // 12:18 PM: lunch in 42 minutes; dismissed, the Workshop at 3:00 PM is next.
         let afterLunch = status(alertable(dismissing: [F.lunch]), at: F.date(6, 12, 18))
-        XCTAssertEqual(afterLunch.kind, .later)
-        XCTAssertEqual(afterLunch.text, "Next in 2 h 42 min")
-        XCTAssertEqual(afterLunch.accessibilityLabel, "Join!: Workshop in 2 hours 42 minutes, at 3:00 PM")
+        #expect(afterLunch.kind == .later)
+        #expect(afterLunch.text == "Next in 2 h 42 min")
+        #expect(afterLunch.accessibilityLabel == "Join!: Workshop in 2 hours 42 minutes, at 3:00 PM")
 
         // 3:56 PM: Planning starting soon; dismissed, the Workshop in progress takes the bar.
         let running = status(alertable(dismissing: [F.planning]), at: F.date(6, 15, 56))
-        XCTAssertEqual(running.text, "3 h 34 min left")
-        guard case .inMeeting = running.kind else { return XCTFail("expected inMeeting, got \(running.kind)") }
+        #expect(running.text == "3 h 34 min left")
+        guard case .inMeeting = running.kind else {
+            Issue.record("expected inMeeting, got \(running.kind)")
+            return
+        }
 
         // 4:20 PM: in Planning; dismissed, the ring is the Workshop's.
         let workshop = status(alertable(dismissing: [F.planning]), at: F.date(6, 16, 20))
-        XCTAssertEqual(workshop.text, "3 h 10 min left")
-        XCTAssertEqual(workshop.accessibilityLabel, "Join!: Workshop ends in 3 hours 10 minutes")
+        #expect(workshop.text == "3 h 10 min left")
+        #expect(workshop.accessibilityLabel == "Join!: Workshop ends in 3 hours 10 minutes")
 
         // Dismissing the Workshop too leaves tomorrow's first meeting.
-        XCTAssertEqual(status(alertable(dismissing: [F.planning, F.workshop]), at: F.date(6, 16, 20)).text, "Tomorrow at 9:10 AM")
-        XCTAssertEqual(status(alertable(dismissing: F.alertable), at: F.date(6, 16, 20)).kind, .idle, "everything dismissed: the icon alone")
+        #expect(status(alertable(dismissing: [F.planning, F.workshop]), at: F.date(6, 16, 20)).text == "Tomorrow at 9:10 AM")
+        #expect(status(alertable(dismissing: F.alertable), at: F.date(6, 16, 20)).kind == .idle, "everything dismissed: the icon alone")
     }
 }

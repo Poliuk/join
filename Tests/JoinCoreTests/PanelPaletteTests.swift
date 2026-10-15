@@ -1,8 +1,8 @@
-import XCTest
+import Testing
 @testable import JoinCore
 
 /// The panel's inks must read at 4.5:1 on the frost over the worst glass measured on screen.
-final class PanelPaletteTests: XCTestCase {
+struct PanelPaletteTests {
     private struct Case {
         let dark: Bool
         let increasedContrast: Bool
@@ -15,29 +15,29 @@ final class PanelPaletteTests: XCTestCase {
 
     private let cases = [false, true].flatMap { dark in [false, true].map { Case(dark: dark, increasedContrast: $0) } }
 
-    func testInksReadOnTheFrost() {
+    @Test func inksReadOnTheFrost() {
         for item in cases {
             let palette = item.palette
             let inks = [("primary", palette.primary), ("strong", palette.strong), ("secondary", palette.secondary),
                         ("tertiary", palette.tertiary), ("warning", palette.warning)]
             for (name, ink) in inks {
-                XCTAssertGreaterThanOrEqual(ink.contrastRatio(to: item.surface), 4.5, "\(name), \(item.name)")
+                #expect(ink.contrastRatio(to: item.surface) >= 4.5, "\(name), \(item.name)")
             }
         }
     }
 
-    func testOutOfOfficeTextReadsOnItsStripes() {
+    @Test func outOfOfficeTextReadsOnItsStripes() {
         for item in cases {
             let stripe = item.palette.ink.withAlpha(PanelPalette.stripe).composited(over: item.surface)
-            XCTAssertGreaterThanOrEqual(item.palette.tertiary.contrastRatio(to: stripe), 4.5, item.name)
+            #expect(item.palette.tertiary.contrastRatio(to: stripe) >= 4.5, "\(item.name)")
         }
     }
 
-    func testHeroCardTextReadsOnTheCard() {
+    @Test func heroCardTextReadsOnTheCard() {
         for item in cases {
             let card = item.palette.card.composited(over: item.surface)
             for ink in [item.palette.primary, item.palette.secondary, item.palette.warning] {
-                XCTAssertGreaterThanOrEqual(ink.contrastRatio(to: card), 4.5, item.name)
+                #expect(ink.contrastRatio(to: card) >= 4.5, "\(item.name)")
             }
         }
     }
@@ -59,42 +59,42 @@ final class PanelPaletteTests: XCTestCase {
         ("default blue, dark", RGBA(rgb: 0x0A84FF), RGBA(rgb: 0x0A84FF)),
     ]
 
-    func testTheAccentButtonLabelReadsForEveryAccentAtRestAndUnderThePointer() {
+    @Test func theAccentButtonLabelReadsForEveryAccentAtRestAndUnderThePointer() {
         for accent in accents {
             for dark in [false, true] {
                 let button = PanelPalette.accentButton(dark ? accent.dark : accent.light, dark: dark)
                 let mode = "\(accent.name), \(dark ? "dark" : "light")"
-                XCTAssertGreaterThanOrEqual(button.label.contrastRatio(to: button.fill), 4.5, mode)
-                XCTAssertGreaterThanOrEqual(button.label.contrastRatio(to: button.hover), button.label.contrastRatio(to: button.fill), "hover can only raise the contrast: \(mode)")
-                XCTAssertNotEqual(button.hover, button.fill, mode)
+                #expect(button.label.contrastRatio(to: button.fill) >= 4.5, "\(mode)")
+                #expect(button.label.contrastRatio(to: button.hover) >= button.label.contrastRatio(to: button.fill), "hover can only raise the contrast: \(mode)")
+                #expect(button.hover != button.fill, "\(mode)")
             }
         }
     }
 
-    func testTheDefaultBlueKeepsAWhiteLabelAndYellowGetsADarkOne() {
-        XCTAssertEqual(PanelPalette.accentButton(RGBA(rgb: 0x007AFF), dark: false).label, .white)
-        XCTAssertEqual(PanelPalette.accentButton(RGBA(rgb: 0x0A84FF), dark: true).label, .white)
-        XCTAssertNotEqual(PanelPalette.accentButton(RGBA(rgb: 0xFFC726), dark: false).label, .white)
+    @Test func theDefaultBlueKeepsAWhiteLabelAndYellowGetsADarkOne() {
+        #expect(PanelPalette.accentButton(RGBA(rgb: 0x007AFF), dark: false).label == .white)
+        #expect(PanelPalette.accentButton(RGBA(rgb: 0x0A84FF), dark: true).label == .white)
+        #expect(PanelPalette.accentButton(RGBA(rgb: 0xFFC726), dark: false).label != .white)
     }
 
-    func testStartingSoonCardTextReadsForEveryAccent() {
+    @Test func startingSoonCardTextReadsForEveryAccent() {
         for item in cases {
             for accent in accents {
                 let card = item.palette.startingSoonCard(accent: item.dark ? accent.dark : accent.light, over: item.surface, dark: item.dark)
                 for (name, ink) in [("primary", item.palette.primary), ("secondary", item.palette.secondary), ("warning", item.palette.warning)] {
-                    XCTAssertGreaterThanOrEqual(ink.contrastRatio(to: card), 4.5, "\(name) on \(accent.name), \(item.name)")
+                    #expect(ink.contrastRatio(to: card) >= 4.5, "\(name) on \(accent.name), \(item.name)")
                 }
             }
         }
     }
 
-    func testStartingSoonLabelIsSolvedForEveryAccent() {
+    @Test func startingSoonLabelIsSolvedForEveryAccent() {
         for item in cases {
             for accent in accents {
                 let color = item.dark ? accent.dark : accent.light
                 let card = item.palette.startingSoonCard(accent: color, over: item.surface, dark: item.dark)
                 let label = PanelPalette.legibleAccent(color, on: card, dark: item.dark)
-                XCTAssertGreaterThanOrEqual(label.contrastRatio(to: card), 4.6, "\(accent.name), \(item.name)")
+                #expect(label.contrastRatio(to: card) >= 4.6, "\(accent.name), \(item.name)")
             }
         }
     }

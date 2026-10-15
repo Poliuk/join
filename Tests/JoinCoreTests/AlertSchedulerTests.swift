@@ -1,7 +1,8 @@
-import XCTest
+import Foundation
+import Testing
 @testable import JoinCore
 
-final class AlertSchedulerTests: XCTestCase {
+struct AlertSchedulerTests {
     let now = Date(timeIntervalSince1970: 1_800_000_000)
     let leadTime: TimeInterval = 180
 
@@ -13,57 +14,57 @@ final class AlertSchedulerTests: XCTestCase {
         AlertScheduler.nextPlan(meetings: meetings, states: states, leadTime: leadTime, isPaused: paused, now: now)
     }
 
-    func testPendingMeetingFiresLeadTimeBeforeStart() {
+    @Test func pendingMeetingFiresLeadTimeBeforeStart() {
         let result = plan([meeting("a", startsIn: 600)])
-        XCTAssertEqual(result?.fireAt, now.addingTimeInterval(600 - leadTime))
-        XCTAssertEqual(result?.meetings.map(\.id), ["a"])
+        #expect(result?.fireAt == now.addingTimeInterval(600 - leadTime))
+        #expect(result?.meetings.map(\.id) == ["a"])
     }
 
-    func testOverdueMeetingFiresImmediately() {
+    @Test func overdueMeetingFiresImmediately() {
         let result = plan([meeting("late", startsIn: 60)])
-        XCTAssertEqual(result?.fireAt, now)
+        #expect(result?.fireAt == now)
     }
 
-    func testMeetingThatStartedWithinGraceStillFires() {
+    @Test func meetingThatStartedWithinGraceStillFires() {
         let result = plan([meeting("started", startsIn: -120)])
-        XCTAssertEqual(result?.fireAt, now)
+        #expect(result?.fireAt == now)
     }
 
-    func testMeetingThatStartedLongAgoIsSkipped() {
-        XCTAssertNil(plan([meeting("old", startsIn: -(AlertScheduler.lateAlertGrace + 1))]))
+    @Test func meetingThatStartedLongAgoIsSkipped() {
+        #expect(plan([meeting("old", startsIn: -(AlertScheduler.lateAlertGrace + 1))]) == nil)
     }
 
-    func testEndedMeetingIsSkipped() {
-        XCTAssertNil(plan([meeting("done", startsIn: -7200, duration: 3600)]))
+    @Test func endedMeetingIsSkipped() {
+        #expect(plan([meeting("done", startsIn: -7200, duration: 3600)]) == nil)
     }
 
-    func testSnoozedMeetingFiresAtSnoozeTime() {
+    @Test func snoozedMeetingFiresAtSnoozeTime() {
         let until = now.addingTimeInterval(45)
         let result = plan([meeting("a", startsIn: 600)], states: ["a": .snoozed(until: until)])
-        XCTAssertEqual(result?.fireAt, until)
+        #expect(result?.fireAt == until)
     }
 
-    func testExpiredSnoozeFiresNow() {
+    @Test func expiredSnoozeFiresNow() {
         let result = plan([meeting("a", startsIn: 600)], states: ["a": .snoozed(until: now.addingTimeInterval(-30))])
-        XCTAssertEqual(result?.fireAt, now)
+        #expect(result?.fireAt == now)
     }
 
-    func testShowingAndDismissedProduceNothing() {
-        XCTAssertNil(plan([meeting("a", startsIn: 600)], states: ["a": .showing]))
-        XCTAssertNil(plan([meeting("a", startsIn: 600)], states: ["a": .dismissed]))
+    @Test func showingAndDismissedProduceNothing() {
+        #expect(plan([meeting("a", startsIn: 600)], states: ["a": .showing]) == nil)
+        #expect(plan([meeting("a", startsIn: 600)], states: ["a": .dismissed]) == nil)
     }
 
-    func testPausedReturnsNil() {
-        XCTAssertNil(plan([meeting("a", startsIn: 600)], paused: true))
+    @Test func pausedReturnsNil() {
+        #expect(plan([meeting("a", startsIn: 600)], paused: true) == nil)
     }
 
-    func testMeetingsWithTheSameFireTimeShareOneAlert() {
+    @Test func meetingsWithTheSameFireTimeShareOneAlert() {
         let result = plan([meeting("b", startsIn: 600), meeting("a", startsIn: 600.5), meeting("c", startsIn: 900)])
-        XCTAssertEqual(result?.meetings.map(\.id), ["b", "a"])
+        #expect(result?.meetings.map(\.id) == ["b", "a"])
     }
 
-    func testEarliestMeetingWins() {
+    @Test func earliestMeetingWins() {
         let result = plan([meeting("later", startsIn: 900), meeting("sooner", startsIn: 600)])
-        XCTAssertEqual(result?.meetings.map(\.id), ["sooner"])
+        #expect(result?.meetings.map(\.id) == ["sooner"])
     }
 }

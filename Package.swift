@@ -24,8 +24,8 @@ let package = Package(
             dependencies: ["JoinCore"],
             swiftSettings: approachableConcurrency + [.defaultIsolation(MainActor.self)]
         ),
-        // Swift 5 mode until the suite moves from XCTest to Swift Testing.
-        .testTarget(name: "JoinCoreTests", dependencies: ["JoinCore"], swiftSettings: [.swiftLanguageMode(.v5)]),
+        // Swift Testing; nonisolated like the library it tests.
+        .testTarget(name: "JoinCoreTests", dependencies: ["JoinCore"], swiftSettings: approachableConcurrency),
     ],
     swiftLanguageModes: [.v6]
 )

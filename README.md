@@ -48,7 +48,7 @@ Links only open, in your browser or Apple Maps, when you click Join, Directions 
 ## Requirements
 
 - macOS 14 Sonoma or later
-- To build: Swift 6.2 or later, from Xcode 26 or later or its Command Line Tools (`xcode-select --install`). Full Xcode is only needed to run the unit tests.
+- To build and test: Swift 6.2 or later, from Xcode 26 or later or its Command Line Tools (`xcode-select --install`).
 
 ## Install
 
@@ -122,7 +122,7 @@ To turn full-screen alerts off altogether, set **Alert me** to **Never** under *
 
 ```sh
 swift build          # debug build
-swift test           # unit tests (needs Xcode for XCTest)
+swift test           # unit tests (Swift Testing)
 scripts/build-app.sh # assemble build/Join.app
 make icon            # redraw Resources/AppIcon.icns after changing scripts/make-icon.swift
 ```

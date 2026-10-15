@@ -1,15 +1,15 @@
-import XCTest
+import Testing
 @testable import JoinCore
 
-final class MenuBarDisplayTests: XCTestCase {
-    func testMapsTheTwoStoredPreferences() {
-        XCTAssertEqual(MenuBarDisplay(showsNextEvent: false, showsTitles: false), .iconOnly)
-        XCTAssertEqual(MenuBarDisplay(showsNextEvent: false, showsTitles: true), .iconOnly)
-        XCTAssertEqual(MenuBarDisplay(showsNextEvent: true, showsTitles: false), .time)
-        XCTAssertEqual(MenuBarDisplay(showsNextEvent: true, showsTitles: true), .titleAndTime)
+struct MenuBarDisplayTests {
+    @Test func mapsTheTwoStoredPreferences() {
+        #expect(MenuBarDisplay(showsNextEvent: false, showsTitles: false) == .iconOnly)
+        #expect(MenuBarDisplay(showsNextEvent: false, showsTitles: true) == .iconOnly)
+        #expect(MenuBarDisplay(showsNextEvent: true, showsTitles: false) == .time)
+        #expect(MenuBarDisplay(showsNextEvent: true, showsTitles: true) == .titleAndTime)
     }
 
-    func testTitles() {
-        XCTAssertEqual(MenuBarDisplay.allCases.map(\.title), ["Icon only", "Time until next event", "Title and time until next event"])
+    @Test func titles() {
+        #expect(MenuBarDisplay.allCases.map(\.title) == ["Icon only", "Time until next event", "Title and time until next event"])
     }
 }

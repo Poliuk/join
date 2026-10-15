@@ -1,9 +1,10 @@
-import XCTest
+import Foundation
+import Testing
 @testable import JoinCore
 
-final class MeetingLinkDetectorTests: XCTestCase {
+struct MeetingLinkDetectorTests {
     // In the notes only a provider's pattern can find a link; in the location the generic fallback would hide a broken one.
-    func testEachProviderIsFoundInTheNotes() {
+    @Test func eachProviderIsFoundInTheNotes() {
         let links = [
             "https://meet.google.com/abc-defg-hij",
             "https://us02web.zoom.us/j/1234567890?pwd=abc",
@@ -12,27 +13,27 @@ final class MeetingLinkDetectorTests: XCTestCase {
         ]
         for link in links {
             let url = MeetingLinkDetector.joinURL(url: nil, location: nil, notes: "Join: \(link)\nMore info")
-            XCTAssertEqual(url?.absoluteString, link, link)
+            #expect(url?.absoluteString == link, "\(link)")
         }
     }
 
-    func testGenericLinkInLocationIsUsed() {
+    @Test func genericLinkInLocationIsUsed() {
         let url = MeetingLinkDetector.joinURL(url: nil, location: "https://example.com/room/42", notes: nil)
-        XCTAssertEqual(url?.absoluteString, "https://example.com/room/42")
+        #expect(url?.absoluteString == "https://example.com/room/42")
     }
 
-    func testEventWebPageInURLFieldIsIgnored() {
+    @Test func eventWebPageInURLFieldIsIgnored() {
         let url = MeetingLinkDetector.joinURL(url: URL(string: "https://calendar.google.com/event?eid=abc"), location: "Room 2", notes: "Agenda")
-        XCTAssertNil(url)
+        #expect(url == nil)
     }
 
-    func testKnownProviderBeatsGenericLocationLink() {
+    @Test func knownProviderBeatsGenericLocationLink() {
         let url = MeetingLinkDetector.joinURL(url: nil, location: "https://example.com/directions", notes: "https://meet.google.com/abc-defg-hij")
-        XCTAssertEqual(url?.host, "meet.google.com")
+        #expect(url?.host == "meet.google.com")
     }
 
-    func testTrailingPunctuationIsStripped() {
+    @Test func trailingPunctuationIsStripped() {
         let url = MeetingLinkDetector.joinURL(url: nil, location: nil, notes: "Call: https://zoom.us/j/999.")
-        XCTAssertEqual(url?.absoluteString, "https://zoom.us/j/999")
+        #expect(url?.absoluteString == "https://zoom.us/j/999")
     }
 }

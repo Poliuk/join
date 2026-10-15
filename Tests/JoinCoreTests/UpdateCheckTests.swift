@@ -1,7 +1,8 @@
-import XCTest
+import Foundation
+import Testing
 @testable import JoinCore
 
-final class UpdateCheckTests: XCTestCase {
+struct UpdateCheckTests {
     private let current = AppVersion(major: 1, minor: 0, patch: 0)
     private let hex = "5b6a8afae5540e126ed053255720da7325c4532d7b802ba7878df823a5deaec7"
     private let now = Date(timeIntervalSince1970: 1_800_000_000)
@@ -88,18 +89,18 @@ final class UpdateCheckTests: XCTestCase {
 
     // MARK: Decoding
 
-    func testDecodesTheLatestReleaseResponse() throws {
+    @Test func decodesTheLatestReleaseResponse() throws {
         let decoded = try UpdateCheck.decodeRelease(Data(latestResponse.utf8))
-        XCTAssertEqual(decoded.tagName, "v1.1.0")
-        XCTAssertFalse(decoded.draft)
-        XCTAssertFalse(decoded.prerelease)
-        XCTAssertEqual(decoded.assets, [
+        #expect(decoded.tagName == "v1.1.0")
+        #expect(!decoded.draft)
+        #expect(!decoded.prerelease)
+        #expect(decoded.assets == [
             GitHubRelease.Asset(name: "Join.zip", size: 2_486_395, digest: "sha256:" + hex),
             GitHubRelease.Asset(name: "Join.dSYM.zip", size: 1_048_576, digest: nil),
         ])
     }
 
-    func testDecodingRejectsOtherResponses() {
+    @Test func decodingRejectsOtherResponses() {
         let responses = [
             "",
             "not json",
@@ -110,95 +111,97 @@ final class UpdateCheckTests: XCTestCase {
             #"{"tag_name": "v1.1.0", "draft": false, "prerelease": false, "assets": [{"name": "Join.zip"}]}"#,
         ]
         for response in responses {
-            XCTAssertNil(try? UpdateCheck.decodeRelease(Data(response.utf8)), response)
+            #expect(throws: (any Error).self, "\(response)") {
+                try UpdateCheck.decodeRelease(Data(response.utf8))
+            }
         }
     }
 
-    func testDecodesAnAssetWithoutADigest() throws {
+    @Test func decodesAnAssetWithoutADigest() throws {
         let json = #"{"tag_name": "v1.1.0", "draft": false, "prerelease": false, "assets": [{"name": "Join.zip", "size": 10}]}"#
         let decoded = try UpdateCheck.decodeRelease(Data(json.utf8))
-        XCTAssertEqual(decoded.assets, [GitHubRelease.Asset(name: "Join.zip", size: 10, digest: nil)])
+        #expect(decoded.assets == [GitHubRelease.Asset(name: "Join.zip", size: 10, digest: nil)])
     }
 
     // MARK: Update
 
-    func testNewerReleaseIsAnUpdateWithURLsBuiltFromTheTag() throws {
+    @Test func newerReleaseIsAnUpdateWithURLsBuiltFromTheTag() throws {
         let decoded = try UpdateCheck.decodeRelease(Data(latestResponse.utf8))
-        let update = try XCTUnwrap(UpdateCheck.update(current: current, release: decoded))
-        XCTAssertEqual(update.version, AppVersion(major: 1, minor: 1, patch: 0))
-        XCTAssertEqual(update.pageURL.absoluteString, "https://github.com/Poliuk/join/releases/tag/v1.1.0")
-        XCTAssertEqual(update.downloadURL.absoluteString, "https://github.com/Poliuk/join/releases/download/v1.1.0/Join.zip")
-        XCTAssertEqual(update.sha256, hex)
-        XCTAssertEqual(update.size, 2_486_395)
+        let update = try #require(UpdateCheck.update(current: current, release: decoded))
+        #expect(update.version == AppVersion(major: 1, minor: 1, patch: 0))
+        #expect(update.pageURL.absoluteString == "https://github.com/Poliuk/join/releases/tag/v1.1.0")
+        #expect(update.downloadURL.absoluteString == "https://github.com/Poliuk/join/releases/download/v1.1.0/Join.zip")
+        #expect(update.sha256 == hex)
+        #expect(update.size == 2_486_395)
     }
 
-    func testOnlyANewerVersionIsAnUpdate() {
-        XCTAssertNil(UpdateCheck.update(current: current, release: release(tag: "v1.0.0")), "equal")
-        XCTAssertNil(UpdateCheck.update(current: current, release: release(tag: "v0.9.9")), "older")
-        XCTAssertNotNil(UpdateCheck.update(current: current, release: release(tag: "v1.0.1")))
-        XCTAssertNotNil(UpdateCheck.update(current: current, release: release(tag: "v2.0.0")))
-        XCTAssertNil(UpdateCheck.update(current: AppVersion(major: 1, minor: 10, patch: 0), release: release(tag: "v1.9.0")))
+    @Test func onlyANewerVersionIsAnUpdate() {
+        #expect(UpdateCheck.update(current: current, release: release(tag: "v1.0.0")) == nil, "equal")
+        #expect(UpdateCheck.update(current: current, release: release(tag: "v0.9.9")) == nil, "older")
+        #expect(UpdateCheck.update(current: current, release: release(tag: "v1.0.1")) != nil)
+        #expect(UpdateCheck.update(current: current, release: release(tag: "v2.0.0")) != nil)
+        #expect(UpdateCheck.update(current: AppVersion(major: 1, minor: 10, patch: 0), release: release(tag: "v1.9.0")) == nil)
     }
 
-    func testDraftsAndPrereleasesAreNotUpdates() {
-        XCTAssertNil(UpdateCheck.update(current: current, release: release(draft: true)))
-        XCTAssertNil(UpdateCheck.update(current: current, release: release(prerelease: true)))
+    @Test func draftsAndPrereleasesAreNotUpdates() {
+        #expect(UpdateCheck.update(current: current, release: release(draft: true)) == nil)
+        #expect(UpdateCheck.update(current: current, release: release(prerelease: true)) == nil)
     }
 
-    func testTagMustBeExactlyVMajorMinorPatch() {
+    @Test func tagMustBeExactlyVMajorMinorPatch() {
         for tag in ["1.1.0", "v1.1", "v1.1.0.1", "v1.1.0-beta", "V1.1.0", "release-1.1.0", "v01.1.0", "v1.1.0/../../evil", ""] {
-            XCTAssertNil(UpdateCheck.update(current: current, release: release(tag: tag)), tag)
+            #expect(UpdateCheck.update(current: current, release: release(tag: tag)) == nil, "\(tag)")
         }
     }
 
-    func testNeedsAJoinZipAssetOfAnAcceptableSize() {
-        XCTAssertNil(UpdateCheck.update(current: current, release: release(assets: [])), "no assets")
-        XCTAssertNil(UpdateCheck.update(current: current, release: release(assets: [
+    @Test func needsAJoinZipAssetOfAnAcceptableSize() {
+        #expect(UpdateCheck.update(current: current, release: release(assets: [])) == nil, "no assets")
+        #expect(UpdateCheck.update(current: current, release: release(assets: [
             GitHubRelease.Asset(name: "Join-1.1.0.zip", size: 1000, digest: nil),
             GitHubRelease.Asset(name: "join.zip", size: 1000, digest: nil),
-        ])), "no asset named exactly Join.zip")
+        ])) == nil, "no asset named exactly Join.zip")
         let oversized = GitHubRelease.Asset(name: "Join.zip", size: UpdateCheck.maximumDownloadSize + 1, digest: nil)
-        XCTAssertNil(UpdateCheck.update(current: current, release: release(assets: [oversized])), "oversized")
+        #expect(UpdateCheck.update(current: current, release: release(assets: [oversized])) == nil, "oversized")
         let empty = GitHubRelease.Asset(name: "Join.zip", size: 0, digest: nil)
-        XCTAssertNil(UpdateCheck.update(current: current, release: release(assets: [empty])), "empty")
+        #expect(UpdateCheck.update(current: current, release: release(assets: [empty])) == nil, "empty")
         let largest = GitHubRelease.Asset(name: "Join.zip", size: UpdateCheck.maximumDownloadSize, digest: nil)
-        XCTAssertEqual(UpdateCheck.update(current: current, release: release(assets: [largest]))?.size, UpdateCheck.maximumDownloadSize)
+        #expect(UpdateCheck.update(current: current, release: release(assets: [largest]))?.size == UpdateCheck.maximumDownloadSize)
 
         let others = GitHubRelease.Asset(name: "Join.dSYM.zip", size: 5000, digest: nil)
         let join = GitHubRelease.Asset(name: "Join.zip", size: 1234, digest: nil)
-        XCTAssertEqual(UpdateCheck.update(current: current, release: release(assets: [others, join]))?.size, 1234)
+        #expect(UpdateCheck.update(current: current, release: release(assets: [others, join]))?.size == 1234)
     }
 
-    func testDigestBecomesLowercaseHexOrNil() {
+    @Test func digestBecomesLowercaseHexOrNil() {
         func sha256(_ digest: String?) -> String?? {
             let asset = GitHubRelease.Asset(name: "Join.zip", size: 1000, digest: digest)
             return UpdateCheck.update(current: current, release: release(assets: [asset])).map(\.sha256)
         }
-        XCTAssertEqual(sha256("sha256:" + hex), hex)
-        XCTAssertEqual(sha256("sha256:" + hex.uppercased()), hex)
-        XCTAssertEqual(sha256(nil), .some(nil), "absent: still an update, without a checksum")
+        #expect(sha256("sha256:" + hex) == hex)
+        #expect(sha256("sha256:" + hex.uppercased()) == hex)
+        #expect(sha256(nil) == .some(nil), "absent: still an update, without a checksum")
         let short = String(hex.dropLast())
         let malformed: [String] = [
             "", "sha256:", hex, "sha256:" + short, "sha256:" + hex + "0", "sha256:" + short + "g", "sha256: " + short,
             "sha512:" + hex, "SHA256:" + hex, "md5:d41d8cd98f00b204e9800998ecf8427e",
         ]
         for digest in malformed {
-            XCTAssertEqual(sha256(digest), .some(nil), digest)
+            #expect(sha256(digest) == .some(nil), "\(digest)")
         }
     }
 
-    func testFixedURLsAndLimits() {
-        XCTAssertEqual(UpdateCheck.latestReleaseURL.absoluteString, "https://api.github.com/repos/Poliuk/join/releases/latest")
-        XCTAssertEqual(UpdateCheck.releasesPageURL.absoluteString, "https://github.com/Poliuk/join/releases")
-        XCTAssertEqual(UpdateCheck.assetName, "Join.zip")
-        XCTAssertEqual(UpdateCheck.checkInterval, 24 * 60 * 60)
-        XCTAssertEqual(UpdateCheck.retryInterval, 60 * 60)
-        XCTAssertEqual(UpdateCheck.maximumDownloadSize, 104_857_600)
+    @Test func fixedURLsAndLimits() {
+        #expect(UpdateCheck.latestReleaseURL.absoluteString == "https://api.github.com/repos/Poliuk/join/releases/latest")
+        #expect(UpdateCheck.releasesPageURL.absoluteString == "https://github.com/Poliuk/join/releases")
+        #expect(UpdateCheck.assetName == "Join.zip")
+        #expect(UpdateCheck.checkInterval == 24 * 60 * 60)
+        #expect(UpdateCheck.retryInterval == 60 * 60)
+        #expect(UpdateCheck.maximumDownloadSize == 104_857_600)
     }
 
     // MARK: Schedule
 
-    func testIsDue() {
+    @Test func isDue() {
         func due(enabled: Bool = true, success: TimeInterval?, failure: TimeInterval? = nil) -> Bool {
             UpdateCheck.isDue(
                 enabled: enabled,
@@ -208,39 +211,39 @@ final class UpdateCheckTests: XCTestCase {
             )
         }
         let hour: TimeInterval = 60 * 60
-        XCTAssertFalse(due(enabled: false, success: nil), "disabled")
-        XCTAssertFalse(due(enabled: false, success: 25 * hour), "disabled")
-        XCTAssertTrue(due(success: nil), "never checked")
-        XCTAssertFalse(due(success: hour), "1 h ago")
-        XCTAssertFalse(due(success: 24 * hour - 1), "just under a day ago")
-        XCTAssertTrue(due(success: 24 * hour), "a day ago")
-        XCTAssertTrue(due(success: 25 * hour), "25 h ago")
-        XCTAssertTrue(due(success: -hour), "in the future: the clock moved back")
-        XCTAssertFalse(due(success: nil, failure: 10 * 60), "never checked, failed 10 min ago")
-        XCTAssertFalse(due(success: 25 * hour, failure: hour - 1), "failed just under an hour ago")
-        XCTAssertTrue(due(success: 25 * hour, failure: hour), "failed an hour ago")
-        XCTAssertTrue(due(success: nil, failure: 2 * hour), "old failure")
-        XCTAssertFalse(due(success: hour, failure: 2 * hour), "old failure, recent success")
-        XCTAssertTrue(due(success: nil, failure: -hour), "failure in the future: the clock moved back")
+        #expect(!due(enabled: false, success: nil), "disabled")
+        #expect(!due(enabled: false, success: 25 * hour), "disabled")
+        #expect(due(success: nil), "never checked")
+        #expect(!due(success: hour), "1 h ago")
+        #expect(!due(success: 24 * hour - 1), "just under a day ago")
+        #expect(due(success: 24 * hour), "a day ago")
+        #expect(due(success: 25 * hour), "25 h ago")
+        #expect(due(success: -hour), "in the future: the clock moved back")
+        #expect(!due(success: nil, failure: 10 * 60), "never checked, failed 10 min ago")
+        #expect(!due(success: 25 * hour, failure: hour - 1), "failed just under an hour ago")
+        #expect(due(success: 25 * hour, failure: hour), "failed an hour ago")
+        #expect(due(success: nil, failure: 2 * hour), "old failure")
+        #expect(!due(success: hour, failure: 2 * hour), "old failure, recent success")
+        #expect(due(success: nil, failure: -hour), "failure in the future: the clock moved back")
     }
 
     // MARK: Status
 
-    func testAvailableUpdateComesOnlyFromAvailable() throws {
-        let update = try XCTUnwrap(UpdateCheck.update(current: current, release: release()))
-        XCTAssertEqual(UpdateStatus.available(update).availableUpdate, update)
+    @Test func availableUpdateComesOnlyFromAvailable() throws {
+        let update = try #require(UpdateCheck.update(current: current, release: release()))
+        #expect(UpdateStatus.available(update).availableUpdate == update)
         let unsupported = UpdateStatus.unsupported(AppVersion(major: 1, minor: 1, patch: 0), minimumSystem: "15.0")
         for status in [UpdateStatus.unknown, .checking, .upToDate, unsupported, .failed] {
-            XCTAssertNil(status.availableUpdate, "\(status)")
+            #expect(status.availableUpdate == nil, "\(status)")
         }
     }
 
-    func testUnsupportedUpdateRoundTripsAsJSON() throws {
+    @Test func unsupportedUpdateRoundTripsAsJSON() throws {
         let unsupported = UnsupportedUpdate(version: "1.2.0", minimumSystem: "15.0")
         let data = try JSONEncoder().encode(unsupported)
-        let object = try XCTUnwrap(JSONSerialization.jsonObject(with: data) as? [String: String])
-        XCTAssertEqual(object, ["version": "1.2.0", "minimumSystem": "15.0"])
-        XCTAssertEqual(try JSONDecoder().decode(UnsupportedUpdate.self, from: data), unsupported)
+        let object = try #require(JSONSerialization.jsonObject(with: data) as? [String: String])
+        #expect(object == ["version": "1.2.0", "minimumSystem": "15.0"])
+        #expect(try JSONDecoder().decode(UnsupportedUpdate.self, from: data) == unsupported)
     }
 
     // MARK: Install state
@@ -250,24 +253,24 @@ final class UpdateCheckTests: XCTestCase {
          .revealed(URL(fileURLWithPath: "/tmp/Join 1.1.0/Join.app")), .failed(.checksum)]
     }
 
-    func testInProgressFromInstallUntilReadyAndFromInstallAndRelaunchOn() {
+    @Test func inProgressFromInstallUntilReadyAndFromInstallAndRelaunchOn() {
         let inProgress = everyInstallState.filter(\.isInProgress)
-        XCTAssertEqual(inProgress, [.downloading(nil), .downloading(0.5), .verifying, .installing])
-        XCTAssertFalse(UpdateInstallState.ready.isInProgress, "checks go on while a copy is ready")
+        #expect(inProgress == [.downloading(nil), .downloading(0.5), .verifying, .installing])
+        #expect(!UpdateInstallState.ready.isInProgress, "checks go on while a copy is ready")
     }
 
-    func testAChangedOfferStartsAgainFromInstall() {
+    @Test func aChangedOfferStartsAgainFromInstall() {
         for state in everyInstallState where !state.isInProgress {
-            XCTAssertEqual(state.afterCheck(offerChanged: true), .idle, "\(state)")
+            #expect(state.afterCheck(offerChanged: true) == .idle, "\(state)")
         }
     }
 
-    func testTheSameOfferKeepsAReadyOrRevealedCopyAndOffersInstallAgainAfterAFailure() {
-        XCTAssertEqual(UpdateInstallState.idle.afterCheck(offerChanged: false), .idle)
-        XCTAssertEqual(UpdateInstallState.ready.afterCheck(offerChanged: false), .ready)
+    @Test func theSameOfferKeepsAReadyOrRevealedCopyAndOffersInstallAgainAfterAFailure() {
+        #expect(UpdateInstallState.idle.afterCheck(offerChanged: false) == .idle)
+        #expect(UpdateInstallState.ready.afterCheck(offerChanged: false) == .ready)
         let revealed = UpdateInstallState.revealed(URL(fileURLWithPath: "/tmp/Join 1.1.0/Join.app"))
-        XCTAssertEqual(revealed.afterCheck(offerChanged: false), revealed)
-        XCTAssertEqual(UpdateInstallState.failed(.download).afterCheck(offerChanged: false), .idle)
-        XCTAssertEqual(UpdateInstallState.failed(.relaunch).afterCheck(offerChanged: false), .idle)
+        #expect(revealed.afterCheck(offerChanged: false) == revealed)
+        #expect(UpdateInstallState.failed(.download).afterCheck(offerChanged: false) == .idle)
+        #expect(UpdateInstallState.failed(.relaunch).afterCheck(offerChanged: false) == .idle)
     }
 }

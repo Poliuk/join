@@ -1,22 +1,23 @@
-import XCTest
+import Foundation
+import Testing
 @testable import JoinCore
 
-final class MeetingFilterTests: XCTestCase {
-    func testAllDayEventsAreExcluded() {
-        XCTAssertFalse(MeetingFilter.shouldInclude(isAllDay: true, isCanceled: false, myStatus: .accepted))
+struct MeetingFilterTests {
+    @Test func allDayEventsAreExcluded() {
+        #expect(!MeetingFilter.shouldInclude(isAllDay: true, isCanceled: false, myStatus: .accepted))
     }
 
-    func testCanceledEventsAreExcluded() {
-        XCTAssertFalse(MeetingFilter.shouldInclude(isAllDay: false, isCanceled: true, myStatus: .accepted))
+    @Test func canceledEventsAreExcluded() {
+        #expect(!MeetingFilter.shouldInclude(isAllDay: false, isCanceled: true, myStatus: .accepted))
     }
 
-    func testDeclinedEventsAreExcluded() {
-        XCTAssertFalse(MeetingFilter.shouldInclude(isAllDay: false, isCanceled: false, myStatus: .declined))
+    @Test func declinedEventsAreExcluded() {
+        #expect(!MeetingFilter.shouldInclude(isAllDay: false, isCanceled: false, myStatus: .declined))
     }
 
-    func testTentativeAndUnknownAreIncluded() {
-        XCTAssertTrue(MeetingFilter.shouldInclude(isAllDay: false, isCanceled: false, myStatus: .tentative))
-        XCTAssertTrue(MeetingFilter.shouldInclude(isAllDay: false, isCanceled: false, myStatus: .unknown))
+    @Test func tentativeAndUnknownAreIncluded() {
+        #expect(MeetingFilter.shouldInclude(isAllDay: false, isCanceled: false, myStatus: .tentative))
+        #expect(MeetingFilter.shouldInclude(isAllDay: false, isCanceled: false, myStatus: .unknown))
     }
 
     // MARK: Events choices
@@ -45,12 +46,12 @@ final class MeetingFilterTests: XCTestCase {
         ]
     }
 
-    func testMeetingsHaveParticipantsUnlessToldOtherwise() {
-        XCTAssertTrue(Meeting(id: "call", title: "Call", start: start, end: start.addingTimeInterval(1800)).hasParticipants)
-        XCTAssertFalse(meeting("focus", participants: false).hasParticipants)
+    @Test func meetingsHaveParticipantsUnlessToldOtherwise() {
+        #expect(Meeting(id: "call", title: "Call", start: start, end: start.addingTimeInterval(1800)).hasParticipants)
+        #expect(!meeting("focus", participants: false).hasParticipants)
     }
 
-    func testEveryCombinationOfChoices() {
+    @Test func everyCombinationOfChoices() {
         let all = ["call", "focus", "ooo", "ooo-solo"]
         // (no participants, out of office) → (visible, alertable)
         let cases: [(EventVisibility, EventVisibility, [String], [String])] = [
@@ -64,21 +65,21 @@ final class MeetingFilterTests: XCTestCase {
             (.exclude, .listOnly, ["call", "ooo"], ["call"]),
             (.exclude, .exclude, ["call"], ["call"]),
         ]
-        XCTAssertEqual(cases.count, EventVisibility.allCases.count * EventVisibility.allCases.count)
+        #expect(cases.count == EventVisibility.allCases.count * EventVisibility.allCases.count)
         for (withoutParticipants, outOfOffice, visible, alertable) in cases {
             let label = "\(withoutParticipants), \(outOfOffice)"
-            XCTAssertEqual(
-                MeetingFilter.visible(kinds, eventsWithoutParticipants: withoutParticipants, outOfOfficeEvents: outOfOffice).map(\.id),
-                visible, label
+            #expect(
+                MeetingFilter.visible(kinds, eventsWithoutParticipants: withoutParticipants, outOfOfficeEvents: outOfOffice).map(\.id)
+                    == visible, "\(label)"
             )
-            XCTAssertEqual(
-                MeetingFilter.alertable(kinds, eventsWithoutParticipants: withoutParticipants, outOfOfficeEvents: outOfOffice).map(\.id),
-                alertable, label
+            #expect(
+                MeetingFilter.alertable(kinds, eventsWithoutParticipants: withoutParticipants, outOfOfficeEvents: outOfOffice).map(\.id)
+                    == alertable, "\(label)"
             )
         }
     }
 
-    func testAnEventOfBothKindsGetsTheChoiceThatShowsLess() {
+    @Test func anEventOfBothKindsGetsTheChoiceThatShowsLess() {
         let both = meeting("ooo-solo", participants: false, outOfOffice: true)
         let cases: [(EventVisibility, EventVisibility, EventVisibility)] = [
             (.showAndAlert, .showAndAlert, .showAndAlert),
@@ -92,28 +93,28 @@ final class MeetingFilterTests: XCTestCase {
             (.exclude, .exclude, .exclude),
         ]
         for (withoutParticipants, outOfOffice, expected) in cases {
-            XCTAssertEqual(
-                MeetingFilter.visibility(of: both, eventsWithoutParticipants: withoutParticipants, outOfOfficeEvents: outOfOffice),
-                expected, "\(withoutParticipants), \(outOfOffice)"
+            #expect(
+                MeetingFilter.visibility(of: both, eventsWithoutParticipants: withoutParticipants, outOfOfficeEvents: outOfOffice)
+                    == expected, "\(withoutParticipants), \(outOfOffice)"
             )
         }
     }
 
-    func testEachKindGetsItsOwnChoiceAndOrdinaryEventsAlwaysShowAndAlert() {
+    @Test func eachKindGetsItsOwnChoiceAndOrdinaryEventsAlwaysShowAndAlert() {
         for withoutParticipants in EventVisibility.allCases {
             for outOfOffice in EventVisibility.allCases {
                 func choice(_ meeting: Meeting) -> EventVisibility {
                     MeetingFilter.visibility(of: meeting, eventsWithoutParticipants: withoutParticipants, outOfOfficeEvents: outOfOffice)
                 }
                 let label = "\(withoutParticipants), \(outOfOffice)"
-                XCTAssertEqual(choice(kinds[0]), .showAndAlert, label)
-                XCTAssertEqual(choice(kinds[1]), withoutParticipants, label)
-                XCTAssertEqual(choice(kinds[2]), outOfOffice, label)
+                #expect(choice(kinds[0]) == .showAndAlert, "\(label)")
+                #expect(choice(kinds[1]) == withoutParticipants, "\(label)")
+                #expect(choice(kinds[2]) == outOfOffice, "\(label)")
             }
         }
     }
 
-    func testFilteringKeepsTheOrder() {
+    @Test func filteringKeepsTheOrder() {
         let meetings = [
             meeting("standup", participants: true),
             meeting("focus", participants: false),
@@ -121,89 +122,89 @@ final class MeetingFilterTests: XCTestCase {
             meeting("away", participants: true, outOfOffice: true),
             meeting("reminder", participants: false),
         ]
-        XCTAssertEqual(
-            MeetingFilter.visible(meetings, eventsWithoutParticipants: .exclude, outOfOfficeEvents: .listOnly).map(\.id),
-            ["standup", "review", "away"]
+        #expect(
+            MeetingFilter.visible(meetings, eventsWithoutParticipants: .exclude, outOfOfficeEvents: .listOnly).map(\.id)
+                == ["standup", "review", "away"]
         )
-        XCTAssertEqual(
-            MeetingFilter.alertable(meetings, eventsWithoutParticipants: .showAndAlert, outOfOfficeEvents: .listOnly).map(\.id),
-            ["standup", "focus", "review", "reminder"]
+        #expect(
+            MeetingFilter.alertable(meetings, eventsWithoutParticipants: .showAndAlert, outOfOfficeEvents: .listOnly).map(\.id)
+                == ["standup", "focus", "review", "reminder"]
         )
-        XCTAssertEqual(MeetingFilter.visible([], eventsWithoutParticipants: .exclude, outOfOfficeEvents: .exclude), [])
-        XCTAssertEqual(MeetingFilter.alertable([], eventsWithoutParticipants: .showAndAlert, outOfOfficeEvents: .showAndAlert), [])
+        #expect(MeetingFilter.visible([], eventsWithoutParticipants: .exclude, outOfOfficeEvents: .exclude) == [])
+        #expect(MeetingFilter.alertable([], eventsWithoutParticipants: .showAndAlert, outOfOfficeEvents: .showAndAlert) == [])
     }
 
-    func testAlertableIsAlwaysWithinVisible() {
+    @Test func alertableIsAlwaysWithinVisible() {
         for withoutParticipants in EventVisibility.allCases {
             for outOfOffice in EventVisibility.allCases {
                 let visible = MeetingFilter.visible(kinds, eventsWithoutParticipants: withoutParticipants, outOfOfficeEvents: outOfOffice)
                 let alertable = MeetingFilter.alertable(kinds, eventsWithoutParticipants: withoutParticipants, outOfOfficeEvents: outOfOffice)
-                XCTAssertTrue(Set(alertable.map(\.id)).isSubset(of: visible.map(\.id)), "\(withoutParticipants), \(outOfOffice)")
-                XCTAssertEqual(
-                    MeetingFilter.alertable(visible, eventsWithoutParticipants: withoutParticipants, outOfOfficeEvents: outOfOffice),
-                    alertable, "the same whether given every meeting or the visible ones"
+                #expect(Set(alertable.map(\.id)).isSubset(of: visible.map(\.id)), "\(withoutParticipants), \(outOfOffice)")
+                #expect(
+                    MeetingFilter.alertable(visible, eventsWithoutParticipants: withoutParticipants, outOfOfficeEvents: outOfOffice)
+                        == alertable, "the same whether given every meeting or the visible ones"
                 )
             }
         }
     }
 
-    func testYourAnswerDoesNotChangeTheChoice() {
+    @Test func yourAnswerDoesNotChangeTheChoice() {
         for status in [ParticipationStatus.accepted, .tentative, .unknown] {
             let meetings = [meeting("call", participants: true, status: status), meeting("hold", participants: false, status: status)]
-            XCTAssertEqual(
-                MeetingFilter.visible(meetings, eventsWithoutParticipants: .exclude, outOfOfficeEvents: .listOnly).map(\.id),
-                ["call"], "\(status)"
+            #expect(
+                MeetingFilter.visible(meetings, eventsWithoutParticipants: .exclude, outOfOfficeEvents: .listOnly).map(\.id)
+                    == ["call"], "\(status)"
             )
-            XCTAssertEqual(
-                MeetingFilter.alertable(meetings, eventsWithoutParticipants: .listOnly, outOfOfficeEvents: .listOnly).map(\.id),
-                ["call"], "\(status)"
+            #expect(
+                MeetingFilter.alertable(meetings, eventsWithoutParticipants: .listOnly, outOfOfficeEvents: .listOnly).map(\.id)
+                    == ["call"], "\(status)"
             )
-            XCTAssertEqual(
-                MeetingFilter.alertable(meetings, eventsWithoutParticipants: .showAndAlert, outOfOfficeEvents: .listOnly).map(\.id),
-                ["call", "hold"], "\(status)"
+            #expect(
+                MeetingFilter.alertable(meetings, eventsWithoutParticipants: .showAndAlert, outOfOfficeEvents: .listOnly).map(\.id)
+                    == ["call", "hold"], "\(status)"
             )
         }
         // Declined events never reach the list, so no choice can bring them back either.
-        XCTAssertFalse(MeetingFilter.shouldInclude(isAllDay: false, isCanceled: false, myStatus: .declined))
+        #expect(!MeetingFilter.shouldInclude(isAllDay: false, isCanceled: false, myStatus: .declined))
     }
 
     // MARK: Dismissed events
 
-    func testDismissedMeetingsAreNotAlertableButStayVisible() {
+    @Test func dismissedMeetingsAreNotAlertableButStayVisible() {
         let dismissed = DismissedEvents().dismissing(kinds[0])
-        XCTAssertEqual(
-            MeetingFilter.alertable(kinds, eventsWithoutParticipants: .showAndAlert, outOfOfficeEvents: .showAndAlert, dismissed: dismissed).map(\.id),
-            ["focus", "ooo", "ooo-solo"]
+        #expect(
+            MeetingFilter.alertable(kinds, eventsWithoutParticipants: .showAndAlert, outOfOfficeEvents: .showAndAlert, dismissed: dismissed).map(\.id)
+                == ["focus", "ooo", "ooo-solo"]
         )
-        XCTAssertEqual(
-            MeetingFilter.alertable(kinds, eventsWithoutParticipants: .showAndAlert, outOfOfficeEvents: .showAndAlert, dismissed: DismissedEvents()),
-            MeetingFilter.alertable(kinds, eventsWithoutParticipants: .showAndAlert, outOfOfficeEvents: .showAndAlert),
+        #expect(
+            MeetingFilter.alertable(kinds, eventsWithoutParticipants: .showAndAlert, outOfOfficeEvents: .showAndAlert, dismissed: DismissedEvents())
+                == MeetingFilter.alertable(kinds, eventsWithoutParticipants: .showAndAlert, outOfOfficeEvents: .showAndAlert),
             "nothing dismissed by default"
         )
-        XCTAssertEqual(
-            MeetingFilter.visible(kinds, eventsWithoutParticipants: .showAndAlert, outOfOfficeEvents: .showAndAlert).map(\.id),
-            ["call", "focus", "ooo", "ooo-solo"], "the lists keep a dismissed event"
+        #expect(
+            MeetingFilter.visible(kinds, eventsWithoutParticipants: .showAndAlert, outOfOfficeEvents: .showAndAlert).map(\.id)
+                == ["call", "focus", "ooo", "ooo-solo"], "the lists keep a dismissed event"
         )
     }
 
     // Only an event that could alert is dismissed: one whose choice became Show in the list only (or Exclude)
     // after it was dismissed is shown according to the new choice.
-    func testDismissedIDsAreTheShowAndAlertOnesOnly() {
+    @Test func dismissedIDsAreTheShowAndAlertOnesOnly() {
         let dismissed = DismissedEvents().dismissing(kinds[0]).dismissing(kinds[1]).dismissing(kinds[2])
         func ids(_ withoutParticipants: EventVisibility, _ outOfOffice: EventVisibility) -> Set<String> {
             MeetingFilter.dismissedIDs(kinds, eventsWithoutParticipants: withoutParticipants, outOfOfficeEvents: outOfOffice, dismissed: dismissed)
         }
-        XCTAssertEqual(ids(.showAndAlert, .showAndAlert), ["call", "focus", "ooo"])
-        XCTAssertEqual(ids(.showAndAlert, .listOnly), ["call", "focus"])
-        XCTAssertEqual(ids(.listOnly, .listOnly), ["call"])
-        XCTAssertEqual(ids(.exclude, .exclude), ["call"])
-        XCTAssertEqual(
-            MeetingFilter.dismissedIDs(kinds, eventsWithoutParticipants: .showAndAlert, outOfOfficeEvents: .showAndAlert, dismissed: DismissedEvents()),
-            []
+        #expect(ids(.showAndAlert, .showAndAlert) == ["call", "focus", "ooo"])
+        #expect(ids(.showAndAlert, .listOnly) == ["call", "focus"])
+        #expect(ids(.listOnly, .listOnly) == ["call"])
+        #expect(ids(.exclude, .exclude) == ["call"])
+        #expect(
+            MeetingFilter.dismissedIDs(kinds, eventsWithoutParticipants: .showAndAlert, outOfOfficeEvents: .showAndAlert, dismissed: DismissedEvents())
+                == []
         )
-        XCTAssertEqual(
-            MeetingFilter.dismissedIDs([], eventsWithoutParticipants: .showAndAlert, outOfOfficeEvents: .showAndAlert, dismissed: dismissed),
-            [], "an entry with no meeting (ended, or its calendar unchecked) shows nowhere"
+        #expect(
+            MeetingFilter.dismissedIDs([], eventsWithoutParticipants: .showAndAlert, outOfOfficeEvents: .showAndAlert, dismissed: dismissed)
+                == [], "an entry with no meeting (ended, or its calendar unchecked) shows nowhere"
         )
 
         for withoutParticipants in EventVisibility.allCases {
@@ -211,18 +212,18 @@ final class MeetingFilterTests: XCTestCase {
                 let label = "\(withoutParticipants), \(outOfOffice)"
                 let all = MeetingFilter.alertable(kinds, eventsWithoutParticipants: withoutParticipants, outOfOfficeEvents: outOfOffice)
                 let alertable = MeetingFilter.alertable(kinds, eventsWithoutParticipants: withoutParticipants, outOfOfficeEvents: outOfOffice, dismissed: dismissed)
-                XCTAssertEqual(
-                    Set(alertable.map(\.id)).union(ids(withoutParticipants, outOfOffice)), Set(all.map(\.id)),
+                #expect(
+                    Set(alertable.map(\.id)).union(ids(withoutParticipants, outOfOffice)) == Set(all.map(\.id)),
                     "the Show and alert events are split between alertable and dismissed: \(label)"
                 )
-                XCTAssertTrue(Set(alertable.map(\.id)).isDisjoint(with: ids(withoutParticipants, outOfOffice)), label)
+                #expect(Set(alertable.map(\.id)).isDisjoint(with: ids(withoutParticipants, outOfOffice)), "\(label)")
             }
         }
     }
 
     // A repeating event's occurrences: alertable and dismissedIDs ask `DismissedEvents.isDismissed`, so All Future
     // Events, and an occurrence restored inside it, count like an occurrence dismissed on its own.
-    func testDismissedSeriesAreLeftOutOfAlertable() {
+    @Test func dismissedSeriesAreLeftOutOfAlertable() {
         func standup(_ day: Int, participants: Bool = true) -> Meeting {
             let date = start.addingTimeInterval(Double(day) * 86400)
             return Meeting(id: Meeting.occurrenceID(eventIdentifier: "standup", start: date), title: "Standup", start: date,
@@ -233,58 +234,58 @@ final class MeetingFilterTests: XCTestCase {
         let stored = DismissedEvents().dismissing(week[2], scope: .allFutureEvents).restoring(week[3])
         let ids = { (meetings: [Meeting]) in meetings.map(\.id) }
 
-        XCTAssertEqual(
-            MeetingFilter.alertable(week + others, eventsWithoutParticipants: .showAndAlert, outOfOfficeEvents: .showAndAlert, dismissed: stored).map(\.id),
-            ids([week[0], week[1], week[3]]) + ["call"]
+        #expect(
+            MeetingFilter.alertable(week + others, eventsWithoutParticipants: .showAndAlert, outOfOfficeEvents: .showAndAlert, dismissed: stored).map(\.id)
+                == ids([week[0], week[1], week[3]]) + ["call"]
         )
-        XCTAssertEqual(
-            MeetingFilter.dismissedIDs(week + others, eventsWithoutParticipants: .showAndAlert, outOfOfficeEvents: .showAndAlert, dismissed: stored),
-            Set(ids([week[2], week[4]]))
+        #expect(
+            MeetingFilter.dismissedIDs(week + others, eventsWithoutParticipants: .showAndAlert, outOfOfficeEvents: .showAndAlert, dismissed: stored)
+                == Set(ids([week[2], week[4]]))
         )
-        XCTAssertEqual(
-            MeetingFilter.visible(week + others, eventsWithoutParticipants: .showAndAlert, outOfOfficeEvents: .showAndAlert).count,
-            6, "the lists keep them"
+        #expect(
+            MeetingFilter.visible(week + others, eventsWithoutParticipants: .showAndAlert, outOfOfficeEvents: .showAndAlert).count
+                == 6, "the lists keep them"
         )
 
         // An occurrence that can't alert (here, no one else on it, and that kind on Show in the list only) isn't
         // shown as dismissed, even inside the rule.
         let solo = standup(4, participants: false)
-        XCTAssertTrue(stored.isDismissed(solo))
-        XCTAssertEqual(
-            MeetingFilter.dismissedIDs([solo], eventsWithoutParticipants: .listOnly, outOfOfficeEvents: .showAndAlert, dismissed: stored),
-            []
+        #expect(stored.isDismissed(solo))
+        #expect(
+            MeetingFilter.dismissedIDs([solo], eventsWithoutParticipants: .listOnly, outOfOfficeEvents: .showAndAlert, dismissed: stored)
+                == []
         )
 
         // Of those, the ones whose Restore asks: dismissed with their series, not one dismissed on its own.
         let alsoAlone = stored.dismissing(week[0])
-        XCTAssertEqual(
-            MeetingFilter.dismissedBySeriesIDs(week + others, eventsWithoutParticipants: .showAndAlert, outOfOfficeEvents: .showAndAlert, dismissed: alsoAlone),
-            Set(ids([week[2], week[4]])), "Monday's was dismissed on its own"
+        #expect(
+            MeetingFilter.dismissedBySeriesIDs(week + others, eventsWithoutParticipants: .showAndAlert, outOfOfficeEvents: .showAndAlert, dismissed: alsoAlone)
+                == Set(ids([week[2], week[4]])), "Monday's was dismissed on its own"
         )
-        XCTAssertEqual(
-            MeetingFilter.dismissedBySeriesIDs([solo], eventsWithoutParticipants: .listOnly, outOfOfficeEvents: .showAndAlert, dismissed: stored),
-            [], "not one that can't alert"
+        #expect(
+            MeetingFilter.dismissedBySeriesIDs([solo], eventsWithoutParticipants: .listOnly, outOfOfficeEvents: .showAndAlert, dismissed: stored)
+                == [], "not one that can't alert"
         )
-        XCTAssertEqual(
+        #expect(
             MeetingFilter.dismissedBySeriesIDs(week, eventsWithoutParticipants: .showAndAlert, outOfOfficeEvents: .showAndAlert,
-                                               dismissed: DismissedEvents().dismissing(week[1])),
-            [], "no series rule, nothing asks"
+                                               dismissed: DismissedEvents().dismissing(week[1]))
+                == [], "no series rule, nothing asks"
         )
     }
 
-    func testRepeatingEventsHaveASeries() {
-        XCTAssertFalse(meeting("call", participants: true).isRepeating)
+    @Test func repeatingEventsHaveASeries() {
+        #expect(!meeting("call", participants: true).isRepeating)
         let occurrence = Meeting(id: "standup@1", title: "Standup", start: start, end: start, seriesID: "standup")
-        XCTAssertTrue(occurrence.isRepeating)
-        XCTAssertEqual(occurrence.seriesID, "standup")
+        #expect(occurrence.isRepeating)
+        #expect(occurrence.seriesID == "standup")
     }
 
-    func testOccurrenceIDIncludesStart() {
+    @Test func occurrenceIDIncludesStart() {
         let start = Date(timeIntervalSince1970: 1_800_000_000)
-        XCTAssertEqual(Meeting.occurrenceID(eventIdentifier: "evt", start: start), "evt@1800000000")
-        XCTAssertNotEqual(
-            Meeting.occurrenceID(eventIdentifier: "evt", start: start),
-            Meeting.occurrenceID(eventIdentifier: "evt", start: start.addingTimeInterval(86400))
+        #expect(Meeting.occurrenceID(eventIdentifier: "evt", start: start) == "evt@1800000000")
+        #expect(
+            Meeting.occurrenceID(eventIdentifier: "evt", start: start)
+                != Meeting.occurrenceID(eventIdentifier: "evt", start: start.addingTimeInterval(86400))
         )
     }
 }
