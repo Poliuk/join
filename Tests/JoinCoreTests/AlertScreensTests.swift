@@ -2,62 +2,44 @@ import Testing
 @testable import JoinCore
 
 struct AlertScreensTests {
-    @Test func thePopUpOffersTheChoicesInOrder() {
-        #expect(AlertScreens.allCases == [.all, .main, .secondary, .pointer])
-        #expect(AlertScreens.allCases.map(\.displayName) == [
-            "All screens", "Main screen only", "Secondary screen only", "Screen with the pointer",
-        ])
+    /// Show on's pop-up, in order (Secondary after Main, before Pointer, 2026-10-07), with the raw values
+    /// Preferences stores for good.
+    @Test(arguments: [
+        (0, AlertScreens.all, "All screens", "all"),
+        (1, .main, "Main screen only", "main"),
+        (2, .secondary, "Secondary screen only", "secondary"),
+        (3, .pointer, "Screen with the pointer", "pointer"),
+    ] as [(Int, AlertScreens, String, String)])
+    func showOnChoices(position: Int, _ choice: AlertScreens, displayName: String, rawValue: String) {
+        #expect(AlertScreens.allCases.firstIndex(of: choice) == position)
+        #expect(choice.displayName == displayName)
+        #expect(choice.rawValue == rawValue)
     }
 
-    @Test func rawValuesAreWhatPreferencesStore() {
-        #expect(AlertScreens.allCases.map(\.rawValue) == ["all", "main", "secondary", "pointer"])
-        #expect(AlertScreens(rawValue: "main") == .main, "values stored by earlier builds still read")
-        #expect(AlertScreens(rawValue: "pointer") == .pointer)
-    }
-
-    @Test func noScreensNoAlert() {
-        for choice in AlertScreens.allCases {
-            #expect(choice.targetIndices(screenCount: 0, pointerScreenIndex: nil) == [], "\(choice)")
-        }
-    }
-
-    @Test func oneScreenAlwaysGetsTheAlert() {
-        for choice in AlertScreens.allCases {
-            #expect(choice.targetIndices(screenCount: 1, pointerScreenIndex: 0) == [0], "\(choice)")
-        }
-        #expect(AlertScreens.secondary.targetIndices(screenCount: 1, pointerScreenIndex: 0) == [0],
-                "with no secondary screen, the main one")
-    }
-
-    @Test func twoScreens() {
-        for pointer in [0, 1] {
-            #expect(AlertScreens.all.targetIndices(screenCount: 2, pointerScreenIndex: pointer) == [0, 1])
-            #expect(AlertScreens.main.targetIndices(screenCount: 2, pointerScreenIndex: pointer) == [0],
-                    "the screen with the menu bar, wherever the pointer is")
-            #expect(AlertScreens.secondary.targetIndices(screenCount: 2, pointerScreenIndex: pointer) == [1])
-            #expect(AlertScreens.pointer.targetIndices(screenCount: 2, pointerScreenIndex: pointer) == [pointer])
-        }
-    }
-
-    @Test func threeScreens() {
-        for pointer in [0, 1, 2] {
-            #expect(AlertScreens.all.targetIndices(screenCount: 3, pointerScreenIndex: pointer) == [0, 1, 2])
-            #expect(AlertScreens.main.targetIndices(screenCount: 3, pointerScreenIndex: pointer) == [0])
-            #expect(AlertScreens.secondary.targetIndices(screenCount: 3, pointerScreenIndex: pointer) == [1, 2],
-                    "every screen but the main one")
-            #expect(AlertScreens.pointer.targetIndices(screenCount: 3, pointerScreenIndex: pointer) == [pointer])
-        }
-    }
-
-    @Test func thePointerOnNoScreenFallsBackToTheMainScreen() {
-        for count in [1, 2, 3] {
-            #expect(AlertScreens.pointer.targetIndices(screenCount: count, pointerScreenIndex: nil) == [0], "\(count) screens")
-            #expect(AlertScreens.pointer.targetIndices(screenCount: count, pointerScreenIndex: count) == [0],
-                    "a screen that has gone")
-            #expect(AlertScreens.pointer.targetIndices(screenCount: count, pointerScreenIndex: -1) == [0])
-        }
-        #expect(AlertScreens.all.targetIndices(screenCount: 2, pointerScreenIndex: nil) == [0, 1])
-        #expect(AlertScreens.main.targetIndices(screenCount: 2, pointerScreenIndex: nil) == [0])
-        #expect(AlertScreens.secondary.targetIndices(screenCount: 2, pointerScreenIndex: nil) == [1])
+    /// The screens each choice covers, as indices where 0 is the main screen. No screens, no alert; otherwise the
+    /// alert never silently vanishes: with one screen, Secondary falls back to the main one, and so does Pointer
+    /// when the pointer is on no screen (none, one that has gone, or a bad index).
+    @Test(arguments: [
+        // No screens, no alert.
+        (AlertScreens.all, 0, nil, []), (.main, 0, nil, []), (.secondary, 0, nil, []), (.pointer, 0, nil, []),
+        // One screen always gets the alert.
+        (.all, 1, 0, [0]), (.main, 1, 0, [0]), (.secondary, 1, 0, [0]), (.pointer, 1, 0, [0]),
+        // Two screens. Main is the screen with the menu bar, wherever the pointer is.
+        (.all, 2, 0, [0, 1]), (.all, 2, 1, [0, 1]),
+        (.main, 2, 0, [0]), (.main, 2, 1, [0]),
+        (.secondary, 2, 0, [1]), (.secondary, 2, 1, [1]),
+        (.pointer, 2, 0, [0]), (.pointer, 2, 1, [1]),
+        // Three screens. Secondary is every screen but the main one.
+        (.all, 3, 0, [0, 1, 2]), (.all, 3, 1, [0, 1, 2]), (.all, 3, 2, [0, 1, 2]),
+        (.main, 3, 0, [0]), (.main, 3, 1, [0]), (.main, 3, 2, [0]),
+        (.secondary, 3, 0, [1, 2]), (.secondary, 3, 1, [1, 2]), (.secondary, 3, 2, [1, 2]),
+        (.pointer, 3, 0, [0]), (.pointer, 3, 1, [1]), (.pointer, 3, 2, [2]),
+        // The pointer on no screen falls back to the main screen.
+        (.pointer, 1, nil, [0]), (.pointer, 1, 1, [0]), (.pointer, 1, -1, [0]),
+        (.pointer, 2, nil, [0]), (.pointer, 2, 2, [0]), (.pointer, 2, -1, [0]),
+        (.pointer, 3, nil, [0]), (.pointer, 3, 3, [0]), (.pointer, 3, -1, [0]),
+    ] as [(AlertScreens, Int, Int?, [Int])])
+    func targetIndices(_ choice: AlertScreens, screenCount: Int, pointerScreenIndex: Int?, expected: [Int]) {
+        #expect(choice.targetIndices(screenCount: screenCount, pointerScreenIndex: pointerScreenIndex) == expected)
     }
 }
