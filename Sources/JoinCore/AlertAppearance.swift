@@ -104,7 +104,6 @@ public struct AlertAppearance: Hashable, Sendable {
     public static let `default` = AlertAppearancePreset.dark.appearance
 
     public static let defaultJoinFill = RGBA(rgb: 0xF5A524)
-    public static let defaultTint = RGBA.black
     /// Where Tint's Other… starts from None: a color none of the swatches has, so the well shows something new.
     public static let otherTintSeed = RGBA(rgb: 0x7A5AF8)
     public static let minimumContrast = 4.5
@@ -446,54 +445,18 @@ extension AlertAppearance {
 // MARK: Editing
 
 extension AlertAppearance {
-    /// Turning the tint on starts from black; the strength is kept either way.
-    public mutating func setTintEnabled(_ enabled: Bool) {
-        if enabled {
-            if tint == nil { tint = Self.defaultTint }
-        } else {
-            tint = nil
-        }
-    }
-
-    /// Switching to Custom starts from the color currently shown, so nothing changes until the
-    /// user picks a new one.
-    public mutating func setTextColorCustom(_ custom: Bool) {
-        if custom {
-            if textColor == nil { textColor = palette.text }
-        } else {
-            textColor = nil
-        }
-    }
-
-    public mutating func setButtonTextCustom(_ custom: Bool, for kind: AlertButtonKind) {
-        if custom {
-            if self[button: kind].text == nil {
-                let palette = self.palette
-                self[button: kind].text = kind == .join ? palette.joinText : palette.buttonText
-            }
-        } else {
-            self[button: kind].text = nil
-        }
-    }
-
-    /// Like the text, a fill switched to Custom keeps its look: the automatic Snooze & Dismiss fill
-    /// is a translucent white or black, so it becomes that color at the matching opacity, and the
-    /// opacity is scaled back when switching to Automatic again.
-    public mutating func setButtonFillCustom(_ custom: Bool, for kind: AlertButtonKind) {
-        guard custom != (self[button: kind].fill != nil) else { return }
+    /// Other… for a button's fill keeps its look, like Other… for the event text: Join's automatic Orange
+    /// becomes an explicit Orange, and the automatic Snooze & Dismiss fill, a translucent white or black,
+    /// becomes that color at the matching opacity in whole percent. A fill already stored stays as it is.
+    mutating func makeButtonFillCustom(for kind: AlertButtonKind) {
+        guard self[button: kind].fill == nil else { return }
         switch kind {
         case .join:
-            join.fill = custom ? Self.defaultJoinFill : nil
+            join.fill = Self.defaultJoinFill
         case .dismissAndSnooze:
             let automatic = Self.automaticButtonFill(isDark: palette.isDark)
-            let opacity = dismissAndSnooze.fillOpacity
-            if custom {
-                dismissAndSnooze.fill = automatic.withAlpha(1)
-                dismissAndSnooze.fillOpacity = Self.roundedPercent(opacity * automatic.alpha)
-            } else {
-                dismissAndSnooze.fill = nil
-                dismissAndSnooze.fillOpacity = min(1, Self.roundedPercent(opacity / automatic.alpha))
-            }
+            dismissAndSnooze.fill = automatic.withAlpha(1)
+            dismissAndSnooze.fillOpacity = Self.roundedPercent(dismissAndSnooze.fillOpacity * automatic.alpha)
         }
     }
 
@@ -566,9 +529,9 @@ extension AlertAppearance {
             && Self.roundedPercent(Self.clamped(migrated[button: kind].fillOpacity, to: kind)) < 1 {
             switch kind {
             case .join:
-                migrated.setButtonFillCustom(true, for: .join)
+                migrated.makeButtonFillCustom(for: .join)
             case .dismissAndSnooze:
-                // Unrounded, unlike `setButtonFillCustom`: a whole percent of the automatic fill's 16 % or 7 %
+                // Unrounded, unlike `makeButtonFillCustom`: a whole percent of the automatic fill's 16 % or 7 %
                 // can change the alpha, and even round a look of the user's own into a preset's.
                 let automatic = Self.automaticButtonFill(isDark: migrated.palette.isDark)
                 migrated.dismissAndSnooze.fill = automatic.withAlpha(1)

@@ -32,8 +32,7 @@ extension Preferences {
         get { MenuBarDisplay(showsNextEvent: menuBarShowsNextEvent, showsTitles: menuBarShowsEventTitles) }
         set {
             menuBarShowsNextEvent = newValue.showsNextEvent
-            // Keep the title choice when switching to icon only, so switching back restores it.
-            if newValue != .iconOnly { menuBarShowsEventTitles = newValue.showsTitles }
+            menuBarShowsEventTitles = newValue.showsTitles
         }
     }
 }

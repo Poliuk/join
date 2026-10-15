@@ -94,7 +94,7 @@ public final class Preferences {
         }
         _menuBarShowsEventTitles = defaults.object(forKey: Keys.menuBarShowsEventTitles) as? Bool ?? false
         _autoCloseEnabled = defaults.object(forKey: Keys.autoCloseEnabled) as? Bool ?? true
-        _autoCloseAfter = defaults.object(forKey: Keys.autoCloseAfter) as? TimeInterval ?? Self.defaultAutoCloseAfter
+        _autoCloseAfter = Self.atLeastAMinute(defaults.object(forKey: Keys.autoCloseAfter) as? TimeInterval ?? Self.defaultAutoCloseAfter)
         _soundName = defaults.string(forKey: Keys.soundName)
         _soundRepeats = defaults.object(forKey: Keys.soundRepeats) as? Bool ?? false
         _enabledCalendarIDs = (defaults.array(forKey: Keys.enabledCalendarIDs) as? [String]).map(Set.init)
@@ -222,14 +222,20 @@ public final class Preferences {
         }
     }
 
+    /// How long a full-screen alert stays before it closes itself, in seconds: never less than a minute, stored
+    /// or set, since the alert's timer would otherwise close it as it appears.
     public var autoCloseAfter: TimeInterval {
         get { access(keyPath: \.autoCloseAfter); return _autoCloseAfter }
         set {
             withMutation(keyPath: \.autoCloseAfter) {
-                _autoCloseAfter = max(60, newValue)
+                _autoCloseAfter = Self.atLeastAMinute(newValue)
                 defaults.set(_autoCloseAfter, forKey: Keys.autoCloseAfter)
             }
         }
+    }
+
+    private static func atLeastAMinute(_ seconds: TimeInterval) -> TimeInterval {
+        max(60, seconds)
     }
 
     /// A system sound name (from /System/Library/Sounds), or nil for silence.

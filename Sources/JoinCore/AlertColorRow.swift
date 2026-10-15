@@ -137,9 +137,9 @@ extension AlertAppearance {
         case .other:
             switch row {
             case .tint: if tint == nil { tint = Self.otherTintSeed }
-            case .eventText: setTextColorCustom(true)
-            case .joinButton: setButtonFillCustom(true, for: .join)
-            case .buttons: setButtonFillCustom(true, for: .dismissAndSnooze)
+            case .eventText: if textColor == nil { textColor = palette.text }
+            case .joinButton: makeButtonFillCustom(for: .join)
+            case .buttons: makeButtonFillCustom(for: .dismissAndSnooze)
             }
         }
     }
@@ -178,8 +178,8 @@ extension AlertAppearance {
     // MARK: Legacy Text rows
 
     /// Whether the kind's legacy Text row shows under its Colors row: only while a label color is stored,
-    /// which only an earlier build could save. Its Automatic (`setButtonTextCustom(false, for:)`) clears it,
-    /// and the row goes.
+    /// which only an earlier build could save. Its Automatic (`clearLegacyText(for:)`) clears it, and the row
+    /// goes.
     public func showsLegacyText(for kind: AlertButtonKind) -> Bool {
         self[button: kind].text != nil
     }
@@ -187,5 +187,10 @@ extension AlertAppearance {
     /// The legacy Text row's well.
     public mutating func setLegacyText(_ color: RGBA, for kind: AlertButtonKind) {
         self[button: kind].text = color.withAlpha(1)
+    }
+
+    /// The legacy Text row's Automatic: the label follows the fill again.
+    public mutating func clearLegacyText(for kind: AlertButtonKind) {
+        self[button: kind].text = nil
     }
 }

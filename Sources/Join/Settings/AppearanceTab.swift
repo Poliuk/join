@@ -193,7 +193,7 @@ struct AppearanceTab: View {
                     wellLabel: kind.legacyTextWellLabel,
                     color: text,
                     popUpWidth: Self.popUpWidth,
-                    clear: { update { $0.setButtonTextCustom(false, for: kind) } },
+                    clear: { update { $0.clearLegacyText(for: kind) } },
                     setColor: { color in update { $0.setLegacyText(color, for: kind) } }
                 )
             }

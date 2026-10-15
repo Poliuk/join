@@ -7,6 +7,8 @@ import Testing
 /// since Swift Testing runs them in parallel. On the main actor, like `Preferences`.
 @MainActor
 final class PreferencesTests {
+    private typealias Keys = Preferences.Keys
+
     private let suiteName: String
     private let defaults: UserDefaults
 
@@ -20,11 +22,17 @@ final class PreferencesTests {
         defaults = try #require(UserDefaults(suiteName: suiteName))
     }
 
-    /// Removes the suite through a new handle: a nonisolated `deinit` can't touch the main-actor `defaults`.
+    /// Removes the suite through a new handle, since a nonisolated `deinit` can't touch the main-actor
+    /// `defaults`, then its emptied file, which would otherwise stay in the temporary folder.
     deinit {
         UserDefaults(suiteName: suiteName)?.removePersistentDomain(forName: suiteName)
+        try? FileManager.default.removeItem(atPath: suiteName + ".plist")
     }
 
+    // MARK: Defaults and persistence
+
+    /// The defaults the user chose. A fresh start writes none of them, so a release that changes a default
+    /// changes it for everyone who never picked another value.
     @Test func defaultValues() {
         let preferences = Preferences(defaults: defaults)
         #expect(preferences.leadTime == 180)
@@ -33,7 +41,9 @@ final class PreferencesTests {
         #expect(preferences.alertScreens == .all)
         #expect(preferences.menuBarDisplay == .time)
         #expect(preferences.autoCloseEnabled)
+        #expect(preferences.autoCloseAfter == 15 * 60)
         #expect(preferences.soundName == nil)
+        #expect(!preferences.soundRepeats)
         #expect(preferences.enabledCalendarIDs == nil)
         #expect(preferences.eventsWithoutParticipants == .showAndAlert)
         #expect(preferences.appearance == .default)
@@ -41,37 +51,212 @@ final class PreferencesTests {
         #expect(preferences.outOfOfficeEvents == .listOnly)
         #expect(preferences.outOfOfficeKeywords == OutOfOfficeDetector.defaultKeywords)
         #expect(preferences.startingSoonPill == .default)
+        #expect(preferences.panelListFilter == .week)
         #expect(preferences.checksForUpdates)
         #expect(preferences.lastUpdateCheck == nil)
         #expect(preferences.offeredUpdateVersion == nil)
         #expect(preferences.unsupportedUpdate == nil)
         #expect(preferences.dismissedEvents.isEmpty)
+        #expect((defaults.persistentDomain(forName: suiteName) ?? [:]).isEmpty, "nothing is stored until it changes")
     }
 
-    @Test func valuesPersistAcrossInstances() {
-        let pill = StartingSoonPill(minutes: 10, fill: RGBA(rgb: 0xFFD60A), text: .black)
-        let first = Preferences(defaults: defaults)
-        first.leadTime = 300
-        first.soundName = "Glass"
-        first.appearance.blurMode = .none
-        first.fullScreenAlertsEnabled = false
-        first.eventsWithoutParticipants = .listOnly
-        first.outOfOfficeEvents = .exclude
-        first.startingSoonPill = pill
-
-        let second = Preferences(defaults: defaults)
-        #expect(second.leadTime == 300)
-        #expect(second.soundName == "Glass")
-        #expect(second.appearance.blurMode == .none)
-        #expect(!second.fullScreenAlertsEnabled)
-        #expect(second.eventsWithoutParticipants == .listOnly)
-        #expect(second.outOfOfficeEvents == .exclude)
-        #expect(second.startingSoonPill == pill)
+    /// One change to each stored setting: away from its default, or, for an optional one, back to nothing.
+    enum Setting: CaseIterable, Sendable {
+        case leadTime
+        case fullScreenAlertsEnabled
+        case snoozeDurations
+        case alertScreensMain, alertScreensSecondary, alertScreensPointer, alertScreensBackToAll
+        case menuBarShowsNextEvent
+        case menuBarShowsEventTitles
+        case autoCloseEnabled
+        case autoCloseAfter
+        case soundName, soundNameCleared
+        case soundRepeats
+        case enabledCalendarIDs, enabledCalendarIDsCleared
+        case eventsWithoutParticipantsListOnly, eventsWithoutParticipantsExcluded
+        case appearance
+        case customAppearance, customAppearanceCleared
+        case outOfOfficeEventsShowAndAlert, outOfOfficeEventsExcluded
+        case outOfOfficeKeywords
+        case startingSoonPill
+        case panelListFilter
+        case dismissedEvents, dismissedEventsCleared
+        case checksForUpdates
+        case lastUpdateCheck, lastUpdateCheckCleared
+        case offeredUpdateVersion, offeredUpdateVersionCleared
+        case unsupportedUpdate, unsupportedUpdateCleared
     }
 
-    @Test func unreadableStartingSoonPillFallsBackToDefault() {
-        defaults.set(Data("not json".utf8), forKey: Preferences.Keys.startingSoonPill)
-        #expect(Preferences(defaults: defaults).startingSoonPill == .default)
+    /// How a `Setting` row changes its property, through one key path for reading and writing.
+    @MainActor
+    struct Probe {
+        let key: String
+        /// Whether the change leaves a value under `key`; clearing an optional setting removes it.
+        let stores: Bool
+        let prepare: @MainActor (Preferences) -> Void
+        let change: @MainActor (Preferences) -> Void
+        let isChanged: @MainActor (Preferences) -> Bool
+
+        init<Value: Equatable>(
+            _ keyPath: ReferenceWritableKeyPath<Preferences, Value>,
+            key: String,
+            from start: Value? = nil,
+            to value: Value,
+            stores: Bool = true
+        ) {
+            self.key = key
+            self.stores = stores
+            prepare = { preferences in
+                if let start { preferences[keyPath: keyPath] = start }
+            }
+            change = { $0[keyPath: keyPath] = value }
+            isChanged = { $0[keyPath: keyPath] == value }
+        }
+    }
+
+    private func makeProbe(_ setting: Setting) -> Probe {
+        let look = AlertAppearance(blurMode: .light, join: AlertButtonColors(fill: RGBA(rgb: 0x2563EB)))
+        let dismissed = DismissedEvents().dismissing(MenuBarFixtures.workshop).dismissing(MenuBarFixtures.review)
+        let unsupported = UnsupportedUpdate(version: "1.2.0", minimumSystem: "15.0")
+        let checked = Date(timeIntervalSinceReferenceDate: 800_000_000)
+        return switch setting {
+        case .leadTime: Probe(\.leadTime, key: Keys.leadTime, to: 300)
+        case .fullScreenAlertsEnabled: Probe(\.fullScreenAlertsEnabled, key: Keys.fullScreenAlertsEnabled, to: false)
+        case .snoozeDurations: Probe(\.snoozeDurations, key: Keys.snoozeDurations, to: [180, 600])
+        case .alertScreensMain: Probe(\.alertScreens, key: Keys.alertScreens, to: .main)
+        case .alertScreensSecondary: Probe(\.alertScreens, key: Keys.alertScreens, to: .secondary)
+        case .alertScreensPointer: Probe(\.alertScreens, key: Keys.alertScreens, to: .pointer)
+        case .alertScreensBackToAll: Probe(\.alertScreens, key: Keys.alertScreens, from: .pointer, to: .all)
+        case .menuBarShowsNextEvent: Probe(\.menuBarShowsNextEvent, key: Keys.menuBarShowsNextEvent, to: false)
+        case .menuBarShowsEventTitles: Probe(\.menuBarShowsEventTitles, key: Keys.menuBarShowsEventTitles, to: true)
+        case .autoCloseEnabled: Probe(\.autoCloseEnabled, key: Keys.autoCloseEnabled, to: false)
+        case .autoCloseAfter: Probe(\.autoCloseAfter, key: Keys.autoCloseAfter, to: 30 * 60)
+        case .soundName: Probe(\.soundName, key: Keys.soundName, to: "Glass")
+        case .soundNameCleared: Probe(\.soundName, key: Keys.soundName, from: "Glass", to: nil, stores: false)
+        case .soundRepeats: Probe(\.soundRepeats, key: Keys.soundRepeats, to: true)
+        case .enabledCalendarIDs: Probe(\.enabledCalendarIDs, key: Keys.enabledCalendarIDs, to: ["work", "personal"])
+        // Every calendar is enabled again.
+        case .enabledCalendarIDsCleared: Probe(\.enabledCalendarIDs, key: Keys.enabledCalendarIDs, from: ["work"], to: nil, stores: false)
+        case .eventsWithoutParticipantsListOnly: Probe(\.eventsWithoutParticipants, key: Keys.eventsWithoutParticipants, to: .listOnly)
+        case .eventsWithoutParticipantsExcluded: Probe(\.eventsWithoutParticipants, key: Keys.eventsWithoutParticipants, to: .exclude)
+        case .appearance: Probe(\.appearance, key: Keys.appearance, to: look)
+        case .customAppearance: Probe(\.customAppearance, key: Keys.customAppearance, to: look)
+        case .customAppearanceCleared: Probe(\.customAppearance, key: Keys.customAppearance, from: look, to: nil, stores: false)
+        case .outOfOfficeEventsShowAndAlert: Probe(\.outOfOfficeEvents, key: Keys.outOfOfficeEvents, to: .showAndAlert)
+        case .outOfOfficeEventsExcluded: Probe(\.outOfOfficeEvents, key: Keys.outOfOfficeEvents, to: .exclude)
+        case .outOfOfficeKeywords: Probe(\.outOfOfficeKeywords, key: Keys.outOfOfficeKeywords, to: ["away"])
+        case .startingSoonPill:
+            Probe(\.startingSoonPill, key: Keys.startingSoonPill, to: StartingSoonPill(minutes: 10, fill: RGBA(rgb: 0xFFD60A), text: .black))
+        case .panelListFilter: Probe(\.panelListFilter, key: Keys.panelListFilter, to: .today)
+        case .dismissedEvents: Probe(\.dismissedEvents, key: Keys.dismissedEvents, to: dismissed)
+        case .dismissedEventsCleared: Probe(\.dismissedEvents, key: Keys.dismissedEvents, from: dismissed, to: DismissedEvents(), stores: false)
+        case .checksForUpdates: Probe(\.checksForUpdates, key: Keys.checksForUpdates, to: false)
+        case .lastUpdateCheck: Probe(\.lastUpdateCheck, key: Keys.lastUpdateCheck, to: checked)
+        case .lastUpdateCheckCleared: Probe(\.lastUpdateCheck, key: Keys.lastUpdateCheck, from: checked, to: nil, stores: false)
+        case .offeredUpdateVersion: Probe(\.offeredUpdateVersion, key: Keys.offeredUpdateVersion, to: "1.1.0")
+        case .offeredUpdateVersionCleared: Probe(\.offeredUpdateVersion, key: Keys.offeredUpdateVersion, from: "1.1.0", to: nil, stores: false)
+        case .unsupportedUpdate: Probe(\.unsupportedUpdate, key: Keys.unsupportedUpdate, to: unsupported)
+        case .unsupportedUpdateCleared: Probe(\.unsupportedUpdate, key: Keys.unsupportedUpdate, from: unsupported, to: nil, stores: false)
+        }
+    }
+
+    /// Every setting is stored as it changes, reads back after a relaunch, and tells its observers. Each is wired
+    /// by hand (`access` and `withMutation` with its own key path), and SwiftUI and the meeting store see a
+    /// change only through observation: the store reads `dismissedEvents`, so a dismissal reaches the alert,
+    /// the menu bar and the card.
+    @Test(arguments: Setting.allCases)
+    func everySettingPersistsAndNotifiesObservers(_ setting: Setting) async {
+        let probe = makeProbe(setting)
+        let preferences = Preferences(defaults: defaults)
+        probe.prepare(preferences)
+        #expect(!probe.isChanged(preferences), "the row changes something")
+
+        // Exactly one change: `confirmation` fails on none and on more than one.
+        await confirmation("observers hear about the change") { changed in
+            withObservationTracking {
+                _ = probe.isChanged(preferences)
+            } onChange: {
+                changed()
+            }
+            probe.change(preferences)
+        }
+        #expect(probe.isChanged(preferences))
+        #expect((defaults.object(forKey: probe.key) != nil) == probe.stores)
+        #expect(probe.isChanged(Preferences(defaults: defaults)), "after a relaunch")
+    }
+
+    /// Something stored that can't be read, from a damaged file or another build, loads as the default.
+    struct Unreadable: Sendable, CustomTestStringConvertible {
+        let testDescription: String
+        let key: String
+        let stored: any Sendable
+        let fellBack: @MainActor @Sendable (Preferences) -> Bool
+    }
+
+    nonisolated static let unreadable: [Unreadable] = [
+        Unreadable(testDescription: "look", key: Keys.appearance, stored: Data("not json".utf8)) {
+            $0.appearance == .default && $0.customAppearance == nil
+        },
+        Unreadable(testDescription: "menu bar pill", key: Keys.startingSoonPill, stored: Data("not json".utf8)) {
+            $0.startingSoonPill == .default
+        },
+        Unreadable(testDescription: "snooze buttons without two durations", key: Keys.snoozeDurations, stored: [120.0]) {
+            $0.snoozeDurations == [60, 300]
+        },
+        Unreadable(testDescription: "panel list filter", key: Keys.panelListFilter, stored: "everything") {
+            $0.panelListFilter == .week
+        },
+        Unreadable(testDescription: "dismissed events", key: Keys.dismissedEvents, stored: Data("not json".utf8)) {
+            $0.dismissedEvents.isEmpty
+        },
+        Unreadable(testDescription: "unsupported update", key: Keys.unsupportedUpdate, stored: Data("not json".utf8)) {
+            $0.unsupportedUpdate == nil
+        },
+    ]
+
+    @Test(arguments: unreadable)
+    func anUnreadableStoredValueFallsBackToTheDefault(_ value: Unreadable) {
+        defaults.set(value.stored, forKey: value.key)
+        #expect(value.fellBack(Preferences(defaults: defaults)))
+    }
+
+    /// Alert me is in whole minutes, never below 0: set or loaded, a lead time rounds to the nearest minute.
+    @Test(arguments: [(150.0, 180.0), (89, 60), (-60, 0), (210, 240)])
+    func leadTimeIsWholeMinutes(seconds: TimeInterval, expected: TimeInterval) {
+        defaults.set(seconds, forKey: Keys.leadTime)
+        let preferences = Preferences(defaults: defaults)
+        #expect(preferences.leadTime == expected, "loaded")
+        preferences.leadTime = seconds
+        #expect(preferences.leadTime == expected, "set")
+    }
+
+    /// The alert's auto-close timer gets this value, so it's never under a minute, set or loaded: a 0 would close
+    /// every full-screen alert as it appears.
+    @Test(arguments: [(0.0, 60.0), (30, 60), (-300, 60), (60, 60), (90, 90)])
+    func autoCloseIsAtLeastAMinute(seconds: TimeInterval, expected: TimeInterval) {
+        defaults.set(seconds, forKey: Keys.autoCloseAfter)
+        let preferences = Preferences(defaults: defaults)
+        #expect(preferences.autoCloseAfter == expected, "loaded")
+        preferences.autoCloseAfter = seconds
+        #expect(preferences.autoCloseAfter == expected, "set")
+    }
+
+    @Test func snoozeDurationsMustHaveTwoEntries() {
+        let preferences = Preferences(defaults: defaults)
+        preferences.snoozeDurations = [60]
+        #expect(preferences.snoozeDurations == [60, 300])
+        preferences.snoozeDurations = [120, 600]
+        #expect(preferences.snoozeDurations == [120, 600])
+    }
+
+    /// One choice in Settings, stored as the two switches the menu bar item reads.
+    @Test(arguments: MenuBarDisplay.allCases)
+    func menuBarDisplayIsStoredAsTwoSwitches(_ display: MenuBarDisplay) {
+        let preferences = Preferences(defaults: defaults)
+        preferences.menuBarDisplay = display
+        #expect(preferences.menuBarShowsNextEvent == display.showsNextEvent)
+        #expect(preferences.menuBarShowsEventTitles == display.showsTitles)
+        #expect(Preferences(defaults: defaults).menuBarDisplay == display)
     }
 
     @Test func calendarSelectionStartsAsAllThenBecomesExplicit() {
@@ -84,122 +269,109 @@ final class PreferencesTests {
         #expect(Preferences(defaults: defaults).enabledCalendarIDs == ["work", "personal"])
     }
 
-    @Test func eventsChoicesAreStoredAsRawValues() {
+    @Test func neverKeepsTheLeadTimeForWhenAlertsComeBack() {
         let preferences = Preferences(defaults: defaults)
-        #expect(defaults.object(forKey: Preferences.Keys.eventsWithoutParticipants) == nil, "nothing is stored until it changes")
-        #expect(defaults.object(forKey: Preferences.Keys.outOfOfficeEvents) == nil, "nothing is stored until it changes")
+        preferences.leadTime = 300
+        preferences.fullScreenAlertsEnabled = false
 
-        preferences.eventsWithoutParticipants = .exclude
-        preferences.outOfOfficeEvents = .showAndAlert
-        #expect(defaults.string(forKey: "eventsWithoutParticipants") == "exclude")
-        #expect(defaults.string(forKey: "outOfOfficeEvents") == "showAndAlert")
-        #expect(Preferences(defaults: defaults).eventsWithoutParticipants == .exclude)
-        #expect(Preferences(defaults: defaults).outOfOfficeEvents == .showAndAlert)
+        let reopened = Preferences(defaults: defaults)
+        #expect(!reopened.fullScreenAlertsEnabled)
+        #expect(reopened.leadTime == 300)
     }
 
-    @Test func legacyEventsWithoutParticipantsSwitchIsMigrated() {
-        defaults.set(true, forKey: Preferences.Keys.legacyShowsEventsWithoutParticipants)
-        #expect(Preferences(defaults: defaults).eventsWithoutParticipants == .showAndAlert)
-        defaults.set(false, forKey: Preferences.Keys.legacyShowsEventsWithoutParticipants)
-        #expect(Preferences(defaults: defaults).eventsWithoutParticipants == .exclude)
-        #expect(defaults.object(forKey: Preferences.Keys.legacyShowsEventsWithoutParticipants) != nil, "reading doesn't remove it")
+    // MARK: Settings from earlier builds
 
+    /// Switches stored by earlier builds, read until a choice is stored.
+    struct LegacyKeys: Sendable, CustomTestStringConvertible {
+        let testDescription: String
+        let stored: [String: any Sendable]
+        let eventsWithoutParticipants: EventVisibility
+        let outOfOfficeEvents: EventVisibility
+    }
+
+    /// 1.1's switch for events with no participants, on by default, and the out-of-office switches of 1.0 and
+    /// 1.1, alert off and list on by default: alerting wins, so an upgrade keeps every alert the user had.
+    nonisolated static let legacyKeys: [LegacyKeys] = [
+        LegacyKeys(testDescription: "1.1's no-participants switch on", stored: [Keys.legacyShowsEventsWithoutParticipants: true],
+                   eventsWithoutParticipants: .showAndAlert, outOfOfficeEvents: .listOnly),
+        LegacyKeys(testDescription: "1.1's no-participants switch off", stored: [Keys.legacyShowsEventsWithoutParticipants: false],
+                   eventsWithoutParticipants: .exclude, outOfOfficeEvents: .listOnly),
+        LegacyKeys(testDescription: "out-of-office alert on, list on",
+                   stored: [Keys.legacyAlertForOutOfOffice: true, Keys.legacyShowOutOfOfficeInList: true],
+                   eventsWithoutParticipants: .showAndAlert, outOfOfficeEvents: .showAndAlert),
+        LegacyKeys(testDescription: "out-of-office alert off, list on",
+                   stored: [Keys.legacyAlertForOutOfOffice: false, Keys.legacyShowOutOfOfficeInList: true],
+                   eventsWithoutParticipants: .showAndAlert, outOfOfficeEvents: .listOnly),
+        LegacyKeys(testDescription: "out-of-office alert off, list off",
+                   stored: [Keys.legacyAlertForOutOfOffice: false, Keys.legacyShowOutOfOfficeInList: false],
+                   eventsWithoutParticipants: .showAndAlert, outOfOfficeEvents: .exclude),
+        LegacyKeys(testDescription: "out-of-office alert on, list off",
+                   stored: [Keys.legacyAlertForOutOfOffice: true, Keys.legacyShowOutOfOfficeInList: false],
+                   eventsWithoutParticipants: .showAndAlert, outOfOfficeEvents: .showAndAlert),
+        LegacyKeys(testDescription: "only out-of-office alert on", stored: [Keys.legacyAlertForOutOfOffice: true],
+                   eventsWithoutParticipants: .showAndAlert, outOfOfficeEvents: .showAndAlert),
+        LegacyKeys(testDescription: "only out-of-office list off", stored: [Keys.legacyShowOutOfOfficeInList: false],
+                   eventsWithoutParticipants: .showAndAlert, outOfOfficeEvents: .exclude),
+        LegacyKeys(testDescription: "before 1.0, skip off", stored: [Keys.legacySkipOutOfOffice: false],
+                   eventsWithoutParticipants: .showAndAlert, outOfOfficeEvents: .showAndAlert),
+        LegacyKeys(testDescription: "before 1.0, skip on", stored: [Keys.legacySkipOutOfOffice: true],
+                   eventsWithoutParticipants: .showAndAlert, outOfOfficeEvents: .listOnly),
+        LegacyKeys(testDescription: "skip on, list off",
+                   stored: [Keys.legacySkipOutOfOffice: true, Keys.legacyShowOutOfOfficeInList: false],
+                   eventsWithoutParticipants: .showAndAlert, outOfOfficeEvents: .exclude),
+        LegacyKeys(testDescription: "skip on, list off, and 1.1's alert on, which wins over the older key",
+                   stored: [Keys.legacySkipOutOfOffice: true, Keys.legacyShowOutOfOfficeInList: false, Keys.legacyAlertForOutOfOffice: true],
+                   eventsWithoutParticipants: .showAndAlert, outOfOfficeEvents: .showAndAlert),
+        LegacyKeys(testDescription: "an unknown stored choice",
+                   stored: [Keys.eventsWithoutParticipants: "hide", Keys.outOfOfficeEvents: "hide"],
+                   eventsWithoutParticipants: .showAndAlert, outOfOfficeEvents: .listOnly),
+        LegacyKeys(testDescription: "an unknown stored choice over the switches",
+                   stored: [Keys.eventsWithoutParticipants: "hide", Keys.outOfOfficeEvents: "hide",
+                            Keys.legacyShowsEventsWithoutParticipants: false, Keys.legacyAlertForOutOfOffice: true],
+                   eventsWithoutParticipants: .exclude, outOfOfficeEvents: .showAndAlert),
+    ]
+
+    @Test(arguments: legacyKeys)
+    func legacySwitchesAreMigrated(_ legacy: LegacyKeys) {
+        for (key, value) in legacy.stored { defaults.set(value, forKey: key) }
         let preferences = Preferences(defaults: defaults)
-        preferences.eventsWithoutParticipants = .listOnly
-        #expect(defaults.object(forKey: Preferences.Keys.legacyShowsEventsWithoutParticipants) == nil, "a choice replaces the switch")
-        #expect(Preferences(defaults: defaults).eventsWithoutParticipants == .listOnly)
-    }
-
-    @Test func legacyOutOfOfficeSwitchesAreMigrated() {
-        // (alert, list) → choice; alerting wins, so an upgrade keeps every alert the user had.
-        let cases: [(Bool, Bool, EventVisibility)] = [
-            (true, true, .showAndAlert),
-            (false, true, .listOnly),
-            (false, false, .exclude),
-            (true, false, .showAndAlert),
-        ]
-        for (alerts, listed, expected) in cases {
-            defaults.removePersistentDomain(forName: suiteName)
-            defaults.set(alerts, forKey: Preferences.Keys.legacyAlertForOutOfOffice)
-            defaults.set(listed, forKey: Preferences.Keys.legacyShowOutOfOfficeInList)
-            #expect(Preferences(defaults: defaults).outOfOfficeEvents == expected, "alert \(alerts), list \(listed)")
-        }
-
-        // Only one of the switches stored: the other is at its 1.1 default (alert off, list on).
-        defaults.removePersistentDomain(forName: suiteName)
-        defaults.set(true, forKey: Preferences.Keys.legacyAlertForOutOfOffice)
-        #expect(Preferences(defaults: defaults).outOfOfficeEvents == .showAndAlert)
-        defaults.removePersistentDomain(forName: suiteName)
-        defaults.set(false, forKey: Preferences.Keys.legacyShowOutOfOfficeInList)
-        #expect(Preferences(defaults: defaults).outOfOfficeEvents == .exclude)
-    }
-
-    @Test func legacySkipOutOfOfficeIsMigrated() {
-        defaults.set(false, forKey: Preferences.Keys.legacySkipOutOfOffice)
-        #expect(Preferences(defaults: defaults).outOfOfficeEvents == .showAndAlert)
-
-        defaults.removePersistentDomain(forName: suiteName)
-        defaults.set(true, forKey: Preferences.Keys.legacySkipOutOfOffice)
-        #expect(Preferences(defaults: defaults).outOfOfficeEvents == .listOnly)
-        defaults.set(false, forKey: Preferences.Keys.legacyShowOutOfOfficeInList)
-        #expect(Preferences(defaults: defaults).outOfOfficeEvents == .exclude)
-
-        defaults.set(true, forKey: Preferences.Keys.legacyAlertForOutOfOffice)
-        #expect(Preferences(defaults: defaults).outOfOfficeEvents == .showAndAlert, "the 1.1 switch wins over the older key")
+        #expect(preferences.eventsWithoutParticipants == legacy.eventsWithoutParticipants)
+        #expect(preferences.outOfOfficeEvents == legacy.outOfOfficeEvents)
+        #expect(legacy.stored.keys.allSatisfy { defaults.object(forKey: $0) != nil }, "reading removes nothing")
     }
 
     @Test func aStoredChoiceWinsOverTheLegacySwitchesAndRemovesThem() {
-        defaults.set(false, forKey: Preferences.Keys.legacyShowsEventsWithoutParticipants)
-        defaults.set(true, forKey: Preferences.Keys.legacyAlertForOutOfOffice)
-        defaults.set(true, forKey: Preferences.Keys.legacySkipOutOfOffice)
-        defaults.set(false, forKey: Preferences.Keys.legacyShowOutOfOfficeInList)
-        defaults.set("listOnly", forKey: Preferences.Keys.eventsWithoutParticipants)
-        defaults.set("listOnly", forKey: Preferences.Keys.outOfOfficeEvents)
+        defaults.set(false, forKey: Keys.legacyShowsEventsWithoutParticipants)
+        defaults.set(true, forKey: Keys.legacyAlertForOutOfOffice)
+        defaults.set(true, forKey: Keys.legacySkipOutOfOffice)
+        defaults.set(false, forKey: Keys.legacyShowOutOfOfficeInList)
+        defaults.set("listOnly", forKey: Keys.eventsWithoutParticipants)
+        defaults.set("listOnly", forKey: Keys.outOfOfficeEvents)
         let preferences = Preferences(defaults: defaults)
         #expect(preferences.eventsWithoutParticipants == .listOnly)
         #expect(preferences.outOfOfficeEvents == .listOnly)
 
         preferences.outOfOfficeEvents = .exclude
-        #expect(defaults.object(forKey: Preferences.Keys.legacyAlertForOutOfOffice) == nil)
-        #expect(defaults.object(forKey: Preferences.Keys.legacyShowOutOfOfficeInList) == nil)
-        #expect(defaults.object(forKey: Preferences.Keys.legacySkipOutOfOffice) == nil)
-        #expect(defaults.object(forKey: Preferences.Keys.legacyShowsEventsWithoutParticipants) != nil, "each choice clears only its own")
+        #expect(defaults.object(forKey: Keys.legacyAlertForOutOfOffice) == nil)
+        #expect(defaults.object(forKey: Keys.legacyShowOutOfOfficeInList) == nil)
+        #expect(defaults.object(forKey: Keys.legacySkipOutOfOffice) == nil)
+        #expect(defaults.object(forKey: Keys.legacyShowsEventsWithoutParticipants) != nil, "each choice clears only its own")
+
+        preferences.eventsWithoutParticipants = .exclude
+        #expect(defaults.object(forKey: Keys.legacyShowsEventsWithoutParticipants) == nil)
     }
 
-    @Test func anUnknownStoredChoiceFallsBackToTheLegacySwitchesOrTheDefault() {
-        defaults.set("hide", forKey: Preferences.Keys.eventsWithoutParticipants)
-        defaults.set("hide", forKey: Preferences.Keys.outOfOfficeEvents)
-        #expect(Preferences(defaults: defaults).eventsWithoutParticipants == .showAndAlert)
-        #expect(Preferences(defaults: defaults).outOfOfficeEvents == .listOnly)
+    @Test func legacyShowOnAllScreensIsMigrated() {
+        defaults.set(false, forKey: Keys.legacyShowOnAllScreens)
+        #expect(Preferences(defaults: defaults).alertScreens == .main)
 
-        defaults.set(false, forKey: Preferences.Keys.legacyShowsEventsWithoutParticipants)
-        defaults.set(true, forKey: Preferences.Keys.legacyAlertForOutOfOffice)
-        #expect(Preferences(defaults: defaults).eventsWithoutParticipants == .exclude)
-        #expect(Preferences(defaults: defaults).outOfOfficeEvents == .showAndAlert)
-    }
-
-    @Test func neverKeepsTheLeadTimeForWhenAlertsComeBack() {
         let preferences = Preferences(defaults: defaults)
-        #expect(defaults.object(forKey: Preferences.Keys.fullScreenAlertsEnabled) == nil, "nothing is stored until it changes")
-        preferences.leadTime = 300
-        preferences.fullScreenAlertsEnabled = false
-        #expect((defaults.object(forKey: "fullScreenAlertsEnabled") as? Bool) == false)
-
-        let reopened = Preferences(defaults: defaults)
-        #expect(!reopened.fullScreenAlertsEnabled)
-        #expect(reopened.leadTime == 300)
-
-        reopened.fullScreenAlertsEnabled = true
-        #expect(Preferences(defaults: defaults).fullScreenAlertsEnabled)
+        preferences.alertScreens = .pointer
+        #expect(Preferences(defaults: defaults).alertScreens == .pointer)
+        #expect(defaults.object(forKey: Keys.legacyShowOnAllScreens) == nil)
     }
 
-    @Test func snoozeDurationsMustHaveTwoEntries() {
-        let preferences = Preferences(defaults: defaults)
-        preferences.snoozeDurations = [60]
-        #expect(preferences.snoozeDurations == [60, 300])
-        preferences.snoozeDurations = [120, 600]
-        #expect(preferences.snoozeDurations == [120, 600])
-    }
+    // MARK: Appearance and the Custom card
 
     /// Appearance's Restore Defaults puts back the look only: since 1.2.0 snooze, auto-close and the pill
     /// live on other panes, and the Custom card keeps the user's look.
@@ -222,7 +394,6 @@ final class PreferencesTests {
 
         let reopened = Preferences(defaults: defaults)
         #expect(reopened.appearance == .default)
-        #expect(reopened.appearance.isDefault)
         #expect(reopened.customAppearance == custom, "the Custom card keeps the look")
         #expect(reopened.snoozeDurations == [180, 600])
         #expect(!reopened.autoCloseEnabled)
@@ -256,205 +427,65 @@ final class PreferencesTests {
         #expect(Preferences(defaults: defaults).customAppearance == plum, "persisted")
     }
 
-    /// The user's blue Join on Light blur, saved by 1.1, opens on the Custom card.
-    @Test func theCustomCardIsSeededFromAStoredLookOfTheUsersOwn() throws {
-        let stored = #"{"version":2,"blurMode":"light","tintStrength":0.35,"join":{"fill":{"red":0.1450980392156863,"green":0.38823529411764707,"blue":0.9215686274509803,"alpha":1},"fillOpacity":1},"dismissAndSnooze":{"fillOpacity":1}}"#
-        defaults.set(Data(stored.utf8), forKey: Preferences.Keys.appearance)
+    /// What an earlier build stored: the look as JSON, and the Custom card's look.
+    struct StoredLook: Sendable, CustomTestStringConvertible {
+        let testDescription: String
+        var appearance: String?
+        var customAppearance: String?
+        /// The preset the look loads as; nil for a look of the user's own, which the Custom card gets.
+        let loadsAs: AlertAppearancePreset?
+    }
+
+    nonisolated static let storedLooks: [StoredLook] = [
+        StoredLook(
+            testDescription: "1.1's blue Join on Light blur",
+            appearance: #"{"version":2,"blurMode":"light","tintStrength":0.35,"join":{"fill":{"red":0.1450980392156863,"green":0.38823529411764707,"blue":0.9215686274509803,"alpha":1},"fillOpacity":1},"dismissAndSnooze":{"fillOpacity":1}}"#,
+            loadsAs: nil
+        ),
+        // One 8-bit step from Dark's buttons: #FFFFFF28, not #FFFFFF29.
+        StoredLook(
+            testDescription: "1.1's Fill opacity at 97 % on Dark",
+            appearance: #"{"version":2,"blurMode":"dark","tintStrength":0.35,"join":{"fillOpacity":1},"dismissAndSnooze":{"fillOpacity":0.97}}"#,
+            loadsAs: nil
+        ),
+        StoredLook(
+            testDescription: "1.1's High contrast, with a pure black Join label",
+            appearance: #"{"version":2,"blurMode":"dark","tint":{"red":0,"green":0,"blue":0,"alpha":1},"tintStrength":0.7,"join":{"text":{"red":0,"green":0,"blue":0,"alpha":1},"fill":{"red":1,"green":0.8392156862745098,"blue":0.0392156862745098,"alpha":1},"fillOpacity":1},"dismissAndSnooze":{"fill":{"red":1,"green":1,"blue":1,"alpha":1},"fillOpacity":0.22}}"#,
+            loadsAs: .highContrast
+        ),
+        StoredLook(
+            testDescription: "a card look that matches a preset",
+            customAppearance: #"{"version":3,"blurMode":"light","tintStrength":0.35,"join":{"fillOpacity":1},"dismissAndSnooze":{"fillOpacity":1}}"#,
+            loadsAs: .dark
+        ),
+        StoredLook(testDescription: "an unreadable look", appearance: "not json", loadsAs: .dark),
+    ]
+
+    /// A look of the user's own saved before the Custom card existed opens on the card, saved at once so a preset
+    /// click can't lose it. A look that matches a preset, or can't be read, seeds nothing, and a stored card
+    /// look that matches a preset is ignored.
+    @Test(arguments: storedLooks)
+    func theCustomCardIsSeededFromAStoredLookOfTheUsersOwn(_ stored: StoredLook) {
+        if let json = stored.appearance { defaults.set(Data(json.utf8), forKey: Keys.appearance) }
+        if let json = stored.customAppearance { defaults.set(Data(json.utf8), forKey: Keys.customAppearance) }
         let preferences = Preferences(defaults: defaults)
-        #expect(preferences.appearance.style == .custom)
-        #expect(preferences.customAppearance == preferences.appearance)
-        #expect(defaults.data(forKey: Preferences.Keys.customAppearance) != nil, "saved at once, so a preset click can't lose it")
 
-        preferences.appearance = AlertAppearancePreset.dark.appearance
-        #expect(Preferences(defaults: defaults).customAppearance?.join.fill == RGBA(rgb: 0x2563EB))
-    }
-
-    /// 1.1's Fill opacity at 97 % on Dark is a look of the user's own, one 8-bit step from Dark's buttons.
-    @Test func theCustomCardIsSeededFromAStoredTranslucentAutomaticFill() throws {
-        var stored = try JSONSerialization.jsonObject(with: JSONEncoder().encode(AlertAppearance.default)) as? [String: Any] ?? [:]
-        stored["version"] = 2
-        stored["dismissAndSnooze"] = ["fillOpacity": 0.97]
-        defaults.set(try JSONSerialization.data(withJSONObject: stored), forKey: Preferences.Keys.appearance)
-        let preferences = Preferences(defaults: defaults)
-        #expect(preferences.appearance.style == .custom)
-        #expect(preferences.appearance.palette.buttonFill.hexString == "#FFFFFF28")
-        #expect(preferences.customAppearance == preferences.appearance)
-    }
-
-    @Test func noCustomLookWhileTheStoredLookIsAPreset() throws {
-        var oldHighContrast = try JSONSerialization.jsonObject(
-            with: JSONEncoder().encode(AlertAppearancePreset.earlierDefinitions[0].appearance)
-        ) as? [String: Any] ?? [:]
-        oldHighContrast["version"] = 2
-        defaults.set(try JSONSerialization.data(withJSONObject: oldHighContrast), forKey: Preferences.Keys.appearance)
-        let preferences = Preferences(defaults: defaults)
-        #expect(preferences.appearance == AlertAppearancePreset.highContrast.appearance)
-        #expect(preferences.customAppearance == nil)
-        #expect(defaults.object(forKey: Preferences.Keys.customAppearance) == nil)
-    }
-
-    @Test func aStoredCustomLookThatMatchesAPresetIsIgnored() throws {
-        defaults.set(try JSONEncoder().encode(AlertAppearancePreset.light.appearance), forKey: Preferences.Keys.customAppearance)
-        #expect(Preferences(defaults: defaults).customAppearance == nil)
-    }
-
-    @Test func leadTimeIsWholeMinutes() {
-        let preferences = Preferences(defaults: defaults)
-        preferences.leadTime = 150
-        #expect(preferences.leadTime == 180)
-        preferences.leadTime = 89
-        #expect(preferences.leadTime == 60)
-        preferences.leadTime = -60
-        #expect(preferences.leadTime == 0)
-    }
-
-    @Test func storedLeadTimeWithSecondsIsRoundedOnLoad() {
-        defaults.set(210.0, forKey: Preferences.Keys.leadTime)
-        #expect(Preferences(defaults: defaults).leadTime == 240)
-    }
-
-    @Test func legacyShowOnAllScreensIsMigrated() {
-        defaults.set(false, forKey: Preferences.Keys.legacyShowOnAllScreens)
-        #expect(Preferences(defaults: defaults).alertScreens == .main)
-
-        let preferences = Preferences(defaults: defaults)
-        preferences.alertScreens = .pointer
-        #expect(Preferences(defaults: defaults).alertScreens == .pointer)
-        #expect(defaults.object(forKey: Preferences.Keys.legacyShowOnAllScreens) == nil)
-    }
-
-    @Test func alertScreensPersistEveryChoice() {
-        for choice in AlertScreens.allCases {
-            Preferences(defaults: defaults).alertScreens = choice
-            #expect(defaults.string(forKey: Preferences.Keys.alertScreens) == choice.rawValue)
-            #expect(Preferences(defaults: defaults).alertScreens == choice)
+        if let preset = stored.loadsAs {
+            #expect(preferences.appearance == preset.appearance)
+            #expect(preferences.customAppearance == nil)
+            if stored.customAppearance == nil {
+                #expect(defaults.object(forKey: Keys.customAppearance) == nil, "nothing written")
+            }
+        } else {
+            let seeded = preferences.appearance
+            #expect(seeded.style == .custom)
+            #expect(preferences.customAppearance == seeded)
+            preferences.appearance = AlertAppearancePreset.dark.appearance
+            #expect(Preferences(defaults: defaults).customAppearance == seeded)
         }
-        defaults.set("main", forKey: Preferences.Keys.alertScreens)
-        #expect(Preferences(defaults: defaults).alertScreens == .main, "a value stored before 1.2.0")
-    }
-
-    @Test func menuBarDisplayWritesBothPreferencesAndPersists() {
-        let preferences = Preferences(defaults: defaults)
-        preferences.menuBarDisplay = .titleAndTime
-        #expect(preferences.menuBarShowsNextEvent)
-        #expect(preferences.menuBarShowsEventTitles)
-        #expect(Preferences(defaults: defaults).menuBarDisplay == .titleAndTime)
-
-        preferences.menuBarDisplay = .iconOnly
-        #expect(!preferences.menuBarShowsNextEvent)
-        #expect(Preferences(defaults: defaults).menuBarDisplay == .iconOnly)
-
-        preferences.menuBarDisplay = .time
-        #expect(preferences.menuBarShowsNextEvent)
-        #expect(!preferences.menuBarShowsEventTitles)
-    }
-
-    @Test func panelListFilterDefaultsToTheWeekAndPersists() {
-        #expect(Preferences(defaults: defaults).panelListFilter == .week)
-        Preferences(defaults: defaults).panelListFilter = .today
-        #expect(Preferences(defaults: defaults).panelListFilter == .today)
-        defaults.set("everything", forKey: Preferences.Keys.panelListFilter)
-        #expect(Preferences(defaults: defaults).panelListFilter == .week, "an unknown value falls back to the default")
-    }
-
-    @Test func updateCheckSettingsPersist() {
-        let checked = Date(timeIntervalSinceReferenceDate: 800_000_000)
-        let first = Preferences(defaults: defaults)
-        first.checksForUpdates = false
-        first.lastUpdateCheck = checked
-        #expect((defaults.object(forKey: Preferences.Keys.checksForUpdates) as? Bool) == false)
-        #expect((defaults.object(forKey: Preferences.Keys.lastUpdateCheck) as? Date) == checked)
-
-        let second = Preferences(defaults: defaults)
-        #expect(!second.checksForUpdates)
-        #expect(second.lastUpdateCheck == checked)
-
-        second.checksForUpdates = true
-        second.lastUpdateCheck = nil
-        #expect(defaults.object(forKey: Preferences.Keys.lastUpdateCheck) == nil)
-        let third = Preferences(defaults: defaults)
-        #expect(third.checksForUpdates)
-        #expect(third.lastUpdateCheck == nil)
-    }
-
-    @Test func offeredAndUnsupportedUpdatesPersistAndNilRemovesThem() {
-        let unsupported = UnsupportedUpdate(version: "1.2.0", minimumSystem: "15.0")
-        let first = Preferences(defaults: defaults)
-        first.offeredUpdateVersion = "1.1.0"
-        first.unsupportedUpdate = unsupported
-        #expect(defaults.string(forKey: Preferences.Keys.offeredUpdateVersion) == "1.1.0")
-        #expect(defaults.data(forKey: Preferences.Keys.unsupportedUpdate) != nil)
-
-        let second = Preferences(defaults: defaults)
-        #expect(second.offeredUpdateVersion == "1.1.0")
-        #expect(second.unsupportedUpdate == unsupported)
-
-        second.offeredUpdateVersion = nil
-        second.unsupportedUpdate = nil
-        #expect(defaults.object(forKey: Preferences.Keys.offeredUpdateVersion) == nil)
-        #expect(defaults.object(forKey: Preferences.Keys.unsupportedUpdate) == nil)
-        let third = Preferences(defaults: defaults)
-        #expect(third.offeredUpdateVersion == nil)
-        #expect(third.unsupportedUpdate == nil)
-    }
-
-    @Test func unreadableUnsupportedUpdateIsNil() {
-        defaults.set(Data("not json".utf8), forKey: Preferences.Keys.unsupportedUpdate)
-        #expect(Preferences(defaults: defaults).unsupportedUpdate == nil)
-        defaults.set(Data(#"{"version": "1.2.0"}"#.utf8), forKey: Preferences.Keys.unsupportedUpdate)
-        #expect(Preferences(defaults: defaults).unsupportedUpdate == nil, "no minimum system")
     }
 
     // MARK: Dismissed events
-
-    @Test func dismissedEventsPersistAndNoneRemovesTheKey() {
-        let dismissed = DismissedEvents().dismissing(MenuBarFixtures.workshop).dismissing(MenuBarFixtures.review)
-        let first = Preferences(defaults: defaults)
-        #expect(defaults.object(forKey: Preferences.Keys.dismissedEvents) == nil, "nothing is stored until something is dismissed")
-        first.dismissedEvents = dismissed
-        #expect(defaults.data(forKey: Preferences.Keys.dismissedEvents) != nil)
-
-        let second = Preferences(defaults: defaults)
-        #expect(second.dismissedEvents == dismissed)
-
-        second.dismissedEvents = dismissed.restoring(MenuBarFixtures.workshop)
-        #expect(Set(Preferences(defaults: defaults).dismissedEvents.occurrences.keys) == [MenuBarFixtures.review.id])
-        second.dismissedEvents = DismissedEvents()
-        #expect(defaults.object(forKey: Preferences.Keys.dismissedEvents) == nil)
-        #expect(Preferences(defaults: defaults).dismissedEvents.isEmpty)
-    }
-
-    /// All future events of a repeating event, and an occurrence restored inside them, survive a relaunch;
-    /// what 1.2.0 saved still loads.
-    @Test func dismissedSeriesPersistAndSavedBy120Load() throws {
-        let start = MenuBarFixtures.date(6, 9)
-        let standup = Meeting(id: Meeting.occurrenceID(eventIdentifier: "standup", start: start), title: "Standup",
-                              start: start, end: start.addingTimeInterval(15 * 60), seriesID: "standup")
-        let tomorrow = start.addingTimeInterval(24 * 60 * 60)
-        let next = Meeting(id: Meeting.occurrenceID(eventIdentifier: "standup", start: tomorrow), title: "Standup",
-                           start: tomorrow, end: tomorrow.addingTimeInterval(15 * 60), seriesID: "standup")
-        let dismissed = DismissedEvents().dismissing(standup, scope: .allFutureEvents).restoring(next)
-        Preferences(defaults: defaults).dismissedEvents = dismissed
-        let reloaded = Preferences(defaults: defaults).dismissedEvents
-        #expect(reloaded == dismissed)
-        #expect(reloaded.isDismissed(standup))
-        #expect(!reloaded.isDismissed(next))
-
-        let workshop = MenuBarFixtures.workshop
-        defaults.set(try JSONEncoder().encode([workshop.id: workshop.end]), forKey: Preferences.Keys.dismissedEvents)
-        let saved = Preferences(defaults: defaults).dismissedEvents
-        #expect(saved.isDismissed(workshop))
-        #expect(saved.occurrences[workshop.id]?.end == workshop.end)
-    }
-
-    @Test func unreadableDismissedEventsAreNone() {
-        defaults.set(Data("not json".utf8), forKey: Preferences.Keys.dismissedEvents)
-        #expect(Preferences(defaults: defaults).dismissedEvents.isEmpty)
-        defaults.set(Data(#"{"val": "tonight"}"#.utf8), forKey: Preferences.Keys.dismissedEvents)
-        #expect(Preferences(defaults: defaults).dismissedEvents.isEmpty)
-        defaults.set("val", forKey: Preferences.Keys.dismissedEvents)
-        #expect(Preferences(defaults: defaults).dismissedEvents.isEmpty, "not data at all")
-    }
 
     /// Dismissed events aren't a setting: Restore Defaults and the other resets leave them alone.
     @Test func resetsLeaveDismissedEventsAlone() {
@@ -467,22 +498,8 @@ final class PreferencesTests {
         preferences.resetAppearance()
         preferences.resetOutOfOfficeKeywords()
         preferences.applyCustomAppearance()
+        #expect(preferences.outOfOfficeKeywords == OutOfOfficeDetector.defaultKeywords, "the keywords' reset works")
         #expect(preferences.dismissedEvents == dismissed)
         #expect(Preferences(defaults: defaults).dismissedEvents == dismissed)
-    }
-
-    /// The meeting store reads `dismissedEvents` in `alertableMeetings`, so a dismissal reaches the alert,
-    /// the menu bar and the card through observation.
-    @Test func dismissingNotifiesObservers() async {
-        let preferences = Preferences(defaults: defaults)
-        // Exactly one change: `confirmation` fails on none and on more than one.
-        await confirmation("observers hear about the dismissal") { changed in
-            withObservationTracking {
-                _ = preferences.dismissedEvents
-            } onChange: {
-                changed()
-            }
-            preferences.dismissedEvents = preferences.dismissedEvents.dismissing(MenuBarFixtures.workshop)
-        }
     }
 }

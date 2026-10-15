@@ -3,72 +3,89 @@ import Testing
 @testable import JoinCore
 
 struct SettingsOptionsTests {
-    @Test func leadTimePresetsAreWholeMinutesWithoutSeconds() {
-        #expect(SettingsOptions.leadTimeMinutes == [0, 1, 3, 5])
-        #expect(SettingsOptions.leadTimeMinutes.map(SettingsOptions.leadTimeTitle(minutes:)) == [
-            "When the event starts", "1 minute before", "3 minutes before", "5 minutes before",
-        ])
-        #expect(SettingsOptions.customLeadTimeRange == 0...120)
-    }
+    /// Text the user sees, beside what it must say.
+    struct Copy: Sendable, CustomTestStringConvertible {
+        let testDescription: String
+        let actual: String?
+        let expected: String?
 
-    @Test @MainActor func theDefaultLeadTimeIsAPresetAndEarlierPresetsShowAsCustom() {
-        #expect(SettingsOptions.leadTimeMinutes.contains(SettingsOptions.wholeMinutes(Preferences.defaultLeadTime)))
-        for minutes in [2, 10] {
-            #expect(!SettingsOptions.leadTimeMinutes.contains(minutes), "\(minutes) shows as Custom…")
-            #expect(SettingsOptions.customLeadTimeRange.contains(minutes), "\(minutes) fits the custom field")
+        init(_ name: String, _ actual: String?, _ expected: String?) {
+            testDescription = name
+            self.actual = actual
+            self.expected = expected
         }
     }
 
-    @Test func alertMeNeverTitle() {
-        #expect(SettingsOptions.leadTimeNeverTitle == "Never")
+    // MARK: Pop-ups
+
+    /// A minutes pop-up: its presets and the range of its Custom… field, beside the ones the user chose, and the
+    /// defaults it must offer as presets.
+    struct MinutesPopUp: Sendable, CustomTestStringConvertible {
+        let testDescription: String
+        let presets: [Int]
+        let expectedPresets: [Int]
+        let range: ClosedRange<Int>
+        let expectedRange: ClosedRange<Int>
+        let defaults: [Int]
     }
 
-    @Test func paneCopy() {
-        #expect(SettingsOptions.menuBarSectionTitle == "Menu bar")
-        #expect(SettingsOptions.menuBarShowsTitle == "Shows")
-        #expect(SettingsOptions.autoCloseRowTitle == "Close automatically")
-        #expect(SettingsOptions.showDemoHelp == "Shows a real full-screen alert with a sample event. Press Esc to close it.")
-        #expect(SettingsOptions.showDemoUnavailableHelp == "Close the current full-screen alert first.")
-        #expect(SettingsOptions.colorsSectionTitle == "Colors")
-        #expect(SettingsOptions.alertMeNeverNote == "Alert me is set to Never in Full-Screen Alert. Show Demo still works.")
-        #expect(SettingsOptions.restoreAppearanceHelp == "Goes back to the Dark style. Your own style stays on the Custom card.")
+    static let popUps: [MinutesPopUp] = [
+        MinutesPopUp(
+            testDescription: "Alert me",
+            presets: SettingsOptions.leadTimeMinutes, expectedPresets: [0, 1, 3, 5],
+            range: SettingsOptions.customLeadTimeRange, expectedRange: 0...120,
+            defaults: [SettingsOptions.wholeMinutes(Preferences.defaultLeadTime)]
+        ),
+        MinutesPopUp(
+            testDescription: "Snooze",
+            presets: SettingsOptions.snoozeMinutes, expectedPresets: [1, 3, 5, 10],
+            range: SettingsOptions.customSnoozeRange, expectedRange: 1...120,
+            defaults: Preferences.defaultSnoozeDurations.map(SettingsOptions.wholeMinutes)
+        ),
+        MinutesPopUp(
+            testDescription: "Starting soon",
+            presets: SettingsOptions.startingSoonMinutes, expectedPresets: [1, 3, 5, 10],
+            range: StartingSoonPill.minuteRange, expectedRange: StartingSoonPill.minuteRange,
+            defaults: [StartingSoonPill.default.minutes]
+        ),
+    ]
+
+    /// Every default is a preset, and every preset fits the Custom… field.
+    @Test(arguments: popUps)
+    func popUpPresets(_ popUp: MinutesPopUp) {
+        #expect(popUp.presets == popUp.expectedPresets)
+        #expect(popUp.range == popUp.expectedRange)
+        #expect(popUp.defaults.allSatisfy(popUp.presets.contains), "the defaults are presets")
+        #expect(popUp.presets.allSatisfy(popUp.range.contains), "the presets fit the Custom… field")
     }
 
-    @Test func menuBarPillCopy() {
-        #expect(SettingsOptions.startingSoonRowTitle == "Starting soon")
-        #expect(SettingsOptions.startingSoonHelp == "The menu bar shows the event like this from then on. The panel highlights it at the same time.")
-        #expect(SettingsOptions.startingSoonFieldLabel == "Minutes before the event")
-        #expect(SettingsOptions.menuBarPreviewLabel == "Preview of the menu bar before an event")
-        #expect(SettingsOptions.menuBarColorTitle == "Color")
-        #expect(SettingsOptions.menuBarColorAccessibilityTitle == "Menu bar fill")
-        #expect(SettingsOptions.menuBarColorWellLabel == "Menu bar fill color")
-        #expect(SettingsOptions.menuBarTextAccessibilityTitle == "Menu bar text")
-        #expect(SettingsOptions.menuBarTextWellLabel == "Menu bar text color")
-    }
+    static let phrases: [Copy] = [
+        Copy("Alert me at 0", SettingsOptions.leadTimeTitle(minutes: 0), "When the event starts"),
+        Copy("Alert me at 1", SettingsOptions.leadTimeTitle(minutes: 1), "1 minute before"),
+        Copy("Alert me at 3", SettingsOptions.leadTimeTitle(minutes: 3), "3 minutes before"),
+        Copy("Alert me at 5", SettingsOptions.leadTimeTitle(minutes: 5), "5 minutes before"),
+        Copy("Starting soon at 1", SettingsOptions.startingSoonTitle(minutes: 1), "1 minute before"),
+        Copy("Starting soon at 5", SettingsOptions.startingSoonTitle(minutes: 5), "5 minutes before"),
+        Copy("Custom… unit before, 1", SettingsOptions.minutesBeforeUnit(1), "minute before"),
+        Copy("Custom… unit before, 7", SettingsOptions.minutesBeforeUnit(7), "minutes before"),
+        Copy("Custom… unit, 1", SettingsOptions.minutesUnit(1), "minute"),
+        Copy("Custom… unit, 45", SettingsOptions.minutesUnit(45), "minutes"),
+        // Hours only at whole hours, so 90 stays minutes.
+        Copy("duration of 1 min", SettingsOptions.durationTitle(minutes: 1), "1 minute"),
+        Copy("duration of 5 min", SettingsOptions.durationTitle(minutes: 5), "5 minutes"),
+        Copy("duration of 60 min", SettingsOptions.durationTitle(minutes: 60), "1 hour"),
+        Copy("duration of 90 min", SettingsOptions.durationTitle(minutes: 90), "90 minutes"),
+        Copy("duration of 120 min", SettingsOptions.durationTitle(minutes: 120), "2 hours"),
+        Copy("short duration of 1 min", SettingsOptions.shortDurationTitle(minutes: 1), "1 min"),
+        Copy("short duration of 5 min", SettingsOptions.shortDurationTitle(minutes: 5), "5 min"),
+        Copy("short duration of 60 min", SettingsOptions.shortDurationTitle(minutes: 60), "1 hr"),
+        Copy("short duration of 90 min", SettingsOptions.shortDurationTitle(minutes: 90), "90 min"),
+        Copy("short duration of 120 min", SettingsOptions.shortDurationTitle(minutes: 120), "2 hr"),
+    ]
 
-    @Test @MainActor func snoozePresetsAndCustomRange() {
-        #expect(SettingsOptions.snoozeMinutes == [1, 3, 5, 10])
-        #expect(SettingsOptions.customSnoozeRange == 1...120)
-        let defaults = Preferences.defaultSnoozeDurations.map(SettingsOptions.wholeMinutes)
-        #expect(defaults.allSatisfy(SettingsOptions.snoozeMinutes.contains), "the default snoozes are presets")
-    }
-
-    @Test func customMinuteUnits() {
-        #expect(SettingsOptions.minutesBeforeUnit(1) == "minute before")
-        #expect(SettingsOptions.minutesBeforeUnit(7) == "minutes before")
-        #expect(SettingsOptions.minutesUnit(1) == "minute")
-        #expect(SettingsOptions.minutesUnit(45) == "minutes")
-    }
-
-    @Test func durationTitles() {
-        let cases: [(minutes: Int, long: String, short: String)] = [
-            (1, "1 minute", "1 min"), (5, "5 minutes", "5 min"), (30, "30 minutes", "30 min"),
-            (60, "1 hour", "1 hr"), (90, "90 minutes", "90 min"), (120, "2 hours", "2 hr"),
-        ]
-        for c in cases {
-            #expect(SettingsOptions.durationTitle(minutes: c.minutes) == c.long, "\(c.minutes) min")
-            #expect(SettingsOptions.shortDurationTitle(minutes: c.minutes) == c.short, "\(c.minutes) min")
-        }
+    @Test(arguments: phrases)
+    func minutePhrases(_ phrase: Copy) {
+        #expect(phrase.actual == phrase.expected)
     }
 
     @Test func autoCloseMapsNeverAndMinutes() {
@@ -82,58 +99,85 @@ struct SettingsOptionsTests {
         #expect(SettingsOptions.autoCloseTitle(minutes: 60) == "After 1 hour")
     }
 
-    @Test func openAtLoginReadsOnWhileWaitingForApproval() {
-        #expect(!SettingsOptions.opensAtLogin(.notRegistered))
-        #expect(!SettingsOptions.opensAtLogin(.notFound))
-        #expect(SettingsOptions.opensAtLogin(.requiresApproval))
-        #expect(SettingsOptions.opensAtLogin(.enabled))
+    /// Waiting for approval in System Settings reads as on, so turning the switch off withdraws the request,
+    /// and the hint stays until the user allows it.
+    @Test(arguments: [
+        (LoginItemStatus.notRegistered, false, nil),
+        (.notFound, false, nil),
+        (.requiresApproval, true, "Allow Join! in System Settings › General › Login Items to open it at login."),
+        (.enabled, true, nil),
+    ] as [(LoginItemStatus, Bool, String?)])
+    func openAtLoginFollowsTheStatus(_ status: LoginItemStatus, isOn: Bool, hint: String?) {
+        #expect(SettingsOptions.opensAtLogin(status) == isOn)
+        #expect(SettingsOptions.openAtLoginHint(status) == hint)
     }
 
-    @Test func openAtLoginHintClearsOnceApproved() {
-        #expect(SettingsOptions.openAtLoginHint(.requiresApproval)
-                == "Allow Join! in System Settings › General › Login Items to open it at login.")
-        #expect(SettingsOptions.openAtLoginHint(.enabled) == nil)
-        #expect(SettingsOptions.openAtLoginHint(.notRegistered) == nil)
-        #expect(SettingsOptions.openAtLoginHint(.notFound) == nil)
+    // MARK: Copy
+
+    static let copy: [Copy] = [
+        Copy("Alert me's Never", SettingsOptions.leadTimeNeverTitle, "Never"),
+        Copy("Menu bar section", SettingsOptions.menuBarSectionTitle, "Menu bar"),
+        Copy("Menu bar's Shows row", SettingsOptions.menuBarShowsTitle, "Shows"),
+        Copy("Starting soon row", SettingsOptions.startingSoonRowTitle, "Starting soon"),
+        Copy(
+            "Starting soon's help tag",
+            SettingsOptions.startingSoonHelp,
+            "The menu bar shows the event like this from then on. The panel highlights it at the same time."
+        ),
+        Copy("menu bar Color row", SettingsOptions.menuBarColorTitle, "Color"),
+        Copy("auto-close row", SettingsOptions.autoCloseRowTitle, "Close automatically"),
+        Copy("Show Demo's help tag", SettingsOptions.showDemoHelp, "Shows a real full-screen alert with a sample event. Press Esc to close it."),
+        Copy("Show Demo's help tag during an alert", SettingsOptions.showDemoUnavailableHelp, "Close the current full-screen alert first."),
+        Copy("Colors section", SettingsOptions.colorsSectionTitle, "Colors"),
+        Copy("Appearance's Never note", SettingsOptions.alertMeNeverNote, "Alert me is set to Never in Full-Screen Alert. Show Demo still works."),
+        Copy("Restore Defaults' help tag", SettingsOptions.restoreAppearanceHelp, "Goes back to the Dark style. Your own style stays on the Custom card."),
+        Copy("Events section", SettingsOptions.eventsSectionTitle, "Events"),
+        Copy("Events with no participants row", SettingsOptions.eventsWithoutParticipantsTitle, "Events with no participants"),
+        Copy("Out-of-office events row", SettingsOptions.outOfOfficeEventsTitle, "Out-of-office events"),
+        Copy("Out-of-office keywords row", SettingsOptions.outOfOfficeKeywordsTitle, "Out-of-office keywords"),
+        Copy(
+            "Events footnote",
+            SettingsOptions.eventsFootnote,
+            "An event counts as out of office when its title contains any of these words. Press Return to add one. Only Show and alert lets an event alert, take the menu bar or sit at the top of the panel. When an event is both kinds, the choice that shows less wins."
+        ),
+        // A fixture run is marked on every pane, so it can't pass for the real app.
+        Copy("window title", SettingsOptions.windowTitle(pane: "General", isFixture: false), "General"),
+        Copy("window title in a fixture run", SettingsOptions.windowTitle(pane: "General", isFixture: true), "General (fixture)"),
+    ]
+
+    @Test(arguments: copy)
+    func settingsCopy(_ copy: Copy) {
+        #expect(copy.actual == copy.expected)
     }
 
-    @Test func windowTitleMarksFixtureRuns() {
-        #expect(SettingsOptions.windowTitle(pane: "General", isFixture: false) == "General")
-        #expect(SettingsOptions.windowTitle(pane: "General", isFixture: true) == "General (fixture)")
-        #expect(SettingsOptions.windowTitle(pane: "Appearance", isFixture: true) == "Appearance (fixture)")
+    /// The footnote names the choice as the pop-up does, so renaming the choice can't leave it stale.
+    @Test func theEventsFootnoteNamesShowAndAlert() {
+        #expect(SettingsOptions.eventsFootnote.contains(EventVisibility.showAndAlert.title))
     }
 
-    @Test func updatedLabel() {
-        let refreshed = Date(timeIntervalSinceReferenceDate: 800_000_000)
-        func label(after seconds: TimeInterval) -> String {
-            SettingsOptions.updatedLabel(lastRefreshed: refreshed, now: refreshed.addingTimeInterval(seconds))
-        }
-        #expect(label(after: -5) == "Updated just now")
-        #expect(label(after: 59) == "Updated just now")
-        #expect(label(after: 60) == "Updated 1 minute ago")
-        #expect(label(after: 14 * 60 + 30) == "Updated 14 minutes ago")
-        #expect(label(after: 3600) == "Updated 1 hour ago")
-        #expect(label(after: 5 * 3600) == "Updated 5 hours ago")
-        #expect(label(after: 50 * 3600) == "Updated 2 days ago")
-        #expect(label(after: 24 * 3600) == "Updated 1 day ago")
-        #expect(label(after: 119) == "Updated 1 minute ago")
-    }
+    // MARK: Calendars
 
-    @Test func relativeTimeRoundsDown() {
+    /// Rounded down, and a time in the future (the clock moved back) reads as just now. The Calendars pane
+    /// shows it after "Updated".
+    @Test(arguments: [
+        (-3600, "just now"),
+        (0, "just now"),
+        (59.9, "just now"),
+        (60, "1 minute ago"),
+        (119, "1 minute ago"),
+        (2 * 60, "2 minutes ago"),
+        (3600 - 1, "59 minutes ago"),
+        (2 * 3600 - 1, "1 hour ago"),
+        (23 * 3600 + 59 * 60, "23 hours ago"),
+        (24 * 3600, "1 day ago"),
+        (48 * 3600 - 1, "1 day ago"),
+        (30 * 24 * 3600, "30 days ago"),
+    ] as [(TimeInterval, String)])
+    func relativeTimeRoundsDown(seconds: TimeInterval, expected: String) {
         let start = Date(timeIntervalSinceReferenceDate: 800_000_000)
-        func relative(after seconds: TimeInterval) -> String {
-            SettingsOptions.relativeTime(since: start, now: start.addingTimeInterval(seconds))
-        }
-        #expect(relative(after: -3600) == "just now")
-        #expect(relative(after: 0) == "just now")
-        #expect(relative(after: 59.9) == "just now")
-        #expect(relative(after: 60) == "1 minute ago")
-        #expect(relative(after: 2 * 60) == "2 minutes ago")
-        #expect(relative(after: 3600 - 1) == "59 minutes ago")
-        #expect(relative(after: 2 * 3600 - 1) == "1 hour ago")
-        #expect(relative(after: 23 * 3600 + 59 * 60) == "23 hours ago")
-        #expect(relative(after: 48 * 3600 - 1) == "1 day ago")
-        #expect(relative(after: 30 * 24 * 3600) == "30 days ago")
+        let now = start.addingTimeInterval(seconds)
+        #expect(SettingsOptions.relativeTime(since: start, now: now) == expected)
+        #expect(SettingsOptions.updatedLabel(lastRefreshed: start, now: now) == "Updated " + expected)
     }
 
     @Test func calendarSelectionCountsAndGroupToggles() {
@@ -148,17 +192,7 @@ struct SettingsOptionsTests {
         #expect(CalendarSelection.setting(["work"], enabled: true, in: [], allCalendarIDs: all) == ["work"])
     }
 
-    @Test func eventsSectionCopy() {
-        #expect(SettingsOptions.eventsSectionTitle == "Events")
-        #expect(SettingsOptions.eventsWithoutParticipantsTitle == "Events with no participants")
-        #expect(SettingsOptions.outOfOfficeEventsTitle == "Out-of-office events")
-        #expect(SettingsOptions.outOfOfficeKeywordsTitle == "Out-of-office keywords")
-        #expect(
-            SettingsOptions.eventsFootnote
-                == "An event counts as out of office when its title contains any of these words. Press Return to add one. Only Show and alert lets an event alert, take the menu bar or sit at the top of the panel. When an event is both kinds, the choice that shows less wins."
-        )
-        #expect(SettingsOptions.eventsFootnote.contains(EventVisibility.showAndAlert.title), "names the choice as the pop-up does")
-    }
+    // MARK: Out-of-office keywords
 
     @Test func addingKeywordsTrimsAndSkipsDuplicates() {
         let keywords = ["out of office", "OOO"]
@@ -180,13 +214,5 @@ struct SettingsOptionsTests {
         let pasted = KeywordList.splittingDraft("holiday, ooo, sick, lea", into: start)
         #expect(pasted.keywords == ["OOO", "holiday", "sick"])
         #expect(pasted.draft == "lea")
-    }
-
-    @Test func startingSoonPresets() {
-        #expect(SettingsOptions.startingSoonMinutes == [1, 3, 5, 10])
-        #expect(SettingsOptions.startingSoonMinutes.contains(StartingSoonPill.default.minutes), "the default is a preset")
-        #expect(SettingsOptions.startingSoonMinutes.allSatisfy(StartingSoonPill.minuteRange.contains))
-        #expect(SettingsOptions.startingSoonTitle(minutes: 1) == "1 minute before")
-        #expect(SettingsOptions.startingSoonTitle(minutes: 5) == "5 minutes before")
     }
 }
