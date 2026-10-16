@@ -6,7 +6,8 @@ public struct MenuBarStatus: Equatable, Sendable {
     public enum Kind: Equatable, Sendable {
         /// Nothing upcoming: the calendar icon alone.
         case idle
-        /// Full-screen alerts paused: the crossed-out bell, never any text.
+        /// Alerts paused, both kinds: the crossed-out bell, never any text. Never on either kind isn't a pause
+        /// and shows no bell.
         case paused
         /// The next meeting is more than an hour away: "Next in 11 h 40 min" later today,
         /// "Tomorrow at 1:00 PM", "In 3 days at 9:10 AM" (a title, when shown, replaces "Next").
@@ -73,7 +74,7 @@ public enum MenuBarPresenter {
         locale: Locale = .current
     ) -> MenuBarStatus {
         if pauseState.isPaused(at: now) {
-            return MenuBarStatus(kind: .paused, text: nil, accessibilityLabel: "Join!: full-screen alerts paused")
+            return MenuBarStatus(kind: .paused, text: nil, accessibilityLabel: "Join!: alerts paused")
         }
         let meetings = focus(meetings, now: now)
 
@@ -198,8 +199,8 @@ public enum MenuBarPresenter {
         return minutes % 60 == 0 ? hours : "\(hours) \(unit(minutes % 60, "minute"))"
     }
 
-    /// "Full-screen alerts paused until 11:50 AM", "Full-screen alerts paused until tomorrow", "Full-screen
-    /// alerts paused", or nil.
+    /// The paused bar: "Alerts paused until 11:50 AM", "Alerts paused until tomorrow", "Alerts paused", or nil.
+    /// Short enough for the longest to fit beside Resume.
     public static func pausedMessage(
         _ state: PauseState,
         now: Date,
@@ -210,11 +211,11 @@ public enum MenuBarPresenter {
         case .active:
             return nil
         case .indefinitely:
-            return "Full-screen alerts paused"
+            return "Alerts paused"
         case .until(let end):
             let startOfTomorrow = calendar.date(byAdding: .day, value: 1, to: calendar.startOfDay(for: now))
-            if end == startOfTomorrow { return "Full-screen alerts paused until tomorrow" }
-            return "Full-screen alerts paused until \(shortTime(end, calendar: calendar, locale: locale))"
+            if end == startOfTomorrow { return "Alerts paused until tomorrow" }
+            return "Alerts paused until \(shortTime(end, calendar: calendar, locale: locale))"
         }
     }
 

@@ -228,7 +228,7 @@ private struct PanelHeader: View {
                 // Paused, the bell is a pressed toggle that resumes; otherwise it opens the pause menu.
                 HeaderButton(
                     symbol: model.isPaused ? "bell.slash" : "bell",
-                    label: model.isPaused ? "Resume full-screen alerts" : "Pause full-screen alerts",
+                    label: model.isPaused ? PauseCopy.resumeTitle : PauseCopy.pauseTitle,
                     isOn: model.isPaused,
                     kind: model.isPaused ? .action(model.resume) : .menu(context.showPauseMenu)
                 )

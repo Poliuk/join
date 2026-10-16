@@ -5,6 +5,8 @@ import Testing
 /// (Starting soon has the same presets as Snooze, and no Never either).
 struct MinutesChoiceTests {
     static let alertMe = MinutesChoice(presets: SettingsOptions.leadTimeMinutes, offersNever: true)
+    /// Notify me: the same rule as Alert me, Never included, with its own stored time and Never.
+    static let notifyMe = MinutesChoice(presets: SettingsOptions.notificationLeadTimeMinutes, offersNever: true)
     static let snooze = MinutesChoice(presets: SettingsOptions.snoozeMinutes)
 
     /// A pop-up's stored state, and the item it shows.
@@ -177,6 +179,18 @@ struct MinutesChoiceTests {
             steps: [
                 (.pick(.never), Story.State(.never, 10, never: true)),
                 (.pick(.custom), Story.State(.custom, 10)),
+            ]
+        ),
+        // Notify me opens on Never with 5 minutes kept, for new installs and upgrades alike. Custom… turns
+        // notifications on at once with that time; a preset turns them on with its own.
+        Story(
+            testDescription: "Notify me as installed, then Custom…, then Never, then a preset",
+            rule: notifyMe,
+            opening: Story.State(.never, 5, never: true),
+            steps: [
+                (.pick(.custom), Story.State(.custom, 5)),
+                (.pick(.never), Story.State(.never, 5, never: true)),
+                (.pick(.preset(1)), Story.State(.preset(1), 1)),
             ]
         ),
         Story(

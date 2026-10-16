@@ -264,16 +264,9 @@ private struct AlertMeetingHeader: View {
         .frame(maxWidth: 960)
     }
 
-    /// The location, unless it's just the join link again.
+    /// The location, unless it's just the join link again; the notification's body shows it the same way.
     private var location: String? {
-        guard let raw = meeting.location else { return nil }
-        let text = raw
-            .components(separatedBy: .newlines)
-            .map { $0.trimmingCharacters(in: .whitespaces) }
-            .filter { !$0.isEmpty }
-            .joined(separator: ", ")
-        guard !text.isEmpty, text != meeting.joinURL?.absoluteString else { return nil }
-        return text
+        LocationFormatter.alertLocation(meeting.location, joinURL: meeting.joinURL)
     }
 }
 

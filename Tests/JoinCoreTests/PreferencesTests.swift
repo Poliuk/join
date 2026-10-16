@@ -37,6 +37,9 @@ final class PreferencesTests {
         let preferences = Preferences(defaults: defaults)
         #expect(preferences.leadTime == 180)
         #expect(preferences.fullScreenAlertsEnabled)
+        #expect(!preferences.notificationsEnabled, "Notify me is Never")
+        #expect(preferences.notificationLeadTime == 300, "Custom… keeps 5 minutes")
+        #expect(preferences.notificationPlaysSound)
         #expect(preferences.snoozeDurations == SnoozeDurations(first: 60, second: 300))
         #expect(preferences.alertScreens == .all)
         #expect(preferences.menuBarDisplay == .time)
@@ -64,6 +67,9 @@ final class PreferencesTests {
     enum Setting: CaseIterable, Sendable {
         case leadTime
         case fullScreenAlertsEnabled
+        case notificationsEnabled
+        case notificationLeadTime
+        case notificationPlaysSound
         case snoozeDurations
         case alertScreensMain, alertScreensSecondary, alertScreensPointer, alertScreensBackToAll
         case menuBarDisplayIconOnly, menuBarDisplayTitleAndTime
@@ -122,6 +128,9 @@ final class PreferencesTests {
         return switch setting {
         case .leadTime: Probe(\.leadTime, key: Keys.leadTime, to: 300)
         case .fullScreenAlertsEnabled: Probe(\.fullScreenAlertsEnabled, key: Keys.fullScreenAlertsEnabled, to: false)
+        case .notificationsEnabled: Probe(\.notificationsEnabled, key: Keys.notificationsEnabled, to: true)
+        case .notificationLeadTime: Probe(\.notificationLeadTime, key: Keys.notificationLeadTime, to: 60)
+        case .notificationPlaysSound: Probe(\.notificationPlaysSound, key: Keys.notificationPlaysSound, to: false)
         case .snoozeDurations: Probe(\.snoozeDurations, key: Keys.snoozeDurations, to: SnoozeDurations(first: 180, second: 600))
         case .alertScreensMain: Probe(\.alertScreens, key: Keys.alertScreens, to: .main)
         case .alertScreensSecondary: Probe(\.alertScreens, key: Keys.alertScreens, to: .secondary)
@@ -254,6 +263,16 @@ final class PreferencesTests {
         #expect(preferences.leadTime == expected, "set")
     }
 
+    /// Notify me is in whole minutes too, never below 0, set or loaded, like Alert me.
+    @Test(arguments: [(150.0, 180.0), (89, 60), (-60, 0), (0, 0), (7260, 7260)])
+    func notificationLeadTimeIsWholeMinutes(seconds: TimeInterval, expected: TimeInterval) {
+        defaults.set(seconds, forKey: Keys.notificationLeadTime)
+        let preferences = Preferences(defaults: defaults)
+        #expect(preferences.notificationLeadTime == expected, "loaded")
+        preferences.notificationLeadTime = seconds
+        #expect(preferences.notificationLeadTime == expected, "set")
+    }
+
     /// The alert's auto-close timer gets this value, so it's never under a minute, set or loaded: a 0 would close
     /// every full-screen alert as it appears.
     @Test(arguments: [(0.0, 60.0), (30, 60), (-300, 60), (60, 60), (90, 90)])
@@ -316,7 +335,50 @@ final class PreferencesTests {
         #expect(reopened.leadTime == 300)
     }
 
+    /// Each kind has its own time and Never: Notify me's Never keeps its time, and neither kind's time or
+    /// Never touches the other's.
+    @Test func eachKindKeepsItsOwnTimeAndNever() {
+        let preferences = Preferences(defaults: defaults)
+        preferences.notificationLeadTime = 60
+        preferences.notificationsEnabled = true
+        preferences.leadTime = 0
+        preferences.fullScreenAlertsEnabled = false
+        preferences.notificationsEnabled = false
+
+        let reopened = Preferences(defaults: defaults)
+        #expect(!reopened.notificationsEnabled)
+        #expect(reopened.notificationLeadTime == 60)
+        #expect(!reopened.fullScreenAlertsEnabled)
+        #expect(reopened.leadTime == 0)
+    }
+
     // MARK: Settings from earlier builds
+
+    /// An upgrade from 1.2.x, whose settings have no notification keys, keeps exactly its behaviour: every
+    /// stored value carries over, Notify me reads Never, so nothing is sent and macOS isn't asked, and reading
+    /// writes nothing new.
+    @Test func anUpgradeFrom12KeepsNotificationsOff() {
+        let stored: [String: any Sendable] = [
+            Keys.leadTime: 60.0,
+            Keys.fullScreenAlertsEnabled: true,
+            Keys.snoozeDurations: [120.0, 600.0],
+            Keys.soundName: "Glass",
+            Keys.autoCloseEnabled: false,
+        ]
+        for (key, value) in stored { defaults.set(value, forKey: key) }
+        let before = Set((defaults.persistentDomain(forName: suiteName) ?? [:]).keys)
+
+        let preferences = Preferences(defaults: defaults)
+        #expect(!preferences.notificationsEnabled)
+        #expect(preferences.notificationLeadTime == Preferences.defaultNotificationLeadTime)
+        #expect(preferences.notificationPlaysSound)
+        #expect(preferences.leadTime == 60)
+        #expect(preferences.fullScreenAlertsEnabled)
+        #expect(preferences.snoozeDurations == SnoozeDurations(first: 120, second: 600))
+        #expect(preferences.soundName == "Glass")
+        #expect(!preferences.autoCloseEnabled)
+        #expect(Set((defaults.persistentDomain(forName: suiteName) ?? [:]).keys) == before, "nothing is written")
+    }
 
     /// Switches stored by earlier builds, read until a choice is stored.
     struct LegacyKeys: Sendable, CustomTestStringConvertible {

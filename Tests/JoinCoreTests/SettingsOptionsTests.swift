@@ -36,6 +36,13 @@ struct SettingsOptionsTests {
             range: SettingsOptions.customLeadTimeRange, expectedRange: 0...120,
             defaults: [SettingsOptions.wholeMinutes(Preferences.defaultLeadTime)]
         ),
+        // Exactly Alert me's presets, with the 5 minutes Custom… keeps while it is Never.
+        MinutesPopUp(
+            testDescription: "Notify me",
+            presets: SettingsOptions.notificationLeadTimeMinutes, expectedPresets: [0, 1, 3, 5],
+            range: SettingsOptions.customNotificationLeadTimeRange, expectedRange: 0...120,
+            defaults: [SettingsOptions.wholeMinutes(Preferences.defaultNotificationLeadTime)]
+        ),
         MinutesPopUp(
             testDescription: "Snooze",
             presets: SettingsOptions.snoozeMinutes, expectedPresets: [1, 3, 5, 10],
@@ -125,11 +132,27 @@ struct SettingsOptionsTests {
             "The menu bar shows the event like this from then on. The panel highlights it at the same time."
         ),
         Copy("menu bar Color row", SettingsOptions.menuBarColorTitle, "Color"),
+        Copy("Alerts pane", SettingsOptions.alertsPaneTitle, "Alerts"),
+        Copy("Full-screen alert box", SettingsOptions.fullScreenAlertSectionTitle, "Full-screen alert"),
+        Copy("Notification box", SettingsOptions.notificationSectionTitle, "Notification"),
+        Copy("Snooze box", SettingsOptions.snoozeSectionTitle, "Snooze"),
         Copy("auto-close row", SettingsOptions.autoCloseRowTitle, "Close automatically"),
+        Copy("Notify me row", SettingsOptions.notifyMeTitle, "Notify me"),
+        Copy("Notify me's help tag", SettingsOptions.notifyMeHelp,
+             "Sends a notification with Join and snooze buttons. macOS shows it in the corner of the screen."),
+        Copy("Play sound row", SettingsOptions.playSoundTitle, "Play sound"),
+        Copy(
+            "Notification footnote",
+            SettingsOptions.notificationFootnote,
+            "How long a notification stays on screen, and whether it shows during a Focus or while you share your screen, is up to System Settings › Notifications. The full-screen alert comes up either way."
+        ),
+        Copy("Snooze footnote", SettingsOptions.snoozeFootnote,
+             "The full-screen alert and the notification both offer these, then At event start."),
+        Copy("Calendars' warning with none checked", SettingsOptions.noCalendarsWarning, "No calendars selected: you won't get any alerts."),
         Copy("Show Demo's help tag", SettingsOptions.showDemoHelp, "Shows a real full-screen alert with a sample event. Press Esc to close it."),
         Copy("Show Demo's help tag during an alert", SettingsOptions.showDemoUnavailableHelp, "Close the current full-screen alert first."),
         Copy("Colors section", SettingsOptions.colorsSectionTitle, "Colors"),
-        Copy("Appearance's Never note", SettingsOptions.alertMeNeverNote, "Alert me is set to Never in Full-Screen Alert. Show Demo still works."),
+        Copy("Appearance's Never note", SettingsOptions.alertMeNeverNote, "Alert me is set to Never in Alerts. Show Demo still works."),
         Copy("Restore Defaults' help tag", SettingsOptions.restoreAppearanceHelp, "Goes back to the Dark style. Your own style stays on the Custom card."),
         Copy("Events section", SettingsOptions.eventsSectionTitle, "Events"),
         Copy("Events with no participants row", SettingsOptions.eventsWithoutParticipantsTitle, "Events with no participants"),
@@ -148,6 +171,14 @@ struct SettingsOptionsTests {
     @Test(arguments: copy)
     func settingsCopy(_ copy: Copy) {
         #expect(copy.actual == copy.expected)
+    }
+
+    /// The footnotes name what they point at as it's named elsewhere, so a rename can't leave them stale: the
+    /// Snooze box's the button both kinds add after the durations, Appearance's Never note the pane Alert me
+    /// is on.
+    @Test func theAlertsFootnotesNameWhatTheyPointAt() {
+        #expect(SettingsOptions.snoozeFootnote.contains(AlertCountdown.snoozeUntilStartLabel))
+        #expect(SettingsOptions.alertMeNeverNote.contains(" in \(SettingsOptions.alertsPaneTitle)."))
     }
 
     /// The footnote names the choice as the pop-up does, so renaming the choice can't leave it stale.

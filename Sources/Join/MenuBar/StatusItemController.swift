@@ -311,7 +311,7 @@ final class StatusItemController: NSObject, NSWindowDelegate {
     private func makePauseMenu() -> NSMenu {
         let menu = NSMenu()
         if model.isPaused {
-            menu.addItem(ClosureMenuItem(title: "Resume full-screen alerts") { [model] in model.resume() })
+            menu.addItem(ClosureMenuItem(title: PauseCopy.resumeTitle) { [model] in model.resume() })
             menu.addItem(.separator())
         }
         for option in PauseOption.allCases {

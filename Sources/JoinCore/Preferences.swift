@@ -15,6 +15,11 @@ public final class Preferences {
     enum Keys {
         static let leadTime = "leadTime"
         static let fullScreenAlertsEnabled = "fullScreenAlertsEnabled"
+        /// Notify me, new in 1.3.0: absent before, so every earlier install reads the defaults (Never, 5 minutes
+        /// kept, sound on) and nothing is sent until the user picks a time.
+        static let notificationsEnabled = "notificationsEnabled"
+        static let notificationLeadTime = "notificationLeadTime"
+        static let notificationPlaysSound = "notificationPlaysSound"
         static let snoozeDurations = "snoozeDurations"
         static let alertScreens = "alertScreens"
         /// Earlier builds stored a Bool here; true maps to `.all`, false to `.main`.
@@ -55,6 +60,8 @@ public final class Preferences {
     // type, which the class's isolation doesn't reach). Isolated, another module could only read them on the
     // main actor or with `await`.
     nonisolated public static let defaultLeadTime: TimeInterval = 3 * 60
+    /// The time Notify me keeps while it is Never, which Custom… shows: 5 minutes.
+    nonisolated public static let defaultNotificationLeadTime: TimeInterval = 5 * 60
     nonisolated public static let defaultSnoozeDurations = SnoozeDurations(first: 60, second: 5 * 60)
     nonisolated public static let defaultAutoCloseAfter: TimeInterval = 15 * 60
 
@@ -62,6 +69,9 @@ public final class Preferences {
 
     @ObservationIgnored private var _leadTime: TimeInterval
     @ObservationIgnored private var _fullScreenAlertsEnabled: Bool
+    @ObservationIgnored private var _notificationsEnabled: Bool
+    @ObservationIgnored private var _notificationLeadTime: TimeInterval
+    @ObservationIgnored private var _notificationPlaysSound: Bool
     @ObservationIgnored private var _snoozeDurations: SnoozeDurations
     @ObservationIgnored private var _alertScreens: AlertScreens
     @ObservationIgnored private var _menuBarDisplay: MenuBarDisplay
@@ -87,6 +97,11 @@ public final class Preferences {
         self.defaults = defaults
         _leadTime = Self.wholeMinutes(defaults.object(forKey: Keys.leadTime) as? TimeInterval ?? Self.defaultLeadTime)
         _fullScreenAlertsEnabled = defaults.object(forKey: Keys.fullScreenAlertsEnabled) as? Bool ?? true
+        _notificationsEnabled = defaults.object(forKey: Keys.notificationsEnabled) as? Bool ?? false
+        _notificationLeadTime = Self.wholeMinutes(
+            defaults.object(forKey: Keys.notificationLeadTime) as? TimeInterval ?? Self.defaultNotificationLeadTime
+        )
+        _notificationPlaysSound = defaults.object(forKey: Keys.notificationPlaysSound) as? Bool ?? true
         _snoozeDurations = (defaults.array(forKey: Keys.snoozeDurations) as? [TimeInterval]).flatMap(SnoozeDurations.init)
             ?? Self.defaultSnoozeDurations
         if let raw = defaults.string(forKey: Keys.alertScreens), let stored = AlertScreens(rawValue: raw) {
@@ -167,7 +182,7 @@ public final class Preferences {
     }
 
     /// False when Alert me is set to Never: no full-screen alert is scheduled or shown, while the menu bar
-    /// item, its pill and the panel carry on. `leadTime` keeps the last time chosen. On by default.
+    /// item, its pill, the panel and notifications carry on. `leadTime` keeps the last time chosen. On by default.
     public var fullScreenAlertsEnabled: Bool {
         get { access(keyPath: \.fullScreenAlertsEnabled); return _fullScreenAlertsEnabled }
         set {
@@ -178,7 +193,45 @@ public final class Preferences {
         }
     }
 
-    /// The alert's two snooze buttons, stored as a two-element array of seconds. One minute and 5 minutes by
+    /// False while Notify me is set to Never, the default for everyone, new installs and upgrades alike: no
+    /// notification is planned or sent, and macOS isn't asked for permission. `notificationLeadTime` keeps the
+    /// last time chosen. Independent of `fullScreenAlertsEnabled`: each kind has its own time or Never.
+    public var notificationsEnabled: Bool {
+        get { access(keyPath: \.notificationsEnabled); return _notificationsEnabled }
+        set {
+            withMutation(keyPath: \.notificationsEnabled) {
+                _notificationsEnabled = newValue
+                defaults.set(newValue, forKey: Keys.notificationsEnabled)
+            }
+        }
+    }
+
+    /// Seconds before the meeting start at which the notification is sent, always a whole number of minutes,
+    /// like `leadTime`, and set independently of it. 5 minutes by default, kept while Notify me is Never.
+    public var notificationLeadTime: TimeInterval {
+        get { access(keyPath: \.notificationLeadTime); return _notificationLeadTime }
+        set {
+            withMutation(keyPath: \.notificationLeadTime) {
+                _notificationLeadTime = Self.wholeMinutes(newValue)
+                defaults.set(_notificationLeadTime, forKey: Keys.notificationLeadTime)
+            }
+        }
+    }
+
+    /// Play sound: on, a notification plays macOS's notification sound; off, it's silent. On by default.
+    /// macOS's own sound setting for Join! can still silence it (`NotificationStatus.soundOff`).
+    public var notificationPlaysSound: Bool {
+        get { access(keyPath: \.notificationPlaysSound); return _notificationPlaysSound }
+        set {
+            withMutation(keyPath: \.notificationPlaysSound) {
+                _notificationPlaysSound = newValue
+                defaults.set(newValue, forKey: Keys.notificationPlaysSound)
+            }
+        }
+    }
+
+    /// The two snooze durations, stored as a two-element array of seconds: the full-screen alert's two snooze
+    /// buttons and the notification's two Snooze actions, shared by both kinds. One minute and 5 minutes by
     /// default, and when what's stored doesn't have two entries.
     public var snoozeDurations: SnoozeDurations {
         get { access(keyPath: \.snoozeDurations); return _snoozeDurations }

@@ -9,6 +9,11 @@ public enum SettingsOptions {
     public static let leadTimeMinutes: [Int] = [0, 1, 3, 5]
     public static let customLeadTimeRange: ClosedRange<Int> = 0...120
 
+    /// Notify me's presets and Custom… range: exactly Alert me's, worded the same (`leadTimeTitle`), with the
+    /// same Never (`leadTimeNeverTitle`).
+    public static let notificationLeadTimeMinutes: [Int] = leadTimeMinutes
+    public static let customNotificationLeadTimeRange: ClosedRange<Int> = customLeadTimeRange
+
     public static func leadTimeTitle(minutes: Int) -> String {
         switch minutes {
         case 0: return "When the event starts"
@@ -17,8 +22,8 @@ public enum SettingsOptions {
         }
     }
 
-    /// Alert me's item after the presets, before Custom…: it turns full-screen alerts off. Which item
-    /// shows, and what picking one changes, is `MinutesChoice`.
+    /// Alert me's and Notify me's item after the presets, before Custom…: it turns that kind of alert off.
+    /// Which item shows, and what picking one changes, is `MinutesChoice`.
     public static let leadTimeNeverTitle = "Never"
 
     // MARK: Snooze
@@ -45,13 +50,37 @@ public enum SettingsOptions {
         return "\(minutes) min"
     }
 
-    // MARK: Full-Screen Alert pane
+    // MARK: Alerts pane
 
-    /// The pane's auto-close row, under Snooze & auto-close; "full-screen alerts" would repeat the pane's name.
+    /// The pane for both kinds of alert, which was Full-Screen Alert until 1.3.0: "alerts" covers the
+    /// full-screen alert and the notification.
+    public static let alertsPaneTitle = "Alerts"
+
+    /// Its three boxes, top to bottom: each kind with its own time or Never, then the snooze durations they
+    /// share.
+    public static let fullScreenAlertSectionTitle = "Full-screen alert"
+    public static let notificationSectionTitle = "Notification"
+    public static let snoozeSectionTitle = "Snooze"
+
+    /// The Full-screen alert box's last row, among Alert me's siblings, since it only ever closes the
+    /// full-screen alert: dimmed while Alert me is Never.
     public static let autoCloseRowTitle = "Close automatically"
 
-    /// Show Demo's help tags, on the Full-Screen Alert and Appearance panes, while it works and while a real
-    /// full-screen alert is on screen.
+    /// The Notification box's first row: its own time or Never, set independently of Alert me.
+    public static let notifyMeTitle = "Notify me"
+    public static let notifyMeHelp = "Sends a notification with Join and snooze buttons. macOS shows it in the corner of the screen."
+
+    /// The Notification box's switch: macOS's notification sound, or none. Dimmed while Notify me is Never.
+    public static let playSoundTitle = "Play sound"
+
+    /// Under the Notification box: what Join! can't set for a notification.
+    public static let notificationFootnote = "How long a notification stays on screen, and whether it shows during a Focus or while you share your screen, is up to System Settings › Notifications. The full-screen alert comes up either way."
+
+    /// Under the Snooze box, naming the button both kinds add after these.
+    public static let snoozeFootnote = "The full-screen alert and the notification both offer these, then \(AlertCountdown.snoozeUntilStartLabel)."
+
+    /// Show Demo's help tags, on the Alerts and Appearance panes, while it works and while a real full-screen
+    /// alert is on screen.
     public static let showDemoHelp = "Shows a real full-screen alert with a sample event. Press Esc to close it."
     public static let showDemoUnavailableHelp = "Close the current full-screen alert first."
 
@@ -60,8 +89,9 @@ public enum SettingsOptions {
     /// The box of the alert's colors, under Style.
     public static let colorsSectionTitle = "Colors"
 
-    /// Under the preview while Alert me is Never, which stops real full-screen alerts only.
-    public static let alertMeNeverNote = "Alert me is set to Never in Full-Screen Alert. Show Demo still works."
+    /// Under the preview while Alert me is Never, which stops real full-screen alerts only, whatever Notify me
+    /// says: the pane is the full-screen alert's look, and notifications have none to set.
+    public static let alertMeNeverNote = "Alert me is set to Never in \(alertsPaneTitle). Show Demo still works."
 
     /// Restore Defaults' help tag, at the bottom right of the pane: it restores the look only.
     public static let restoreAppearanceHelp = "Goes back to the Dark style. Your own style stays on the Custom card."
@@ -162,6 +192,9 @@ public enum SettingsOptions {
     public static let eventsFootnote = "An event counts as out of office when its title contains any of these words. Press Return to add one. Only Show and alert lets an event alert, take the menu bar or sit at the top of the panel. When an event is both kinds, the choice that shows less wins."
 
     // MARK: Calendars
+
+    /// The Calendars pane's orange line while every calendar is unchecked: no alerts of either kind.
+    public static let noCalendarsWarning = "No calendars selected: you won't get any alerts."
 
     /// "Updated just now", "Updated 5 minutes ago", …
     public static func updatedLabel(lastRefreshed: Date, now: Date) -> String {

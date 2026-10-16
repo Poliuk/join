@@ -147,9 +147,9 @@ struct MenuBarPresenterTests {
 
         // Paused: the crossed-out bell over everything, until the pause ends.
         Status("paused over the pill", at: F.date(6, 15, 56), pause: .until(F.date(6, 16, 56)),
-               .paused, nil, "Join!: full-screen alerts paused"),
+               .paused, nil, "Join!: alerts paused"),
         Status("paused over the ring", at: F.date(6, 16, 20), pause: .indefinitely,
-               .paused, nil, "Join!: full-screen alerts paused"),
+               .paused, nil, "Join!: alerts paused"),
         Status("a pause that has ended", at: F.date(6, 15, 56), pause: .until(F.date(6, 15, 50)),
                .startingSoon, "Next in 4 min", "Join!: Ana/Luis: Product Planning starts in 4 minutes"),
 
@@ -273,9 +273,9 @@ struct MenuBarPresenterTests {
     @Test(arguments: [
         (PauseState.active, nil),
         (.until(F.date(6, 10, 49)), nil),
-        (.until(F.date(6, 11, 50)), "Full-screen alerts paused until 11:50 AM"),
-        (.until(F.date(7, 0)), "Full-screen alerts paused until tomorrow"),
-        (.indefinitely, "Full-screen alerts paused"),
+        (.until(F.date(6, 11, 50)), "Alerts paused until 11:50 AM"),
+        (.until(F.date(7, 0)), "Alerts paused until tomorrow"),
+        (.indefinitely, "Alerts paused"),
     ] as [(PauseState, String?)])
     func pausedMessage(_ state: PauseState, expected: String?) {
         #expect(F.squash(MenuBarPresenter.pausedMessage(state, now: F.date(6, 10, 50), calendar: F.calendar, locale: F.us)) == expected)

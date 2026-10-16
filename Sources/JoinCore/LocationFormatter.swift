@@ -46,6 +46,20 @@ public enum LocationFormatter {
         return "\(parts[0]) · \(locality)"
     }
 
+    /// The location as the full-screen alert shows it, and the notification after the calendar's name: its
+    /// lines on one, joined with commas ("Café Comercial, Glorieta de Bilbao, 7"). Nil when it's empty, or only
+    /// the join link again.
+    public static func alertLocation(_ location: String?, joinURL: URL?) -> String? {
+        guard let location else { return nil }
+        let text = location
+            .components(separatedBy: .newlines)
+            .map { $0.trimmingCharacters(in: .whitespaces) }
+            .filter { !$0.isEmpty }
+            .joined(separator: ", ")
+        guard !text.isEmpty, text != joinURL?.absoluteString else { return nil }
+        return text
+    }
+
     /// The part of `location` that names a place, without the links, phone numbers and video services that
     /// share the field: "Sala Retiro; Microsoft Teams Meeting" → "Sala Retiro". Nil when nothing is left.
     public static func physicalPlace(in location: String?) -> String? {

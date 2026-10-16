@@ -1,3 +1,4 @@
+import Foundation
 import Testing
 @testable import JoinCore
 
@@ -97,6 +98,21 @@ struct LocationFormatterTests {
     ] as [(String, String?)])
     func hybridLocationsKeepThePlace(_ location: String, expected: String?) {
         #expect(LocationFormatter.physicalPlace(in: location) == expected)
+    }
+
+    /// The full-screen alert's location line, which the notification's body repeats: the lines on one, joined
+    /// with ", ", trimmed; nothing for a blank location or one that is only the join link again. A link that
+    /// isn't the join link stays, as the alert has always shown it.
+    @Test(arguments: [
+        ("Conference Room A", nil, "Conference Room A"),
+        (" Café Comercial \n\n Glorieta de Bilbao, 7 ", nil, "Café Comercial, Glorieta de Bilbao, 7"),
+        ("https://meet.google.com/abc-defg-hij", "https://meet.google.com/abc-defg-hij", nil),
+        ("https://zoom.us/j/123", "https://meet.google.com/abc-defg-hij", "https://zoom.us/j/123"),
+        (" \n ", nil, nil),
+        (nil, nil, nil),
+    ] as [(String?, String?, String?)])
+    func alertLocation(_ location: String?, joinURL: String?, expected: String?) {
+        #expect(LocationFormatter.alertLocation(location, joinURL: joinURL.flatMap(URL.init(string:))) == expected)
     }
 
     /// Apple Maps directions: lines joined with ", ", "&" and "+" encoded, and nothing for a blank location.

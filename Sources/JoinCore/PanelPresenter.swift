@@ -209,7 +209,8 @@ public struct PanelRow: Equatable, Identifiable, Sendable {
 /// for a dismissed row, and for bringing it back. When a button asks (`PanelRow.Dismissal.asksScope`), it
 /// opens a menu whose choices are worded the way macOS Calendar asks about a repeating event: This Event or
 /// All Future Events. The help tags and labels take that same `asksScope`, so they say a menu opens exactly
-/// when one does.
+/// when one does. "Alerts" covers both kinds: a dismissed event gets no full-screen alert and no notification,
+/// and one already delivered is withdrawn (`NotificationSchedule.withdrawals`).
 public enum DismissCopy {
     /// The card's Dismiss button, a row's accessibility action when Dismiss doesn't ask, and the first word of
     /// the Dismiss buttons' VoiceOver labels.
@@ -221,11 +222,11 @@ public enum DismissCopy {
     public static let dismissedTitle = "Dismissed"
 
     /// The base of a row's Dismiss help tag; `rowDismissHelp(asksScope:)` adds `repeatingNote` when it asks.
-    private static let rowDismissBase = "Dismiss: no full-screen alert, and it leaves the menu bar and the top card. It stays in this list until it ends."
+    private static let rowDismissBase = "Dismiss: no alerts, and it leaves the menu bar and the top card. It stays in this list until it ends."
     /// The base of the card's Dismiss help tag; `cardDismissHelp(asksScope:)` adds `repeatingNote` when it asks.
-    private static let cardDismissBase = "Dismiss: no full-screen alert, and it leaves the menu bar and this card. It stays in the list until it ends."
+    private static let cardDismissBase = "Dismiss: no alerts, and it leaves the menu bar and this card. It stays in the list until it ends."
     /// The base of a dismissed row's Restore help tag; `restoreHelp(asksScope:)` adds `repeatingNote` when it asks.
-    private static let restoreBase = "Restore: its full-screen alert and the menu bar come back."
+    private static let restoreBase = "Restore: its alerts and the menu bar come back."
     /// What the help tags add when the button opens a This Event / All Future Events menu (`Dismissal.asksScope`).
     private static let repeatingNote = "It repeats: the menu offers this event or all future events."
 

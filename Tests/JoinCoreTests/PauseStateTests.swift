@@ -36,6 +36,14 @@ struct PauseStateTests {
         #expect(option.state(from: Self.evening, calendar: Self.utc) == state)
     }
 
+    /// The bell's tooltip and VoiceOver label, and the menu's first item while paused: "alerts" covers both
+    /// kinds, since a pause stops the full-screen alert and the notification alike. The menu's choices keep
+    /// their words.
+    @Test func theBellSaysAlerts() {
+        #expect(PauseCopy.pauseTitle == "Pause alerts")
+        #expect(PauseCopy.resumeTitle == "Resume alerts")
+    }
+
     /// A pause survives quitting and relaunching (PRODUCT_BRIEF #9): `AlertCoordinator` stores it as JSON and reads
     /// it back at launch. What builds since 1.0.0 stored still reads, and what this one stores reads back the same.
     @Test(arguments: [

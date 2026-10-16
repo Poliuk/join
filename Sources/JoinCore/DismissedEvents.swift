@@ -10,7 +10,7 @@ public enum DismissScope: CaseIterable, Hashable, Sendable {
     case allFutureEvents
 }
 
-/// The events the user dismissed from the menu bar panel: no full-screen alert, and they leave the menu bar
+/// The events the user dismissed from the menu bar panel: no alerts of either kind, and they leave the menu bar
 /// item and the panel's card to whatever comes next, while the lists keep them, marked, until they end.
 /// `isDismissed(_:)` decides, from three kinds of entry:
 ///

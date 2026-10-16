@@ -1,6 +1,7 @@
 import Foundation
 
-/// Whether full-screen alerts are paused, and until when.
+/// Whether alerts are paused, and until when. A pause covers both kinds: no full-screen alert and no
+/// notification until it ends, when the usual late grace applies to each kind (`AlertScheduler.lateAlertGrace`).
 public enum PauseState: Codable, Hashable, Sendable {
     case active
     case until(Date)
@@ -19,6 +20,15 @@ public enum PauseState: Codable, Hashable, Sendable {
         if case .until(let end) = self, end <= now { return .active }
         return self
     }
+}
+
+/// The words for pausing, on the menu bar panel's bell: "alerts" covers the full-screen alert and the
+/// notification alike.
+public enum PauseCopy {
+    /// The bell's tooltip and VoiceOver label while nothing is paused.
+    public static let pauseTitle = "Pause alerts"
+    /// The bell's tooltip and VoiceOver label while paused, and the first item of the bell's menu then.
+    public static let resumeTitle = "Resume alerts"
 }
 
 /// The pause choices offered by the menu bar panel's bell menu.
