@@ -12,14 +12,15 @@ APP="build/Join.app"
 
 . scripts/select-sdk.sh
 
-# One build per architecture, joined into a single binary, always with SwiftPM's native build system, as CI's
-# Xcode 26 uses by default. The app's look follows the SDK version recorded in the binary: the native build
-# system records the SDK it built with (26.5, so macOS 26 and later draw the app in their current design),
-# while Swift Build, the default from SwiftPM 6.4, records the deployment target (14.0, the older design).
-# Building the same way everywhere keeps a local build looking like the release. The native build system once
-# failed a rebuild that reused another architecture's cached build manifest, so the build is planned afresh
-# each time; each binary is copied out as soon as it's built.
-BUILD="--build-system native"
+# One build per architecture, joined into a single binary. The binary records the SDK it was built with, as
+# Xcode and SwiftPM's native build system (CI's) record it: Swift Build, SwiftPM's default from 6.4, records
+# the deployment target instead, and AppKit decides some behaviour by that version, so a local build would
+# differ from the release. Passing the version to the linker records it the same way everywhere (it's the
+# value the native build system passes anyway). The native build system once failed a rebuild that reused
+# another architecture's cached build manifest, so the build is planned afresh each time; each binary is
+# copied out as soon as it's built, since Swift Build puts every architecture's at the same path.
+MINIMUM="$(plutil -extract LSMinimumSystemVersion raw Resources/Info.plist)"
+BUILD="-Xlinker -platform_version -Xlinker macos -Xlinker $MINIMUM -Xlinker $(xcrun --show-sdk-version)"
 STAGE="$(mktemp -d)"
 trap 'rm -rf "$STAGE"' EXIT
 set --
