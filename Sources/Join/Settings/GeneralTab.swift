@@ -4,7 +4,7 @@ import SwiftUI
 import JoinCore
 
 /// The app and its menu bar item: Open at login, the Menu bar section with the starting-soon pill, which
-/// events count, and updates. The full-screen alert has its own pane.
+/// events count, and updates. Both kinds of alert have their own pane, Alerts.
 struct GeneralTab: View {
     @Environment(AppModel.self) private var model
     /// Read from the system on appear and whenever the app or the Settings window comes back, so

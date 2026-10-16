@@ -2,34 +2,6 @@ import AppKit
 import SwiftUI
 import JoinCore
 
-/// The toolbar's panes, one subject each. The raw values are what the `openSettings` script hook takes.
-enum SettingsPane: String, CaseIterable {
-    case general
-    case calendars
-    case fullScreenAlert
-    case appearance
-
-    /// Title-style, as macOS toolbar labels are.
-    var title: String {
-        switch self {
-        case .general: return "General"
-        case .calendars: return "Calendars"
-        case .fullScreenAlert: return "Full-Screen Alert"
-        case .appearance: return "Appearance"
-        }
-    }
-
-    /// The bell is the panel's Pause full-screen alerts symbol.
-    var symbolName: String {
-        switch self {
-        case .general: return "gearshape"
-        case .calendars: return "calendar"
-        case .fullScreenAlert: return "bell"
-        case .appearance: return "paintpalette"
-        }
-    }
-}
-
 extension NSUserInterfaceItemIdentifier {
     static let settingsWindow = NSUserInterfaceItemIdentifier("settings")
 }
@@ -237,7 +209,7 @@ private final class SettingsPaneController: NSViewController {
         switch pane {
         case .general: GeneralTab()
         case .calendars: CalendarsTab()
-        case .fullScreenAlert: FullScreenAlertTab()
+        case .alerts: AlertsTab()
         case .appearance: AppearanceTab()
         }
     }

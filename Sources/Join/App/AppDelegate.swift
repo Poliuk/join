@@ -53,7 +53,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// the real app. The notification's object, when present, is the argument.
     private func observeScriptHooks() {
         let hooks: [(String, @MainActor (AppDelegate, String?) -> Void)] = [
-            ("openSettings", { delegate, argument in delegate.model.openSettings(pane: argument.flatMap(SettingsPane.init(rawValue:))) }),
+            // A pane's raw value, or fullScreenAlert, the Alerts pane's until 1.3.0 (`SettingsPane(hookArgument:)`).
+            ("openSettings", { delegate, argument in delegate.model.openSettings(pane: argument.flatMap(SettingsPane.init(hookArgument:))) }),
             ("snapshot", { _, argument in WindowSnapshots.write(named: argument) }),
             ("showDemoAlert", { delegate, _ in delegate.model.alertCoordinator.showDemoAlert() }),
             ("togglePanel", { delegate, _ in delegate.statusItem?.toggle() }),

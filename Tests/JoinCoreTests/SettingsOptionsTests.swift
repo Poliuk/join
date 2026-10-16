@@ -136,10 +136,14 @@ struct SettingsOptionsTests {
         Copy("Full-screen alert box", SettingsOptions.fullScreenAlertSectionTitle, "Full-screen alert"),
         Copy("Notification box", SettingsOptions.notificationSectionTitle, "Notification"),
         Copy("Snooze box", SettingsOptions.snoozeSectionTitle, "Snooze"),
+        Copy("Alert me row", SettingsOptions.alertMeTitle, "Alert me"),
+        // Both custom fields can show on the pane at once, so VoiceOver names each for its row.
+        Copy("Alert me's custom field", SettingsOptions.alertMeFieldLabel, "Alert me, minutes before the event"),
         Copy("auto-close row", SettingsOptions.autoCloseRowTitle, "Close automatically"),
         Copy("Notify me row", SettingsOptions.notifyMeTitle, "Notify me"),
         Copy("Notify me's help tag", SettingsOptions.notifyMeHelp,
              "Sends a notification with Join and snooze buttons. macOS shows it in the corner of the screen."),
+        Copy("Notify me's custom field", SettingsOptions.notifyMeFieldLabel, "Notify me, minutes before the event"),
         Copy("Play sound row", SettingsOptions.playSoundTitle, "Play sound"),
         Copy(
             "Notification footnote",

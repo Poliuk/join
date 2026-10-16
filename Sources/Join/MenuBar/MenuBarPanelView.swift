@@ -269,7 +269,7 @@ private struct HeaderButton: View {
 
     let symbol: String
     let label: String
-    /// Drawn pressed and reported as selected, like the bell while full-screen alerts are paused.
+    /// Drawn pressed and reported as selected, like the bell while alerts are paused.
     var isOn = false
     let kind: Kind
 
@@ -358,13 +358,11 @@ private struct PausedBar: View {
                 .font(.system(size: 12))
                 .foregroundStyle(PanelColors.secondary)
                 .frame(width: 14, height: 14)
-            // "Full-screen alerts paused until 12:50 PM" runs about 6 pt past the room beside Resume, so
-            // the longest messages shrink a little rather than lose the time.
+            // "Alerts paused until 12:50 PM", the longest message, fits beside Resume at full size.
             Text(message)
                 .font(.system(size: 12.5).monospacedDigit())
                 .foregroundStyle(PanelColors.strong)
                 .lineLimit(1)
-                .minimumScaleFactor(0.9)
                 .frame(maxWidth: .infinity, alignment: .leading)
             Button(action: resume) {
                 Text("Resume")

@@ -74,7 +74,7 @@ final class AppModel {
         self.notificationCoordinator = notificationCoordinator
         self.updateChecker = UpdateChecker(preferences: preferences, fixtureScenario: fixture)
         // System Settings › Notifications › Join!'s link back.
-        notificationCoordinator.openSettings = { [weak self] in self?.openSettings(pane: .fullScreenAlert) }
+        notificationCoordinator.openSettings = { [weak self] in self?.openSettings(pane: .alerts) }
     }
 
     func start() {

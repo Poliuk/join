@@ -35,9 +35,10 @@ enum SettingsMetrics {
     static let indent: CGFloat = 30
 }
 
-/// A heading above a grouped box.
+/// A heading above a grouped box, and optionally a footnote under it, for what the box's rows can't say.
 struct SettingsSection<Content: View>: View {
     let title: String
+    var footnote: String? = nil
     @ViewBuilder var content: Content
 
     var body: some View {
@@ -46,7 +47,16 @@ struct SettingsSection<Content: View>: View {
                 .font(.body.weight(.semibold))
                 .padding(.leading, 2)
                 .accessibilityAddTraits(.isHeader)
-            SettingsBox { content }
+            VStack(alignment: .leading, spacing: 6) {
+                SettingsBox { content }
+                if let footnote {
+                    Text(footnote)
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .padding(.horizontal, 2)
+                }
+            }
         }
     }
 }
@@ -78,7 +88,8 @@ struct SettingsSeparator: View {
 /// Label on the left, control on the right, with a hairline above unless it opens its box.
 /// An indented row depends on the row above it, and is left out, not dimmed, while that row is
 /// off: no sound, no tint, a preset rather than Custom…. The disabled tone is for rows beside a
-/// setting that turns them off, as Show on and Sound are while Alert me is Never.
+/// setting that turns them off, as Show on and Sound are while Alert me is Never, and Play sound while
+/// Notify me is.
 struct SettingsRow<Control: View>: View {
     enum Tone {
         case primary

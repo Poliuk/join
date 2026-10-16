@@ -1,9 +1,9 @@
 import Foundation
 
-/// The rule behind a Settings pop-up of preset minutes and Custom…: **Alert me**, both snooze buttons
-/// and the menu bar's **Starting soon**. Only Alert me offers **Never**, between the presets and Custom…, and it
-/// turns full-screen alerts off while keeping the time. The view remembers whether Custom… was picked;
-/// this decides what the pop-up shows and what picking an item or saving a custom value changes.
+/// The rule behind a Settings pop-up of preset minutes and Custom…: **Alert me**, **Notify me**, both snooze
+/// buttons and the menu bar's **Starting soon**. Only Alert me and Notify me offer **Never**, between the presets
+/// and Custom…, and it turns that kind of alert off while keeping the time. The view remembers whether Custom…
+/// was picked; this decides what the pop-up shows and what picking an item or saving a custom value changes.
 public struct MinutesChoice: Sendable {
     /// A pop-up item, and its tag. Never and Custom… are cases of their own, so neither can be taken
     /// for a preset, not even 0 (When the event starts), or for each other.

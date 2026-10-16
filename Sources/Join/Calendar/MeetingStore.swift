@@ -103,11 +103,11 @@ final class MeetingStore {
         }
     }
 
-    /// The meetings that may produce full-screen alerts, drive the menu bar title and take the panel's card:
-    /// those whose Events choice is Show and alert, less the ones dismissed from the panel, on their own or
-    /// with all future events of their series (`DismissedEvents.isDismissed`). Reads both choices and the
-    /// dismissed events, so observers (the alert coordinator, the menu bar item, the panel) follow them too:
-    /// a dismissal cancels a pending alert and moves the menu bar on at once.
+    /// The meetings that may alert (the full-screen alert and the notification alike), drive the menu bar title
+    /// and take the panel's card: those whose Events choice is Show and alert, less the ones dismissed from the
+    /// panel, on their own or with all future events of their series (`DismissedEvents.isDismissed`). Reads both
+    /// choices and the dismissed events, so observers (both alert coordinators, the menu bar item, the panel)
+    /// follow them too: a dismissal cancels a pending alert and moves the menu bar on at once.
     var alertableMeetings: [Meeting] {
         MeetingFilter.alertable(
             meetings,

@@ -62,6 +62,12 @@ public enum SettingsOptions {
     public static let notificationSectionTitle = "Notification"
     public static let snoozeSectionTitle = "Snooze"
 
+    /// The Full-screen alert box's first row: the full-screen alert's time or Never.
+    public static let alertMeTitle = "Alert me"
+    /// What VoiceOver calls Alert me's custom minutes field and stepper, named for its row since Notify me's
+    /// can show on the pane too.
+    public static let alertMeFieldLabel = "\(alertMeTitle), minutes before the event"
+
     /// The Full-screen alert box's last row, among Alert me's siblings, since it only ever closes the
     /// full-screen alert: dimmed while Alert me is Never.
     public static let autoCloseRowTitle = "Close automatically"
@@ -69,6 +75,8 @@ public enum SettingsOptions {
     /// The Notification box's first row: its own time or Never, set independently of Alert me.
     public static let notifyMeTitle = "Notify me"
     public static let notifyMeHelp = "Sends a notification with Join and snooze buttons. macOS shows it in the corner of the screen."
+    /// What VoiceOver calls Notify me's custom minutes field and stepper.
+    public static let notifyMeFieldLabel = "\(notifyMeTitle), minutes before the event"
 
     /// The Notification box's switch: macOS's notification sound, or none. Dimmed while Notify me is Never.
     public static let playSoundTitle = "Play sound"
@@ -91,7 +99,7 @@ public enum SettingsOptions {
 
     /// Under the preview while Alert me is Never, which stops real full-screen alerts only, whatever Notify me
     /// says: the pane is the full-screen alert's look, and notifications have none to set.
-    public static let alertMeNeverNote = "Alert me is set to Never in \(alertsPaneTitle). Show Demo still works."
+    public static let alertMeNeverNote = "\(alertMeTitle) is set to \(leadTimeNeverTitle) in \(alertsPaneTitle). Show Demo still works."
 
     /// Restore Defaults' help tag, at the bottom right of the pane: it restores the look only.
     public static let restoreAppearanceHelp = "Goes back to the Dark style. Your own style stays on the Custom card."

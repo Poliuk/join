@@ -2,7 +2,8 @@ import SwiftUI
 import JoinCore
 
 /// How the full-screen alert looks, and nothing else: the preview, Style's five cards, the Colors box, and
-/// Restore Defaults for the look. When and how it alerts is on the Full-Screen Alert pane.
+/// Restore Defaults for the look. When and how it alerts is on the Alerts pane, beside the notification, which
+/// has no look to set.
 struct AppearanceTab: View {
     @Environment(AppModel.self) private var model
     @State private var previewBackdrop: AppearancePreviewBackdrop = .wallpaper
