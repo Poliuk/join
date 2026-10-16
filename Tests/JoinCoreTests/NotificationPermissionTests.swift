@@ -65,6 +65,25 @@ struct NotificationPermissionTests {
         ])
     }
 
+    // MARK: From macOS's settings
+
+    /// Not on screen when its alerts are off or their style is None, and always in the quiet provisional mode;
+    /// macOS's own sound switch is carried as it is.
+    @Test(arguments: [
+        ("never asked", NotificationPermission.Authorization.notDetermined, true, true, NotificationPermission.notDetermined),
+        ("denied", .denied, true, true, .denied),
+        ("denied, nothing on", .denied, false, false, .denied),
+        ("allowed", .authorized, true, true, allowed),
+        ("allowed, style None", .authorized, false, true, hidden),
+        ("allowed, sound off", .authorized, true, false, soundOff),
+        ("allowed, style None, sound off", .authorized, false, false, hiddenAndSoundOff),
+        ("provisional", .provisional, true, true, hidden),
+        ("provisional, sound off", .provisional, true, false, hiddenAndSoundOff),
+    ] as [(String, NotificationPermission.Authorization, Bool, Bool, NotificationPermission)])
+    func fromMacOSSettings(_ name: String, authorization: NotificationPermission.Authorization, alertsShown: Bool, soundOn: Bool, expected: NotificationPermission) {
+        #expect(NotificationPermission(authorization: authorization, alertsShown: alertsShown, soundOn: soundOn) == expected)
+    }
+
     // MARK: Asking
 
     /// Join! asks only while nothing is decided: macOS prompts once.

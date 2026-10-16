@@ -11,6 +11,8 @@ nonisolated extension Logger {
     static let calendar = Logger(subsystem: subsystem, category: "calendar")
     /// Fixture runs: the JOIN_FIXTURE scenario and the script hooks' snapshots.
     static let fixture = Logger(subsystem: subsystem, category: "fixture")
+    /// The notifications: permission, posting, withdrawing and the user's responses.
+    static let notifications = Logger(subsystem: subsystem, category: "notifications")
     /// Settings that reach the system: Open at login, System Settings' panes.
     static let settings = Logger(subsystem: subsystem, category: "settings")
     /// The update check, the download and the install.

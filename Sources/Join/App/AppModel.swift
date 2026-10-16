@@ -1,5 +1,6 @@
 import AppKit
 import Observation
+import OSLog
 import JoinCore
 
 /// Owns the app's long-lived objects and wires them together.
@@ -8,6 +9,7 @@ final class AppModel {
     let preferences: Preferences
     let meetingStore: MeetingStore
     let alertCoordinator: AlertCoordinator
+    let notificationCoordinator: NotificationCoordinator
     let updateChecker: UpdateChecker
 
     /// Advances on every half minute of the clock so countdowns in the menu bar and panel stay fresh.
@@ -27,6 +29,7 @@ final class AppModel {
         let fixture = FixtureCalendarService.scenario
         let defaults: UserDefaults
         let service: CalendarService
+        let notificationCenter: any NotificationCenterClient
         if let fixture {
             // Never `.standard`: a fixture run must not change real settings. Only the app's own bundle id or
             // the global domain would make this nil.
@@ -35,9 +38,13 @@ final class AppModel {
             }
             defaults = fixtureDefaults
             service = FixtureCalendarService(scenario: fixture)
+            // Same bundle id as the real app, so never the real notification center: no prompt, no posting, no
+            // responder, no removal.
+            notificationCenter = FixtureNotificationCenter(permission: FixtureNotificationCenter.environmentPermission)
         } else {
             defaults = .standard
             service = EventKitCalendarService()
+            notificationCenter = SystemNotificationCenter()
         }
         let preferences = Preferences(defaults: defaults)
         if fixture != nil, preferences.dismissedEvents.withoutSeriesRules != preferences.dismissedEvents {
@@ -50,13 +57,31 @@ final class AppModel {
         self.isFixture = fixture != nil
         self.preferences = preferences
         self.meetingStore = store
-        self.alertCoordinator = AlertCoordinator(store: store, preferences: preferences, windows: AlertWindowController(), defaults: defaults)
+        let alertCoordinator = AlertCoordinator(store: store, preferences: preferences, windows: AlertWindowController(), defaults: defaults)
+        let notificationCoordinator = NotificationCoordinator(
+            center: notificationCenter,
+            store: store,
+            preferences: preferences,
+            alerts: alertCoordinator,
+            defaults: defaults,
+            isFixture: fixture != nil
+        )
+        // Join on the full-screen alert finishes the meeting's notification too.
+        alertCoordinator.didAnswer = { [weak notificationCoordinator] response, meeting in
+            notificationCoordinator?.fullScreenAnswered(response, meeting: meeting)
+        }
+        self.alertCoordinator = alertCoordinator
+        self.notificationCoordinator = notificationCoordinator
         self.updateChecker = UpdateChecker(preferences: preferences, fixtureScenario: fixture)
+        // System Settings › Notifications › Join!'s link back.
+        notificationCoordinator.openSettings = { [weak self] in self?.openSettings(pane: .fullScreenAlert) }
     }
 
     func start() {
         Task { await meetingStore.start() }
         if !isFixture { alertCoordinator.start() }
+        // A fixture run reads its stand-in's permission for the status line, and plans nothing.
+        notificationCoordinator.start()
 
         // Ticking on :00 and :30 keeps "in 4 min" in step with meetings, which start on whole minutes.
         let interval: TimeInterval = 30
@@ -154,10 +179,10 @@ final class AppModel {
     }
 
     /// The card's and a row's Dismiss buttons, or the choice made in a repeating event's Dismiss menu: no
-    /// full-screen alert for this occurrence, and with All Future Events for its series' later ones too
-    /// (`DismissedEvents.dismissing`), and the menu bar item and the card move on to what comes next. The
-    /// panel stays open and lists them as dismissed until they end. Only a meeting that may alert can be
-    /// dismissed; anything else is left alone.
+    /// alerts for this occurrence (a notification already delivered goes too), and with All Future Events for
+    /// its series' later ones too (`DismissedEvents.dismissing`), and the menu bar item and the card move on
+    /// to what comes next. The panel stays open and lists them as dismissed until they end. Only a meeting
+    /// that may alert can be dismissed; anything else is left alone.
     func dismiss(_ meeting: Meeting, scope: DismissScope = .thisEvent) {
         guard meetingStore.alertableMeetings.contains(where: { $0.id == meeting.id }) else { return }
         updateDismissedEvents(preferences.dismissedEvents.dismissing(meeting, scope: scope))
@@ -165,13 +190,13 @@ final class AppModel {
 
     /// A dismissed row's Restore, or the choice made in a repeating event's Restore menu: the menu bar item
     /// and the card take the meeting back, with All Future Events its series' later occurrences too, and its
-    /// full-screen alert comes at once if it's still due (the scheduler's usual late grace and snooze rules).
+    /// alerts come at once if they're still due (the scheduler's usual late grace and snooze rules).
     func restore(_ meeting: Meeting, scope: DismissScope = .thisEvent) {
         updateDismissedEvents(preferences.dismissedEvents.restoring(meeting, scope: scope))
     }
 
-    /// The alert coordinator, the menu bar item and the panel all follow `MeetingStore.alertableMeetings`,
-    /// which reads the dismissed events, so this one write updates all three.
+    /// Both alert coordinators, the menu bar item and the panel all follow `MeetingStore.alertableMeetings`,
+    /// which reads the dismissed events, so this one write updates them all.
     private func updateDismissedEvents(_ events: DismissedEvents) {
         let date = Date()
         // Pruned as it's written, so entries for events that are over don't wait for the next calendar read.
@@ -225,6 +250,16 @@ final class AppModel {
         if let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Calendars") {
             NSWorkspace.shared.open(url)
         }
+    }
+
+    /// The status line's Open System Settings: Notifications › Join!, else the Notifications pane.
+    func openNotificationSettings() {
+        closePanel?()
+        let urls = Bundle.main.bundleIdentifier.map { NotificationStatus.settingsURLs(bundleIdentifier: $0) } ?? NotificationStatus.settingsURLs()
+        for url in urls where NSWorkspace.shared.open(url) { return }
+        // Fixed URLs and the bundle id: nothing personal.
+        let tried = urls.map(\.absoluteString).joined(separator: ", ")
+        Logger.settings.error("Couldn't open the notification settings; System Settings took none of \(tried, privacy: .public)")
     }
 
     func quit() {

@@ -11,6 +11,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private static let fixtureLifetime: TimeInterval = 2 * 60 * 60
     private static let hookPrefix = "com.poliuk.join.fixture."
 
+    /// The notification responder goes in before launch finishes, so a response that launched Join! reaches it.
+    /// A fixture run's stand-in sets none.
+    func applicationWillFinishLaunching(_ notification: Notification) {
+        model.notificationCoordinator.startResponding()
+    }
+
     func applicationDidFinishLaunching(_ notification: Notification) {
         // A fixture run can ask for a Dock icon (JOIN_FIXTURE_REGULAR=1) so UI automation tools can target it.
         let regular = model.isFixture && ProcessInfo.processInfo.environment["JOIN_FIXTURE_REGULAR"] == "1"
@@ -34,7 +40,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         model.updateChecker.discardDownload()
     }
 
+    /// Opening Join! again (from Finder, say) opens Settings, except for the reopen macOS may send along with a
+    /// click on a notification: that click does nothing, so nothing opens.
     func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
+        guard !model.notificationCoordinator.ignoresReopen else { return false }
         model.openSettings()
         return false
     }

@@ -13,6 +13,27 @@ public enum NotificationPermission: Hashable, Sendable {
     /// the quiet provisional mode Join! never asks for); `playsSound` is macOS's own sound switch for Join!.
     case allowed(showsOnScreen: Bool, playsSound: Bool)
 
+    /// macOS's answer about Join!'s notifications, as its notification settings report it.
+    public enum Authorization: Hashable, Sendable {
+        case notDetermined
+        case denied
+        case authorized
+        /// The quiet mode Join! never asks for: Notification Center only, no banner and no sound.
+        case provisional
+    }
+
+    /// Join!'s permission from macOS's notification settings for it: `alertsShown` when its alerts are on
+    /// with a style other than None, `soundOn` when its sound switch is on. Provisional delivery reaches only
+    /// Notification Center, whatever the style says.
+    public init(authorization: Authorization, alertsShown: Bool, soundOn: Bool) {
+        switch authorization {
+        case .notDetermined: self = .notDetermined
+        case .denied: self = .denied
+        case .authorized: self = .allowed(showsOnScreen: alertsShown, playsSound: soundOn)
+        case .provisional: self = .allowed(showsOnScreen: false, playsSound: soundOn)
+        }
+    }
+
     /// Whether Join! asks macOS now, when Notify me leaves Never or Send Demo Notification is clicked: only
     /// while nothing is decided, since macOS prompts once and answers later requests with the stored choice.
     /// Join! never asks at launch, so an upgrade never prompts.

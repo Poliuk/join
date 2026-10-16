@@ -3,13 +3,9 @@ import Observation
 import OSLog
 import JoinCore
 
-/// How an alert's state is saved, so snoozes and dismissals survive a relaunch until the meeting ends.
-private struct AlertStateRecord: Codable {
-    let state: AlertState
-    let expiresAt: Date
-}
-
-/// Turns the pure scheduler's answer into timers, windows and sounds.
+/// Turns the pure scheduler's answer into timers, windows and sounds, for the full-screen alert. The
+/// notification, the other kind, has its own coordinator (`NotificationCoordinator`), which reads the pause
+/// kept here.
 @Observable
 final class AlertCoordinator {
     private static let heartbeatInterval: TimeInterval = 30
@@ -18,12 +14,16 @@ final class AlertCoordinator {
     private static let statesKey = "alertStates"
     private static let pauseKey = "pauseState"
 
-    /// Persisted, so "Pause until tomorrow" survives a relaunch.
+    /// Persisted, so "Pause until tomorrow" survives a relaunch. It pauses both kinds of alert.
     private(set) var pauseState: PauseState = .active
     private(set) var activeMeetings: [Meeting] = []
 
     /// Called right before any alert, real or demo, goes on screen.
     @ObservationIgnored var willPresentAlert: (() -> Void)?
+    /// Called for each meeting of a real alert once it's answered or closes automatically, with what that
+    /// meant for it: Join for the meeting joined and close for the others in the alert, a snooze or At event
+    /// start for all of them. The notification follows it (`AlertResponse.state`).
+    @ObservationIgnored var didAnswer: ((AlertResponse, Meeting) -> Void)?
 
     @ObservationIgnored private let store: MeetingStore
     @ObservationIgnored private let preferences: Preferences
@@ -44,19 +44,11 @@ final class AlertCoordinator {
         self.windows = windows
         self.defaults = defaults
         // What can't be read is logged and left out: no snoozes or dismissals, no pause.
-        if let data = defaults.data(forKey: Self.statesKey) {
-            do {
-                states = try JSONDecoder().decode([String: AlertStateRecord].self, from: data)
-            } catch {
-                Logger.alerts.error("Couldn't read the saved snoozes and dismissals: \(String(describing: error))")
-            }
-        }
-        if let data = defaults.data(forKey: Self.pauseKey) {
-            do {
-                pauseState = try JSONDecoder().decode(PauseState.self, from: data).resolved(at: Date())
-            } catch {
-                Logger.alerts.error("Couldn't read the saved pause: \(String(describing: error))")
-            }
+        states = defaults.decodedJSON(
+            [String: AlertStateRecord].self, forKey: Self.statesKey, description: "the saved snoozes and dismissals", log: .alerts
+        ) ?? [:]
+        if let saved = defaults.decodedJSON(PauseState.self, forKey: Self.pauseKey, description: "the saved pause", log: .alerts) {
+            pauseState = saved.resolved(at: Date())
         }
     }
 
@@ -82,7 +74,7 @@ final class AlertCoordinator {
 
     private func setPauseState(_ state: PauseState) {
         pauseState = state
-        save(state, forKey: Self.pauseKey)
+        defaults.setJSON(state, forKey: Self.pauseKey, log: .alerts)
         replan()
     }
 
@@ -190,33 +182,53 @@ final class AlertCoordinator {
     // MARK: User actions
 
     func dismiss() {
-        setActive(to: .dismissed)
-        closeAlert()
+        answer(.close)
     }
 
     func snooze(for duration: TimeInterval) {
-        setActive(to: .snoozed(until: Date().addingTimeInterval(duration)))
-        closeAlert()
+        answer(.snooze(duration))
     }
 
     func snoozeUntilEvent() {
-        let now = Date()
-        for meeting in activeMeetings {
-            let state: AlertState = meeting.start > now.addingTimeInterval(1) ? .snoozed(until: meeting.start) : .dismissed
-            states[meeting.id] = AlertStateRecord(state: state, expiresAt: meeting.end)
-        }
-        closeAlert()
+        answer(.snoozeUntilStart)
     }
 
+    /// Join finishes this meeting's notification too, and the alert closes for the others it shows.
     func join(_ meeting: Meeting) {
         if let url = meeting.joinURL {
             NSWorkspace.shared.open(url)
         }
-        dismiss()
+        answer(.join, joined: meeting.id)
     }
 
     /// A real alert is on screen. The demo never replaces it.
     var isAlerting: Bool { !activeMeetings.isEmpty }
+
+    /// A real alert for this meeting is on screen.
+    func isAlerting(about meetingID: Meeting.ID) -> Bool {
+        activeMeetings.contains { $0.id == meetingID }
+    }
+
+    /// The user answered `meeting`'s notification. Only Join changes the full-screen alert (`AlertResponse.state`):
+    /// it won't come, and one on screen drops the meeting, closing once none is left. Snooze and At event
+    /// start leave it alone, so a notification before and a full-screen alert at the start both come.
+    func notificationAnswered(_ response: AlertResponse, meeting: Meeting) {
+        guard let state = response.state(of: .fullScreen, answering: .notification, meeting: meeting, now: Date()) else { return }
+        states[meeting.id] = AlertStateRecord(state: state, expiresAt: meeting.end)
+        guard isAlerting(about: meeting.id) else {
+            persistStates()
+            replan()
+            return
+        }
+        let remaining = activeMeetings.filter { $0.id != meeting.id }
+        guard !remaining.isEmpty else {
+            closeAlert()
+            return
+        }
+        activeMeetings = remaining
+        windows.update(meetings: remaining)
+        persistStates()
+    }
 
     func showDemoAlert() {
         guard !isAlerting else { return }
@@ -245,10 +257,18 @@ final class AlertCoordinator {
 
     // MARK: Helpers
 
-    private func setActive(to state: AlertState) {
+    /// Sets each meeting on screen to its state after `response` (`AlertResponse.state`): the meeting
+    /// `joined` is Join's, and the others close. Then the alert closes.
+    private func answer(_ response: AlertResponse, joined: Meeting.ID? = nil) {
+        let now = Date()
         for meeting in activeMeetings {
-            states[meeting.id] = AlertStateRecord(state: state, expiresAt: meeting.end)
+            let own: AlertResponse = joined == nil || meeting.id == joined ? response : .close
+            if let state = own.state(of: .fullScreen, answering: .fullScreen, meeting: meeting, now: now) {
+                states[meeting.id] = AlertStateRecord(state: state, expiresAt: meeting.end)
+            }
+            didAnswer?(own, meeting)
         }
+        closeAlert()
     }
 
     private func closeAlert() {
@@ -268,18 +288,7 @@ final class AlertCoordinator {
     }
 
     private func persistStates() {
-        save(states, forKey: Self.statesKey)
-    }
-
-    /// Saves `value` as JSON. One that can't be encoded is logged, and its key removed, so a relaunch doesn't
-    /// read an older value back.
-    private func save(_ value: some Encodable, forKey key: String) {
-        do {
-            defaults.set(try JSONEncoder().encode(value), forKey: key)
-        } catch {
-            Logger.alerts.error("Couldn't save \(key, privacy: .public): \(String(describing: error))")
-            defaults.removeObject(forKey: key)
-        }
+        defaults.setJSON(states, forKey: Self.statesKey, log: .alerts)
     }
 
     private func cancelFireTimer() {
