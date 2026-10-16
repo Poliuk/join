@@ -8,7 +8,7 @@
 
 A free, open-source macOS menu bar app that makes calendar meetings impossible to miss.
 
-Join! watches the calendars on your Mac and, a few minutes before each meeting, puts a full-screen alert above everything you're doing, with a one-click button to join the call. The menu bar tells you how long until your next meeting, and a panel below it shows the rest of your day.
+Join! watches the calendars on your Mac and, a few minutes before each meeting, puts a full-screen alert above everything you're doing, with a one-click button to join the call. If you'd rather get a notification, or one as well, turn it on and give it its own time. The menu bar tells you how long until your next meeting, and a panel below it shows the rest of your day.
 
 <p align="center">
   <img src="docs/screenshots/alert.jpg" alt="The full-screen alert three minutes before a meeting: the title, a countdown, a Join button, three snooze options and Dismiss">
@@ -17,13 +17,14 @@ Join! watches the calendars on your Mac and, a few minutes before each meeting, 
 ## Features
 
 - **Full-screen alert** a few minutes before each meeting, on every display (or just the main one, the one with the menu bar; just the secondary ones, or the main one when it's the only display; or the one with the pointer), above everything else. It shows a live countdown, the title, time and location, and buttons to Join, Snooze, snooze until the start, or Dismiss.
+- **Notifications**, if you want them: a macOS notification before each meeting, instead of the full-screen alert or as well, at its own time (**Notify me**, off until you pick a time). It has **Join**, a snooze button per snooze duration and **At event start**, and **Join** on either one takes care of both. Clicking the notification itself does nothing.
 - **Menu bar item** that tells you where you are in your day: a countdown to the next meeting today ("Next in 11 h 40 min", "Next in 42 min") or its day and time ("Tomorrow at 1:00 PM", "In 3 days at 9:10 AM"), an accent pill when a meeting is about to start (5 minutes before by default), and a draining ring with "40 min left" during a meeting. Event titles are optional.
 - **Menu bar panel** with one card for what matters now (starting soon, in progress, next, or nothing left today), then everything still to come today and in the coming days. Overlapping meetings are flagged, and a Today | 7 Days switch narrows the list to today. It's frosted glass that stays readable over any wallpaper or window, in light and dark mode.
-- **Dismiss a meeting** from the menu bar panel, with **Dismiss** on the top card or the crossed-out bell on its row: no full-screen alert for it, and the menu bar item and the card move on to what comes next. It stays in the list, greyed, until it ends, and **Restore** brings it back. For a repeating meeting, choose **This Event** or **All Future Events**.
+- **Dismiss a meeting** from the menu bar panel, with **Dismiss** on the top card or the crossed-out bell on its row: no alerts for it (a notification already sent goes away), and the menu bar item and the card move on to what comes next. It stays in the list, greyed, until it ends, and **Restore** brings it back. For a repeating meeting, choose **This Event** or **All Future Events**.
 - **One-click Join** for Google Meet, Zoom, Microsoft Teams and Webex links found in the event, and **Directions** in Apple Maps for in-person meetings.
 - **Choose what counts**: tick the calendars Join! watches, and decide what happens to events nobody else is invited to (focus time, reminders you add for yourself) and to out-of-office events: show and alert, show in the list only, or exclude.
-- **Pause full-screen alerts** for an hour, until tomorrow, or until you resume. Or set **Alert me** to **Never** to turn them off and keep just the menu bar item and its panel.
-- **Configurable** lead time, snooze durations, auto-close and sound, and the full-screen alert's look: four styles plus a Custom one that keeps your own, a light or dark backdrop, and tint, event text and button colors picked from named swatches or any color, with contrast warnings, a live preview and a demo. The starting-soon pill's color, and how long before a meeting it appears, are configurable too.
+- **Pause alerts** for an hour, until tomorrow, or until you resume: no full-screen alert and no notification meanwhile. Or set **Alert me** (and **Notify me**, if you turned it on) to **Never** to turn alerts off and keep just the menu bar item and its panel.
+- **Configurable** lead time for each kind of alert, snooze durations (shared by both), auto-close and sound, and the full-screen alert's look: four styles plus a Custom one that keeps your own, a light or dark backdrop, and tint, event text and button colors picked from named swatches or any color, with contrast warnings, a live preview and a demo. The starting-soon pill's color, and how long before a meeting it appears, are configurable too.
 - **Updates in the app**: once a day Join! asks GitHub whether there's a new release. When there is, the menu bar panel says so, and **Install** downloads it and checks it. Join! then says the new version is ready and keeps running until you click **Install and Relaunch**, which replaces the app and relaunches it. A switch in Settings turns the daily check off.
 
 Works with any calendar your Mac knows about (Google, iCloud, Exchange, Outlook, CalDAV) through macOS Calendar. Native Swift and SwiftUI, no third-party dependencies.
@@ -39,7 +40,7 @@ Works with any calendar your Mac knows about (Google, iCloud, Exchange, Outlook,
 
 ## Privacy
 
-Join! reads your calendars on your Mac through Apple's EventKit and keeps them there: nothing about your calendars or meetings leaves your Mac. It has no accounts and no analytics.
+Join! reads your calendars on your Mac through Apple's EventKit and keeps them there: nothing about your calendars or meetings leaves your Mac. Its notifications are local too: Join! hands them to macOS on your Mac when they're due. It has no accounts and no analytics.
 
 It goes online only for updates. About once a day it sends one request to GitHub's API (`api.github.com`) asking for the latest Join! release. If that request fails, it tries again an hour later, or at the next launch. While an update is on offer, it also asks again each time Join! launches, to make sure the offer still stands. The only thing the request says about you is which version of Join! you run, in its User-Agent: its other headers, including a fixed English language header (`Accept-Language: en`), are the same on every Mac. GitHub also sees your IP address. To stop these checks, turn off **Check for updates automatically** in **Settings › General › Updates**; **Check Now** there still checks when you ask. **Install** downloads the new version from the project's [GitHub Releases](https://github.com/Poliuk/join/releases), with the same User-Agent and language header.
 
@@ -83,13 +84,15 @@ This builds `build/Join.app` for your Mac and opens it. Move it to `/Application
 
 1. macOS asks for calendar access. Approve it. If you miss the prompt, grant it in System Settings › Privacy & Security › Calendars.
 2. Click the menu bar item → the gear → **Settings** → **Calendars** and untick the calendars you don't want Join! to watch (holidays, birthdays). To leave out events nobody else is invited to, such as focus time, set **Events with no participants** to **Exclude** under **General** › **Events**.
-3. The full-screen alert appears 3 minutes before each meeting. Change that with **Alert me** under **Full-Screen Alert**.
+3. The full-screen alert appears 3 minutes before each meeting. Change that with **Alert me** under **Alerts**. For a notification instead, or as well, pick a time in **Notify me** there; macOS then asks whether Join! may send notifications.
 
 ### Google Calendar
 
 Join! reads calendars through macOS, so your Google account needs to be added in **System Settings › Internet Accounts** with *Calendars* enabled. How quickly changes from Google reach your Mac is controlled in **Calendar › Settings › Accounts › Refresh Calendars**; set it to *Every minute* or *Every 5 minutes* for best results.
 
 ## What gets alerted
+
+Join! has two kinds of alert, each with its own time in **Settings › Alerts**: the full-screen alert (**Alert me**, 3 minutes before by default) and a macOS notification (**Notify me**, Never by default). What follows applies to both.
 
 Every event in the enabled calendars, except all-day events, cancelled events, events you declined, and out-of-office events (below). Tentative invitations do alert. In the menu bar and the panel's top card, though, a meeting you're attending (accepted, or your own) comes before a Maybe or unanswered one it overlaps: during a long Maybe block, the menu bar counts down to the call you accepted inside it from an hour before, shows that call while it runs, and goes back to the block afterwards.
 
@@ -100,23 +103,34 @@ Every event in the enabled calendars, except all-day events, cancelled events, e
 
 Each can be:
 
-- **Show and alert**: like any other event, in the menu bar panel's lists and top card, the menu bar item and the full-screen alert.
-- **Show in the list only**: in the panel's lists and nowhere else. It never gets a full-screen alert, the menu bar item or the panel's top card. Out-of-office events show striped.
+- **Show and alert**: like any other event, in the menu bar panel's lists and top card, the menu bar item and its alerts.
+- **Show in the list only**: in the panel's lists and nowhere else. It never alerts, and never gets the menu bar item or the panel's top card. Out-of-office events show striped.
 - **Exclude**: left out everywhere, as if its calendar were unticked.
 
 An out-of-office event nobody else is invited to is both kinds, and gets whichever choice shows less. Settings from 1.1 carry over: **Show events with no participants** off becomes Exclude. For out-of-office events, **Alert for out-of-office events** on becomes Show and alert; with it off, **Show out-of-office events in the list** on becomes Show in the list only, and off becomes Exclude.
 
 On the full-screen alert, **Return** joins the call and **Esc** dismisses. Keys are ignored for the first moment after it appears, so a keystroke you were already typing elsewhere can't dismiss it by accident.
 
-If a meeting starts while its full-screen alert is due (the Mac was asleep, the app was launched late), the alert appears immediately, unless the meeting started more than 5 minutes ago.
+If a meeting starts while its alert is due (the Mac was asleep, the app was launched late), the alert comes immediately, unless the meeting started more than 5 minutes ago.
 
-To take a break, click the bell in the menu bar panel and pick **Pause for 1 hour**, **Pause until tomorrow** or **Pause until I resume**. While full-screen alerts are paused, the menu bar shows a crossed-out bell and the panel says until when, with **Resume**. The pause survives a relaunch.
+To take a break, click the bell in the menu bar panel and pick **Pause for 1 hour**, **Pause until tomorrow** or **Pause until I resume**. While alerts are paused, no full-screen alert or notification comes; the menu bar shows a crossed-out bell and the panel says until when ("Alerts paused until 11:50 AM"), with **Resume**. The pause survives a relaunch.
 
-To skip a single meeting, click **Dismiss** on the menu bar panel's top card, or point at its row in the list and click the crossed-out bell. It gets no full-screen alert, and the menu bar item and the top card move on to what comes next, while the panel still lists it, greyed and marked Dismissed, until it ends. The bell on its row, **Restore**, brings it back, alert included if it's still due. This isn't the full-screen alert's own **Dismiss**, which only closes the alert.
+To skip a single meeting, click **Dismiss** on the menu bar panel's top card, or point at its row in the list and click the crossed-out bell. It gets no alerts, a notification already delivered for it goes away, and the menu bar item and the top card move on to what comes next, while the panel still lists it, greyed and marked Dismissed, until it ends. The bell on its row, **Restore**, brings it back, alerts included if they're still due. This isn't the full-screen alert's own **Dismiss**, which only closes the alert.
 
 For a repeating meeting, the button opens a small menu instead: **Dismiss This Event** skips just this occurrence, and **Dismiss All Future Events** skips this one and every later one, including those weeks away, until you restore them; they show in the list, greyed, as they come into the panel's 7 days. Restore asks only on a meeting that All Future Events dismissed. Any other restores at once with its bell, just that one, and other occurrences you dismissed stay dismissed. When it asks: **Restore This Event** brings back just that one (the rest of the series stays dismissed), and **Restore All Future Events** brings back that one and every later one, however they were dismissed; earlier ones stay dismissed.
 
-To turn full-screen alerts off altogether, set **Alert me** to **Never** under **Settings › Full-Screen Alert**. The menu bar item, its starting-soon pill and the panel keep working, and **Show Demo** still shows one. **Show on** and **Sound** stay as they were, dimmed until you pick a time again to turn alerts back on.
+To turn full-screen alerts off altogether, set **Alert me** to **Never** under **Settings › Alerts**. The menu bar item, its starting-soon pill and the panel keep working, and **Show Demo** still shows one. **Show on**, **Sound** and **Close automatically** stay as they were, dimmed until you pick a time again to turn alerts back on. Notifications don't depend on it: **Notify me** has its own time or Never.
+
+### Notifications
+
+Pick a time in **Notify me** (Settings › Alerts) and Join! sends a macOS notification that long before each meeting: the event's title, its time, and its calendar and location, with **Join** when there's a link, a snooze button for each snooze duration and **At event start**. The first time you pick one, or click **Send Demo Notification**, macOS asks whether Join! may send notifications; Join! doesn't ask at launch or after an update.
+
+- **Join** opens the call and takes care of both kinds for that meeting: its full-screen alert won't come, or lets the meeting go if it's already up. A snooze brings the notification back later and leaves the full-screen alert alone, so a notification 5 minutes before and the full-screen alert at the start both come.
+- Clicking the notification itself does nothing, and macOS's close button only closes it.
+- **Play sound** gives it macOS's notification sound. It comes silently while that meeting's full-screen alert is on screen, so the two sounds don't overlap.
+- If macOS stops Join!'s notifications (not allowed, not shown on screen, sound off, or its prompt not answered yet), a line under the Notification box says what to change, with **Open System Settings**.
+- How long a notification stays on screen, and whether it shows during a Focus or while you share your screen, is up to System Settings › Notifications. By default macOS holds notifications back while the screen is mirrored or shared, as when you present in a call. The full-screen alert comes up either way.
+- Your calendars may send their own reminders for an event too (an alert set on the event, or a calendar's default alert), so with **Notify me** on you may get two notifications for one meeting. Join! can't tell which events have them.
 
 ## Development
 
@@ -144,8 +158,8 @@ SDKROOT=/Library/Developer/CommandLineTools/SDKs/MacOSX26.5.sdk swift test \
 
 The package has two targets:
 
-- `JoinCore` — pure logic with no UI, EventKit or network dependency: scheduling, link detection, time formatting, preferences, which events show and alert, what the menu bar item and panel say, the full-screen alert's countdown, colors and contrast, and which GitHub release counts as an update. This is what the tests cover. It's nonisolated, so callers decide where its code runs; only `Preferences`, which the app's views observe, is on the main actor.
-- `Join` — the app: EventKit calendar service, full-screen alert windows, menu bar item and panel, Settings, and the updater. Everything in it is on the main actor unless it says otherwise ([Concurrency](docs/TECHNICAL_DESIGN.md#concurrency) in the technical design).
+- `JoinCore` — pure logic with no UI, EventKit or network dependency: scheduling, link detection, time formatting, preferences, which events show and alert, what the menu bar item and panel say, the full-screen alert's countdown, what a notification says and offers, colors and contrast, and which GitHub release counts as an update. This is what the tests cover. It's nonisolated, so callers decide where its code runs; only `Preferences`, which the app's views observe, is on the main actor.
+- `Join` — the app: EventKit calendar service, full-screen alert windows, notifications, menu bar item and panel, Settings, and the updater. Everything in it is on the main actor unless it says otherwise ([Concurrency](docs/TECHNICAL_DESIGN.md#concurrency) in the technical design).
 
 To check the UI against a known calendar instead of your own, quit Join! and launch it with a fixture scenario (`nothing`, `later`, `busy`, `meeting`, `maybe` or `denied`):
 
@@ -153,11 +167,13 @@ To check the UI against a known calendar instead of your own, quit Join! and lau
 open --env JOIN_FIXTURE=busy build/Join.app
 ```
 
-Fixture runs keep their settings in a separate defaults domain, never schedule full-screen alerts, show a "Fixture" marker, and quit after two hours. They don't go online for updates either: `JOIN_FIXTURE_UPDATE` picks what the update check finds: `current` (the default, no update), `available` (a fake newer version) or `failed`, and **Install** isn't available. `ready` finds a fake newer version too, and Install goes through a pretend download to the ready bar; **Install and Relaunch** then relaunches the fixture as it is, replacing nothing, and each later **Check Now** finds a newer fake version. These runs keep the check's results in memory only, so each launch checks once, straight away, whatever an earlier fixture run found. `JOIN_FIXTURE_UPDATE=live` asks GitHub for real and lets Install and Install and Relaunch replace the app the fixture runs from, for testing updates end to end.
+Fixture runs keep their settings in a separate defaults domain, never schedule full-screen alerts, never send notifications or touch macOS's notification center (they share the app's bundle id, and so its notification permission), show a "Fixture" marker, and quit after two hours. They don't go online for updates either: `JOIN_FIXTURE_UPDATE` picks what the update check finds: `current` (the default, no update), `available` (a fake newer version) or `failed`, and **Install** isn't available. `ready` finds a fake newer version too, and Install goes through a pretend download to the ready bar; **Install and Relaunch** then relaunches the fixture as it is, replacing nothing, and each later **Check Now** finds a newer fake version. These runs keep the check's results in memory only, so each launch checks once, straight away, whatever an earlier fixture run found. `JOIN_FIXTURE_UPDATE=live` asks GitHub for real and lets Install and Install and Relaunch replace the app the fixture runs from, for testing updates end to end.
 
 ```sh
 open --env JOIN_FIXTURE=busy --env JOIN_FIXTURE_UPDATE=available build/Join.app
 ```
+
+`JOIN_FIXTURE_NOTIFICATIONS` sets the notification permission the Alerts pane sees, to check each of its status lines: `notDetermined` (the default), `denied`, `hidden` (allowed, never on screen), `soundOff` (allowed, macOS's sound off) or `authorized`. Asking changes nothing in a fixture run, and **Send Demo Notification** isn't available.
 
 Only fixture runs listen for a few distributed notifications (`com.poliuk.join.fixture.openSettings`, `snapshot`, `togglePanel`, `pause`, `appearance`, `checkForUpdates`, `installUpdate`, `installAndRelaunch`, …) so scripts can open windows, take snapshots, switch light/dark, and check for and install updates; a normal run ignores them. See [Testing strategy](docs/TECHNICAL_DESIGN.md#12-testing-strategy) in the technical design.
 
