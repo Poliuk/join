@@ -322,7 +322,7 @@ struct SettingsMinutesChoice: View {
     /// What VoiceOver calls the field and the stepper.
     let fieldLabel: String
     @Binding var minutes: Int
-    /// Alert me only: the item after the presets, and whether it is chosen. `minutes` keeps the last
+    /// Alert me and Notify me only: the item after the presets, and whether it is chosen. `minutes` keeps the last
     /// time meanwhile. A preset or Custom… turns it off at once, Custom… with the kept time in its field.
     var never: (title: String, isChosen: Binding<Bool>)? = nil
     /// Drawn before the pop-up, as General's Starting soon row draws the menu bar's preview.

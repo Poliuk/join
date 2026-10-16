@@ -57,7 +57,7 @@ public enum NotificationPermission: Hashable, Sendable {
     }
 }
 
-/// The one line under the Notification box when something stops a notification from reaching the user, with
+/// The one line at the bottom of the Notification box when something stops a notification from reaching the user, with
 /// Open System Settings beside it. Hidden while Notify me is Never, so there's no hint before the user opts in.
 /// No line for banners that close on their own: that's macOS's default and the user's choice, which the box's
 /// footnote covers.

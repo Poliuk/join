@@ -119,6 +119,28 @@ struct NotificationScheduleTests {
         #expect(Self.plan([meeting], states: states, at: meeting.start) == nil)
     }
 
+    // MARK: Asking
+
+    /// Sending waits while Notify me has a time its ask hasn't started for (a preset picked from Never writes
+    /// the time first, so a re-plan can come before the ask), and for a minute after asking, so a notification
+    /// due at once comes after the user answers macOS's prompt rather than failing before it.
+    @Test(arguments: [
+        ("Notify me just got a time, not asked yet", true, false, nil, true),
+        ("Notify me just got a time, asked a moment ago", true, false, 10, true),
+        ("asked 10 s ago", true, true, 10, true),
+        ("asked 59 s ago", true, true, 59, true),
+        ("asked a minute ago, unanswered", true, true, 60, false),
+        ("asked 61 s ago, unanswered", true, true, 61, false),
+        ("not asking", true, true, nil, false),
+        ("Notify me just went back to Never", false, true, nil, false),
+        ("Never, the demo asked 10 s ago", false, false, 10, true),
+        ("Never, nothing asked", false, false, nil, false),
+    ] as [(String, Bool, Bool, TimeInterval?, Bool)])
+    func sendingWaitsForTheAsk(_ name: String, enabled: Bool, handled: Bool, askedAgo: TimeInterval?, holds: Bool) {
+        let askedAt = askedAgo.map { Self.now.addingTimeInterval(-$0) }
+        #expect(NotificationSchedule.holdsSending(notificationsEnabled: enabled, handledEnabled: handled, askedAt: askedAt, now: Self.now) == holds)
+    }
+
     // MARK: Sound
 
     /// Play sound decides, except while the meeting's full-screen alert is on screen: the notification comes

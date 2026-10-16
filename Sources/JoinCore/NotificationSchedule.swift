@@ -29,6 +29,21 @@ public enum NotificationSchedule {
         )
     }
 
+    /// How long sending waits for an answer to macOS's prompt, which may go unanswered for good.
+    public static let askingHold: TimeInterval = 60
+
+    /// Whether sending waits, so a notification due at once when Notify me gets a time comes once the user has
+    /// answered macOS's prompt rather than failing before it. It waits while Notify me has a time its observer
+    /// hasn't handled yet (`handledEnabled` false), whose ask hasn't started: a preset picked from Never writes
+    /// the time before Notify me, so a re-plan for the time, the heartbeat's or the fire timer's can come first.
+    /// Then for up to `askingHold` after asking (`askedAt`); after that, whatever is due goes out, whatever the
+    /// answer.
+    public static func holdsSending(notificationsEnabled: Bool, handledEnabled: Bool, askedAt: Date?, now: Date) -> Bool {
+        if notificationsEnabled && !handledEnabled { return true }
+        guard let askedAt else { return false }
+        return now.timeIntervalSince(askedAt) < askingHold
+    }
+
     /// A meeting's state once its notification is sent: done, so it isn't sent again, not even when Notify me's
     /// time changes. A snooze or At event start (`AlertResponse.state`) plans it once more, under the same
     /// identifier, so it replaces itself.

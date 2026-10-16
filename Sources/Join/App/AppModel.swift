@@ -44,7 +44,11 @@ final class AppModel {
         } else {
             defaults = .standard
             service = EventKitCalendarService()
-            notificationCenter = SystemNotificationCenter()
+            // UNUserNotificationCenter raises in a process without an app bundle, so a `swift run` build, like
+            // its update checker, has no notifications.
+            notificationCenter = Bundle.main.bundleURL.pathExtension == "app"
+                ? SystemNotificationCenter()
+                : UnavailableNotificationCenter()
         }
         let preferences = Preferences(defaults: defaults)
         if fixture != nil, preferences.dismissedEvents.withoutSeriesRules != preferences.dismissedEvents {

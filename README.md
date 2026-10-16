@@ -128,7 +128,7 @@ Pick a time in **Notify me** (Settings › Alerts) and Join! sends a macOS notif
 - **Join** opens the call and takes care of both kinds for that meeting: its full-screen alert won't come, or lets the meeting go if it's already up. A snooze brings the notification back later and leaves the full-screen alert alone, so a notification 5 minutes before and the full-screen alert at the start both come.
 - Clicking the notification itself does nothing, and macOS's close button only closes it.
 - **Play sound** gives it macOS's notification sound. It comes silently while that meeting's full-screen alert is on screen, so the two sounds don't overlap.
-- If macOS stops Join!'s notifications (not allowed, not shown on screen, sound off, or its prompt not answered yet), a line under the Notification box says what to change, with **Open System Settings**.
+- If macOS stops Join!'s notifications (not allowed, not shown on screen, sound off, or its prompt not answered yet), a line at the bottom of the Notification box says what to change, with **Open System Settings**.
 - How long a notification stays on screen, and whether it shows during a Focus or while you share your screen, is up to System Settings › Notifications. By default macOS holds notifications back while the screen is mirrored or shared, as when you present in a call. The full-screen alert comes up either way.
 - Your calendars may send their own reminders for an event too (an alert set on the event, or a calendar's default alert), so with **Notify me** on you may get two notifications for one meeting. Join! can't tell which events have them.
 
@@ -173,7 +173,7 @@ Fixture runs keep their settings in a separate defaults domain, never schedule f
 open --env JOIN_FIXTURE=busy --env JOIN_FIXTURE_UPDATE=available build/Join.app
 ```
 
-`JOIN_FIXTURE_NOTIFICATIONS` sets the notification permission the Alerts pane sees, to check each of its status lines: `notDetermined` (the default), `denied`, `hidden` (allowed, never on screen), `soundOff` (allowed, macOS's sound off) or `authorized`. Asking changes nothing in a fixture run, and **Send Demo Notification** isn't available.
+`JOIN_FIXTURE_NOTIFICATIONS` sets the notification permission the Alerts pane sees, to check each of its status lines: `notDetermined` (the default), `denied`, `hidden` (allowed, never on screen), `soundOff` (allowed, macOS's sound off) or `authorized`. A line shows only once **Notify me** has a time in the fixture's own Settings, where it starts at Never (`soundOff`'s only with **Play sound** on); picking one asks nothing in a fixture run, and **Send Demo Notification** isn't available.
 
 Only fixture runs listen for a few distributed notifications (`com.poliuk.join.fixture.openSettings`, `snapshot`, `togglePanel`, `pause`, `appearance`, `checkForUpdates`, `installUpdate`, `installAndRelaunch`, …) so scripts can open windows, take snapshots, switch light/dark, and check for and install updates; a normal run ignores them. See [Testing strategy](docs/TECHNICAL_DESIGN.md#12-testing-strategy) in the technical design.
 

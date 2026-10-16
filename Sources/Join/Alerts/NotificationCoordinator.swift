@@ -6,23 +6,21 @@ import JoinCore
 /// The second kind of alert: macOS notifications at Notify me's time. Plans with `AlertScheduler`
 /// (`NotificationSchedule`) and its own per-meeting states, posts each notification itself when it's due, and
 /// handles the user's responses. It isn't held back by the full-screen alert's one-at-a-time rule; it shares
-/// that alert's pause, the panel's dismissals and the Events choices (`MeetingStore.alertableMeetings`), and
-/// Join from either kind finishes both. A fixture run never plans or sends anything, and its notification
-/// center is a stand-in (`FixtureNotificationCenter`).
+/// that alert's pause (`AlertCoordinator.pauseState`), the panel's dismissals and the Events choices (these two
+/// through `MeetingStore.alertableMeetings`), and Join from either kind finishes both. A fixture run never
+/// plans or sends anything, and its notification center is a stand-in (`FixtureNotificationCenter`).
 @Observable
 final class NotificationCoordinator {
     private static let heartbeatInterval: TimeInterval = 30
     private static let fireLeeway: TimeInterval = 0.5
     private static let appNapGuardWindow: TimeInterval = 5 * 60
     private static let statesKey = "notificationStates"
-    /// How long sending waits for an answer to macOS's prompt, which may go unanswered for good.
-    private static let askingHold: TimeInterval = 60
 
     /// What macOS lets Join!'s notifications do: read at launch, when Join! becomes active, when Settings
     /// becomes key, and after asking.
     private(set) var permission: NotificationPermission = .notDetermined
 
-    /// The status line under the Notification box, if any.
+    /// The status line, the Notification box's last row, if any.
     var status: NotificationStatus? {
         NotificationStatus.current(
             notificationsEnabled: preferences.notificationsEnabled,
@@ -51,10 +49,15 @@ final class NotificationCoordinator {
     @ObservationIgnored private var heartbeat: Timer?
     @ObservationIgnored private var activity: NSObjectProtocol?
     @ObservationIgnored private var activationObservers: [NSObjectProtocol] = []
-    /// When Join! asked macOS, until it answers. For up to `askingHold` nothing is sent, so a notification due
-    /// at once when Notify me gets a time comes once the user allows it rather than failing before; after
-    /// that, the heartbeat sends what's due whatever the answer.
+    /// When Join! asked macOS, until it answers. For up to `NotificationSchedule.askingHold` nothing is sent, so
+    /// a notification due at once when Notify me gets a time comes once the user allows it rather than failing
+    /// before; after that, the heartbeat sends what's due whatever the answer.
     @ObservationIgnored private var askedAt: Date?
+    /// Notify me as `notifyMeDidChange` last saw it. While Notify me has a time this hasn't seen, its first ask
+    /// hasn't started, so nothing is sent either (`NotificationSchedule.holdsSending`): a preset picked from Never
+    /// writes the time before Notify me, so the re-plan for the time runs before the ask, and the heartbeat or the
+    /// fire timer may too. `askIfNeeded` sets `askedAt` as this is set, so the hold passes from one to the other.
+    @ObservationIgnored private var handledEnabled = false
     /// Nothing is planned until `start()`, so a coordinator that is never started never sends anything.
     @ObservationIgnored private var started = false
 
@@ -97,6 +100,8 @@ final class NotificationCoordinator {
     func start() {
         refreshPermission()
         observeActivation()
+        // Notify me on at launch is already handled: no prompt, and nothing held.
+        handledEnabled = preferences.notificationsEnabled
         // Notify me leaving Never asks macOS the first time; going back to Never stops what's planned.
         observeChanges(of: { [preferences] in _ = preferences.notificationsEnabled }) { [weak self] in
             self?.notifyMeDidChange()
@@ -115,7 +120,8 @@ final class NotificationCoordinator {
             self?.meetingsDidChange()
         }
         // Notify me's time, and the pause shared with the full-screen alert. Play sound needs nothing: it's
-        // read as each notification is sent.
+        // read as each notification is sent. A time picked from Never comes before Notify me itself, so this
+        // re-plan sends nothing until the ask has started (`handledEnabled`).
         observeChanges(of: { [preferences, alerts] in
             _ = preferences.notificationLeadTime
             _ = alerts.pauseState
@@ -144,6 +150,7 @@ final class NotificationCoordinator {
     }
 
     private func notifyMeDidChange() {
+        handledEnabled = preferences.notificationsEnabled
         guard preferences.notificationsEnabled else {
             replan()
             return
@@ -195,7 +202,13 @@ final class NotificationCoordinator {
         let now = Date()
         pruneStates(now: now)
         cancelFireTimer()
-        if let askedAt, now.timeIntervalSince(askedAt) < Self.askingHold { return }
+        // Waiting for the ask (`handledEnabled`, `askedAt`): it re-plans once macOS answers.
+        guard !NotificationSchedule.holdsSending(
+            notificationsEnabled: preferences.notificationsEnabled,
+            handledEnabled: handledEnabled,
+            askedAt: askedAt,
+            now: now
+        ) else { return }
 
         // Whatever is due now goes out at once, each meeting with its own notification; there's no
         // one-at-a-time rule, so the loop ends once nothing more is due.
@@ -269,10 +282,11 @@ final class NotificationCoordinator {
 
     /// Withdraws the delivered notifications whose meeting is no longer alertable (dismissed from the panel,
     /// cancelled, moved, now Show in the list only or excluded) or has ended. Only once the calendar has been
-    /// read, or every meeting would look gone, and only while notifications are allowed, since nothing can be
-    /// delivered otherwise.
+    /// read, or every meeting would look gone, but whatever the permission read last says: a grant made in
+    /// System Settings isn't seen until Join! is next active, yet notifications are delivered meanwhile, and
+    /// with nothing delivered there's nothing to withdraw.
     private func withdrawStale() {
-        guard started, store.lastRefreshed != nil, case .allowed = permission else { return }
+        guard started, store.lastRefreshed != nil else { return }
         Task {
             let delivered = await center.deliveredIdentifiers()
             // Read after the wait, so a meeting restored meanwhile keeps its notification.

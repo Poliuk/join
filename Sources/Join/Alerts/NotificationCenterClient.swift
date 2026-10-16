@@ -7,7 +7,8 @@ import JoinCore
 /// the categories, posting and withdrawing. Nonisolated, returning only `Sendable` values: UserNotifications
 /// has no `Sendable` annotations and calls back on its own queue, so its objects never leave the
 /// implementation. `SystemNotificationCenter` is the real one; `FixtureNotificationCenter` stands in for it in
-/// a fixture run, which shares the app's bundle id and so must never touch the real one.
+/// a fixture run, which shares the app's bundle id and so must never touch the real one; and
+/// `UnavailableNotificationCenter` in a build without an app bundle, where the real one can't be used.
 nonisolated protocol NotificationCenterClient: Sendable {
     /// What macOS lets Join!'s notifications do now. It reports no changes, so this is read again when Join!
     /// becomes active and when Settings becomes key.
@@ -32,7 +33,8 @@ nonisolated protocol NotificationCenterClient: Sendable {
 }
 
 /// The real notification center. It's asked for afresh on each call, since `UNUserNotificationCenter`
-/// isn't `Sendable`; only a process with a bundle may use it, so `swift test` never gets here.
+/// isn't `Sendable`; only a process with an app bundle may use it, so `AppModel` uses it only inside one, and
+/// `swift test` and `swift run` never get here.
 nonisolated struct SystemNotificationCenter: NotificationCenterClient {
     private var center: UNUserNotificationCenter { .current() }
 
@@ -173,4 +175,17 @@ nonisolated struct FixtureNotificationCenter: NotificationCenterClient {
     func setResponder(_ responder: NotificationResponder) {
         Logger.fixture.notice("Fixture: notification responses stay with the real app; no responder set")
     }
+}
+
+/// The notification center in a build without an app bundle (`swift run`, `.build/debug/Join`):
+/// `UNUserNotificationCenter` raises without one, so, like the update checker, such a build has no
+/// notifications. Never allowed; nothing is asked, sent or removed, and nothing is logged.
+nonisolated struct UnavailableNotificationCenter: NotificationCenterClient {
+    func permission() async -> NotificationPermission { .denied }
+    func requestPermission() async -> NotificationPermission { .denied }
+    func registerCategories(snoozeDurations: SnoozeDurations) {}
+    func post(_ content: NotificationContent) async throws {}
+    func deliveredIdentifiers() async -> [String] { [] }
+    func withdraw(_ identifiers: [String]) {}
+    func setResponder(_ responder: NotificationResponder) {}
 }
