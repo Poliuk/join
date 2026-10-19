@@ -46,7 +46,7 @@ public enum LocationFormatter {
         return "\(parts[0]) · \(locality)"
     }
 
-    /// The location as the full-screen alert shows it, and the notification after the calendar's name: its
+    /// The location as the full-screen alert and the notification show it: its
     /// lines on one, joined with commas ("Café Comercial, Glorieta de Bilbao, 7"). Nil when it's empty, or only
     /// the join link again.
     public static func alertLocation(_ location: String?, joinURL: URL?) -> String? {

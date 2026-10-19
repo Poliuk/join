@@ -2,9 +2,10 @@ import Foundation
 
 /// What one notification says and offers, for a meeting or the demo: built here, posted by the app as it is.
 /// The title is the event's title (macOS shows Join!'s name and icon above it, so it doesn't repeat them), the
-/// subtitle its time range, and the body its calendar's name, then its location as the full-screen alert
-/// shows it. Only clock times, never "Starts in 3 min": a delivered notification can't update, and macOS adds
-/// its own "now" or "5m ago". It's posted Active, never Time Sensitive (an entitlement an ad-hoc-signed build
+/// subtitle its time range, and the body its location as the full-screen alert shows it. Never the calendar's
+/// name, which for an account's calendar is often the user's email address (the user's ask, 2026-10-19). Only
+/// clock times, never "Starts in 3 min": a delivered notification can't update, and macOS adds its own "now" or
+/// "5m ago". It's posted Active, never Time Sensitive (an entitlement an ad-hoc-signed build
 /// can't carry), and its previews follow the user's Show previews setting.
 public struct NotificationContent: Equatable, Sendable {
     /// Every meeting's notification shares this thread, so meetings at the same time are grouped together.
@@ -17,8 +18,7 @@ public struct NotificationContent: Equatable, Sendable {
     public let title: String
     /// "10:00 – 10:30 AM".
     public let subtitle: String
-    /// "Work · Conference Room A", "Work", "Conference Room A", or empty; the test notification's says what it
-    /// is (`DemoEvent.notificationBody`).
+    /// "Conference Room A", or empty; the test notification's says what it is (`DemoEvent.notificationBody`).
     public let body: String
     /// Which actions it offers (`NotificationCategory.actions`).
     public let category: NotificationCategory
@@ -75,12 +75,9 @@ public struct NotificationContent: Equatable, Sendable {
         payload = NotificationPayload(meeting: meeting)
     }
 
-    /// The calendar's name, then the location as the full-screen alert shows it; either alone when the other
-    /// is missing.
+    /// The location as the full-screen alert shows it, or nothing.
     static func body(for meeting: Meeting) -> String {
-        let calendar = meeting.calendarTitle.isEmpty ? nil : meeting.calendarTitle
-        let location = LocationFormatter.alertLocation(meeting.location, joinURL: meeting.joinURL)
-        return [calendar, location].compactMap { $0 }.joined(separator: " · ")
+        LocationFormatter.alertLocation(meeting.location, joinURL: meeting.joinURL) ?? ""
     }
 }
 

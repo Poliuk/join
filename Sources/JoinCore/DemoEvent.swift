@@ -15,7 +15,7 @@ public enum DemoEvent {
 
     /// Under the test full-screen alert's Dismiss: what it is, and how to close it.
     public static let fullScreenAlertNote = "This is a test full-screen alert. Press Esc to close it."
-    /// The test notification's body, where a meeting's has its calendar and location.
+    /// The test notification's body, where a meeting's has its location.
     public static let notificationBody = "This is a test notification."
 
     /// The demo event as of `now`. It starts on a whole second, like a real event, so the full-screen alert's

@@ -19,15 +19,15 @@ struct NotificationContentTests {
 
     // MARK: Content
 
-    /// The event's title, its time range as clock times, then the calendar's name and the location as the
-    /// full-screen alert shows it. One identifier per meeting, the same every time it's sent.
+    /// The event's title, its time range as clock times, then the location as the full-screen alert shows it.
+    /// One identifier per meeting, the same every time it's sent.
     @Test func aMeetingsNotification() {
         let content = Self.content(Self.review)
         #expect(content.identifier == .meeting("review@1791280800"))
         #expect(content.identifier.rawValue == "meeting:review@1791280800")
         #expect(content.title == "Design review")
         #expect(F.squash(content.subtitle) == "10:00 – 10:30 AM")
-        #expect(content.body == "Work · Conference Room A")
+        #expect(content.body == "Conference Room A")
         #expect(content.category == NotificationCategory(offersJoin: true, offersAtEventStart: true))
         #expect(content.playsSound)
         #expect(content.payload == NotificationPayload(meeting: Self.review))
@@ -35,14 +35,14 @@ struct NotificationContentTests {
         #expect(!Self.content(Self.review, playsSound: false).playsSound)
     }
 
-    /// The body: the calendar's name, then the location, each alone when the other is missing, and the
-    /// location as the full-screen alert shows it (lines on one, never only the join link again).
+    /// The body: the location as the full-screen alert shows it (lines on one, never only the join link again),
+    /// and never the calendar's name, which is often the user's email address.
     @Test(arguments: [
-        ("both", "Work", "Conference Room A", "Work · Conference Room A"),
-        ("no location", "Work", nil, "Work"),
-        ("a location that is only the join link", "Work", F.meet.absoluteString, "Work"),
-        ("no calendar name", "", "Conference Room A", "Conference Room A"),
-        ("a location over two lines", "Personal", "Café Comercial\nGlorieta de Bilbao, 7", "Personal · Café Comercial, Glorieta de Bilbao, 7"),
+        ("a location", "Work", "Conference Room A", "Conference Room A"),
+        ("a calendar named after an email address", "someone@example.com", "Conference Room A", "Conference Room A"),
+        ("no location", "Work", nil, ""),
+        ("a location that is only the join link", "Work", F.meet.absoluteString, ""),
+        ("a location over two lines", "Personal", "Café Comercial\nGlorieta de Bilbao, 7", "Café Comercial, Glorieta de Bilbao, 7"),
         ("neither", "", nil, ""),
     ] as [(String, String, String?, String)])
     func body(_ name: String, calendar: String, location: String?, expected: String) {
@@ -67,7 +67,7 @@ struct NotificationContentTests {
     }
 
     /// Test Notification: the demo event, starting 3 minutes from now, under the demo's own identifier, with a
-    /// body that says it's a test where a meeting's has its calendar and location.
+    /// body that says it's a test where a meeting's has its location.
     @Test func theTestNotification() {
         let content = NotificationContent.demo(playsSound: true, now: Self.now, locale: F.us, timeZone: F.calendar.timeZone)
         #expect(content.identifier == .demo)
