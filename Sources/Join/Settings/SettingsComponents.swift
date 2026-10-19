@@ -38,14 +38,14 @@ enum SettingsMetrics {
     static let sectionSpacing: CGFloat = 22
     /// From a section's heading to its box.
     static let headingSpacing: CGFloat = 8
-    /// From a box to the line under it.
-    static let underBoxSpacing: CGFloat = 6
+    /// From a box to the line under it: room for its buttons, which sit on the box's edge (the user's ask, 2026-10-19).
+    static let underBoxSpacing: CGFloat = 10
     /// How far headings and text outside a box sit in from the box's edge.
     static let edgeInset: CGFloat = 2
     /// How far a dependent row sits in from its parent; its connector line lives in this gutter.
     static let indent: CGFloat = 30
     /// A box's padding either side of its rows, which puts every control's right edge on one line, 12 pt in from
-    /// the box's edge. A line under a box keeps its buttons on that line with the same padding.
+    /// the box's edge.
     static let boxInset: CGFloat = 12
     static let rowMinHeight: CGFloat = 40
     static let rowVerticalPadding: CGFloat = 6
@@ -57,8 +57,8 @@ enum SettingsMetrics {
 
 /// A heading above a grouped box, then, under the box, a line for what its rows can't say: a footnote in
 /// secondary text, a warning, and the buttons that act on the whole box (Test Full-Screen Alert, Test Notification,
-/// Appearance's Restore Defaults, Select All), at its right, on the line the box's controls end on, outside the box
-/// (the user's ask for the Alerts pane's Test buttons, 2026-10-19). A button that acts on one row is that row's control
+/// Appearance's Restore Defaults, Select All), outside the box at its right, their right edge on the box's (the user's
+/// ask for the Alerts pane's Test buttons, 2026-10-19). A button that acts on one row is that row's control
 /// instead. With no title the box has no heading: only a pane's first block, at the top padding, whose content names
 /// itself (General's Open at login, Appearance's preview).
 struct SettingsSection<Content: View, Accessory: View>: View {
@@ -94,7 +94,7 @@ extension SettingsSection where Accessory == EmptyView {
 }
 
 /// A line outside a box: a footnote and a warning at the left, from the box's edge, and buttons at the right, on the
-/// line the box's controls end on. Under a box (`SettingsSection`), Calendars' intro line and its footer use it.
+/// box's right edge. Under a box (`SettingsSection`), Calendars' intro line and its footer use it.
 /// The text's first line sits on the buttons' baseline, wrapped or not, as a label beside a control does: beside
 /// a button it starts a few points lower than the button's top. Drawn only when it has something to show.
 struct SettingsNoteLine<Accessory: View>: View {
@@ -116,10 +116,8 @@ struct SettingsNoteLine<Accessory: View>: View {
                     Spacer(minLength: 0)
                 }
                 if hasAccessory {
-                    // Inset like a box's rows, so the buttons line up with the controls above them.
                     HStack(spacing: SettingsMetrics.controlSpacing) { accessory }
                         .fixedSize()
-                        .padding(.trailing, SettingsMetrics.boxInset)
                 }
             }
         }

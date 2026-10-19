@@ -87,7 +87,7 @@ struct CalendarsTab: View {
     }
 
     /// Two lines under the last account: where to add a missing calendar, then when the calendars were last read,
-    /// with the buttons at the right, on the line the boxes' controls end on.
+    /// with the buttons at the right, on the boxes' right edge.
     private var footer: some View {
         VStack(alignment: .leading, spacing: SettingsMetrics.underBoxSpacing) {
             SettingsNoteLine(footnote: "Missing a calendar? Add its account in System Settings › Internet Accounts. How often calendars sync is set in Calendar › Settings › Accounts.")
