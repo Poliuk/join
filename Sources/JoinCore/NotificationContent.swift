@@ -42,7 +42,8 @@ public struct NotificationContent: Equatable, Sendable {
     }
 
     /// Test Notification's notification: the demo event (`DemoEvent`), starting 3 minutes from `now`, with a body
-    /// that says it's a test. Its actions only close it (`NotificationIdentifier.demo`), and withdrawals leave it
+    /// that says it's a test. Its Join opens the demo event's link, its other actions only close it
+    /// (`NotificationIdentifier.demo`), and withdrawals leave it
     /// alone.
     public static func demo(
         playsSound: Bool,

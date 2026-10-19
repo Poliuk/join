@@ -308,13 +308,17 @@ final class NotificationCoordinator {
         replan()
     }
 
-    /// A response to one of Join!'s notifications. A click on the notification itself does nothing, nor does
-    /// any action on the demo's, which macOS has already closed. Join opens the link and finishes both kinds;
-    /// Snooze and At event start bring this notification back, leaving the full-screen alert alone.
+    /// A response to one of Join!'s notifications. A click on the notification itself does nothing. Join opens the
+    /// link and finishes both kinds; Snooze and At event start bring this notification back, leaving the
+    /// full-screen alert alone. On the test notification, Join opens the demo event's link too, so the test tries
+    /// it end to end (the user's ask, 2026-10-19), and every other action only closes it.
     private func handle(_ reply: NotificationReply) {
         guard let identifier = reply.identifier, let response = reply.response else { return }
         guard case .meeting(let id) = identifier, let payload = reply.payload, payload.meetingID == id else {
-            if identifier == .demo { center.withdraw([identifier.rawValue]) }
+            if identifier == .demo {
+                if response == .join, let url = reply.payload?.joinURL { NSWorkspace.shared.open(url) }
+                center.withdraw([identifier.rawValue])
+            }
             return
         }
         // From what the notification carries: the calendar may not be read yet when a response launches Join!.

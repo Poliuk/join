@@ -231,7 +231,8 @@ final class AlertCoordinator {
     }
 
     /// Test Full-Screen Alert, on Alerts and Appearance, and the `showDemoAlert` script hook: the demo event's
-    /// full-screen alert, on the chosen screens in the current look, whose buttons only close it.
+    /// full-screen alert, on the chosen screens in the current look. Join opens the demo event's link, as a real
+    /// alert's does, so the test tries it end to end (the user's ask, 2026-10-19); every button closes it.
     func showDemoAlert() {
         guard !isAlerting else { return }
         let demo = DemoEvent.meeting(now: Date())
@@ -243,7 +244,10 @@ final class AlertCoordinator {
                 dismiss: { [weak self] in self?.closeDemo() },
                 snooze: { [weak self] _ in self?.closeDemo() },
                 snoozeUntilEvent: { [weak self] in self?.closeDemo() },
-                join: { [weak self] _ in self?.closeDemo() }
+                join: { [weak self] _ in
+                    if let url = DemoEvent.joinURL { NSWorkspace.shared.open(url) }
+                    self?.closeDemo()
+                }
             ),
             isDemo: true
         )
