@@ -2,17 +2,9 @@ import AppKit
 import SwiftUI
 import JoinCore
 
-/// Which side of its pop-up a color well takes: away from the edge the row's control keeps, so the pop-up
-/// stays put whether the well shows or not.
-enum SettingsWellSide {
-    /// Before the pop-up, which keeps the row's trailing edge (General).
-    case beforePopUp
-    /// After the pop-up, which keeps the control column's left edge (Appearance).
-    case afterPopUp
-}
-
-/// A color pop-up: named swatches, a separator and Other…. While Other… is picked a well sits beside the
-/// pop-up, on the side `wellSide` names, and picking Other… opens the color panel on that well. Which item
+/// A color pop-up, fitted to its items: named swatches, a separator and Other…. While Other… is picked a well sits
+/// before the pop-up, so the pop-up keeps the row's trailing edge whether the well shows or not, and picking Other…
+/// opens the color panel on that well. Which item
 /// shows is `ColorChoice.selection`, in JoinCore. Like `SettingsMinutesChoice` with Custom…, this view keeps
 /// whether Other… was picked: until another item is, or the color changes from elsewhere (a Style card,
 /// Restore Defaults).
@@ -26,9 +18,6 @@ struct SettingsColorChoice: View {
     var automaticDot: SettingsSwatchDot = .automatic
     /// Whether the well picks an opacity too.
     var supportsOpacity = false
-    /// A fixed width, so the pop-ups down a box line up; nil fits the pop-up to its items.
-    var popUpWidth: CGFloat? = nil
-    var wellSide: SettingsWellSide = .beforePopUp
     /// The row's stored color, nil for its automatic item. Read live, so a write can be told apart.
     let stored: () -> RGBA?
     /// The color the row draws with, opacity included: what the well shows and the swatches are matched to.
@@ -55,25 +44,21 @@ struct SettingsColorChoice: View {
     var body: some View {
         let current = colors
         let selected = choice.selection(stored: current.stored, shown: current.shown, otherPicked: other != .unpicked)
-        HStack(spacing: 8) {
-            if selected == .other, wellSide == .beforePopUp {
+        HStack(spacing: SettingsMetrics.controlSpacing) {
+            if selected == .other {
                 well(showing: current.shown)
             }
-            SettingsPopUpWidth(width: popUpWidth) {
-                Picker(title, selection: Binding(get: { selected }, set: select)) {
-                    ForEach(choice.swatches) { swatch in
-                        SettingsSwatchItem(name: swatch.name, dot: swatch.color.map(SettingsSwatchDot.color) ?? automaticDot)
-                            .tag(ColorChoice.Item.swatch(swatch))
-                    }
-                    Divider()
-                    SettingsSwatchItem(name: ColorChoice.otherTitle, dot: .other)
-                        .tag(ColorChoice.Item.other)
+            Picker(title, selection: Binding(get: { selected }, set: select)) {
+                ForEach(choice.swatches) { swatch in
+                    SettingsSwatchItem(name: swatch.name, dot: swatch.color.map(SettingsSwatchDot.color) ?? automaticDot)
+                        .tag(ColorChoice.Item.swatch(swatch))
                 }
-                .labelsHidden()
+                Divider()
+                SettingsSwatchItem(name: ColorChoice.otherTitle, dot: .other)
+                    .tag(ColorChoice.Item.other)
             }
-            if selected == .other, wellSide == .afterPopUp {
-                well(showing: current.shown)
-            }
+            .labelsHidden()
+            .fixedSize()
         }
         .onChange(of: current) { _, newValue in
             if newValue == ownWrite {
@@ -113,50 +98,26 @@ struct SettingsColorChoice: View {
     }
 }
 
-/// The legacy **Text** row's control: a well beside Automatic / Custom, on the side `wellSide` names. It only
-/// shows while a label color saved by an earlier build is stored, so Custom is always the item shown;
+/// The legacy **Text** row's control: a well, then Automatic / Custom, fitted to its items, like a color pop-up's.
+/// It only shows while a label color saved by an earlier build is stored, so Custom is always the item shown;
 /// Automatic clears the color, and the row goes.
 struct SettingsLegacyTextChoice: View {
     /// The pop-up's name for VoiceOver.
     let title: String
     let wellLabel: String
     let color: RGBA
-    var popUpWidth: CGFloat? = nil
-    var wellSide: SettingsWellSide = .beforePopUp
     let clear: () -> Void
     let setColor: (RGBA) -> Void
 
     var body: some View {
-        HStack(spacing: 8) {
-            if wellSide == .beforePopUp { well }
-            SettingsPopUpWidth(width: popUpWidth) {
-                Picker(title, selection: Binding(get: { true }, set: { custom in if !custom { clear() } })) {
-                    Text(LegacyTextRow.automaticTitle).tag(false)
-                    Text(LegacyTextRow.customTitle).tag(true)
-                }
-                .labelsHidden()
+        HStack(spacing: SettingsMetrics.controlSpacing) {
+            SettingsColorWell(label: wellLabel, color: color, onChange: setColor)
+            Picker(title, selection: Binding(get: { true }, set: { custom in if !custom { clear() } })) {
+                Text(LegacyTextRow.automaticTitle).tag(false)
+                Text(LegacyTextRow.customTitle).tag(true)
             }
-            if wellSide == .afterPopUp { well }
-        }
-    }
-
-    private var well: some View {
-        SettingsColorWell(label: wellLabel, color: color, onChange: setColor)
-    }
-}
-
-/// A pop-up at a fixed width, or fitted to its items. A menu pop-up keeps its own width inside the frame, so it's
-/// pinned to the frame's leading edge: on Appearance every pop-up then starts where the control column does,
-/// rather than sitting centered in it (the user's ask, 2026-10-19).
-private struct SettingsPopUpWidth<Content: View>: View {
-    let width: CGFloat?
-    @ViewBuilder var content: Content
-
-    var body: some View {
-        if let width {
-            content.frame(width: width, alignment: .leading)
-        } else {
-            content.fixedSize()
+            .labelsHidden()
+            .fixedSize()
         }
     }
 }

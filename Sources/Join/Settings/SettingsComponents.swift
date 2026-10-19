@@ -175,9 +175,10 @@ struct SettingsSeparator: View {
     }
 }
 
-/// Label on the left, control on the right, with a hairline above unless it opens its box. With a control
-/// column, as on Appearance, the control starts that far from the row's leading edge instead, so the controls
-/// down the pane share one left edge.
+/// Label on the left, on one line, then the control at the row's trailing edge, which the box's inset puts on the
+/// line every control on the pane ends on, with a hairline above unless it opens its box. A helper the control
+/// brings (a play button, a preview, a color well) goes before it, so the control's right edge stays put. Every
+/// row on every pane is one of these; panes never build their own rows or place hairlines themselves.
 /// An indented row depends on the row above it, and is left out, not dimmed, while that row is
 /// off: no sound, no tint, a preset rather than Custom…. The disabled tone is for rows beside a
 /// setting that turns them off, as Show on and Sound are while Alert me is Never, and Play sound while
@@ -193,9 +194,6 @@ struct SettingsRow<Control: View>: View {
     var tone: Tone = .primary
     var indented = false
     var separator = true
-    /// Where the control starts, from the row's leading edge, an indented row's included, so it lines up with
-    /// its parent's; it must clear the longest label. Nil puts the control at the trailing edge.
-    var controlColumn: CGFloat? = nil
     @ViewBuilder var control: Control
 
     var body: some View {
@@ -204,21 +202,10 @@ struct SettingsRow<Control: View>: View {
                 SettingsSeparator()
                     .padding(.leading, leadingInset)
             }
-            Group {
-                if let controlColumn {
-                    HStack(spacing: 0) {
-                        label
-                            .frame(width: controlColumn - leadingInset, alignment: .leading)
-                        control
-                        Spacer(minLength: 0)
-                    }
-                } else {
-                    HStack(spacing: SettingsMetrics.rowSpacing) {
-                        label
-                        Spacer(minLength: 0)
-                        control
-                    }
-                }
+            HStack(spacing: SettingsMetrics.rowSpacing) {
+                label
+                Spacer(minLength: 0)
+                control
             }
             .padding(.leading, leadingInset)
             .padding(.vertical, SettingsMetrics.rowVerticalPadding)

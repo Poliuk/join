@@ -3,37 +3,28 @@ import JoinCore
 
 /// How the full-screen alert looks, and nothing else: the preview, Style's five cards, the Colors box, and
 /// Restore Defaults for the look. When and how it alerts is on the Alerts pane, beside the notification, which
-/// has no look to set.
+/// has no look to set. Laid out like the other panes, with every control at the right of its row as on Alerts (the
+/// user's ask, 2026-10-19).
 struct AppearanceTab: View {
     @Environment(AppModel.self) private var model
     @State private var previewBackdrop: AppearancePreviewBackdrop = .wallpaper
     /// The contrast warnings VoiceOver has been told about, or that were already shown.
     @State private var announcedWarnings: Set<AlertContrastWarning.Subject> = []
 
-    /// The Colors box's pop-ups share one width, so their right edges line up down the box too.
-    private static let popUpWidth: CGFloat = 168
-    /// Where every control on the pane starts, from a row's leading edge in its box, so the controls share one
-    /// left edge whatever their width, as the user asked (2026-10-19): the Colors box's, indented rows' included,
-    /// and Preview over's segmented control. Clear of the longest label, Snooze & Dismiss buttons, about 158 pt.
-    private static let controlColumn: CGFloat = 180
-
     var body: some View {
-        VStack(alignment: .leading, spacing: 22) {
+        VStack(alignment: .leading, spacing: SettingsMetrics.sectionSpacing) {
             preview
 
             SettingsSection(title: "Style") {
                 styleCards
-                    .padding(.vertical, 12)
+                    .padding(.vertical, SettingsMetrics.boxInset)
             }
 
             // Every color row stays in view; editing any of them makes the look the Custom card's.
             SettingsSection(title: SettingsOptions.colorsSectionTitle) {
                 colorRows
-            }
-
-            // The look only: the Custom card's saved look, snooze, auto-close and the menu bar's pill stay.
-            HStack {
-                Spacer()
+            } accessory: {
+                // The look only: the Custom card's saved look, snooze, auto-close and the menu bar's pill stay.
                 Button("Restore Defaults") { model.preferences.resetAppearance() }
                     .disabled(appearance.isDefault)
                     .help(SettingsOptions.restoreAppearanceHelp)
@@ -56,21 +47,21 @@ struct AppearanceTab: View {
 
     // MARK: Preview
 
-    /// The preview, what it's drawn over and Test Full-Screen Alert, then, while Alert me is Never, a note that
-    /// only real alerts stop. Preview over's control starts at the Colors box's control column; the bar has no
-    /// box, so its column takes the box's inset too.
+    /// The pane's first box, with no heading, since the preview names itself: the preview, then what it's drawn
+    /// over, a row like any other. Under the box, Test Full-Screen Alert at its right, as on Alerts, and, while Alert
+    /// me is Never, a note beside it that only real alerts stop.
     private var preview: some View {
-        VStack(alignment: .leading, spacing: 10) {
+        SettingsSection(
+            title: nil,
+            warning: model.preferences.fullScreenAlertsEnabled ? nil : SettingsOptions.alertMeNeverNote
+        ) {
             AppearancePreview(
                 appearance: appearance,
                 backdrop: previewBackdrop,
                 snoozeDurations: model.preferences.snoozeDurations.all
             )
-            HStack(spacing: 0) {
-                Text("Preview over")
-                    .font(.system(size: 12))
-                    .foregroundStyle(.secondary)
-                    .frame(width: Self.controlColumn + SettingsMetrics.boxInset, alignment: .leading)
+            .padding(.vertical, SettingsMetrics.boxInset)
+            SettingsRow(title: "Preview over") {
                 Picker("Preview over", selection: $previewBackdrop) {
                     ForEach(AppearancePreviewBackdrop.allCases) { backdrop in
                         Text(backdrop.title).tag(backdrop)
@@ -78,15 +69,10 @@ struct AppearanceTab: View {
                 }
                 .pickerStyle(.segmented)
                 .labelsHidden()
-                .controlSize(.small)
                 .fixedSize()
-                Spacer(minLength: 16)
-                TestFullScreenAlertButton()
             }
-            .font(.system(size: 13))
-            if !model.preferences.fullScreenAlertsEnabled {
-                SettingsWarning(message: SettingsOptions.alertMeNeverNote)
-            }
+        } accessory: {
+            TestFullScreenAlertButton()
         }
     }
 
@@ -113,7 +99,6 @@ struct AppearanceTab: View {
                 }
             }
         }
-        .padding(.horizontal, 2)
     }
 
     private func swatch(for style: AlertStyle, customLook: AlertAppearance?) -> AppearanceStyleCard.Swatch? {
@@ -127,12 +112,12 @@ struct AppearanceTab: View {
 
     /// Backdrop, then a pop-up of named swatches for each color, with Strength under a tint and an earlier
     /// build's label color on a Text row under its button. Each contrast warning sits under the row to change.
-    /// Every control starts at the control column, and a well goes after its pop-up, keeping that edge clean.
+    /// Every control sits at the right of its row, and a well goes before its pop-up, so the pop-up keeps that edge.
     @ViewBuilder
     private var colorRows: some View {
         let warnings = appearance.contrastWarnings
 
-        SettingsRow(title: AlertColorRow.backdropTitle, separator: false, controlColumn: Self.controlColumn) {
+        SettingsRow(title: AlertColorRow.backdropTitle, separator: false) {
             Picker(AlertColorRow.backdropTitle, selection: Binding(
                 get: { appearance.blurMode },
                 set: { mode in update { $0.blurMode = mode } }
@@ -148,7 +133,7 @@ struct AppearanceTab: View {
 
         colorRow(.tint)
         if appearance.tint != nil {
-            SettingsRow(title: AlertColorRow.tintStrengthTitle, indented: true, controlColumn: Self.controlColumn) {
+            SettingsRow(title: AlertColorRow.tintStrengthTitle, indented: true) {
                 AppearancePercentSlider(
                     title: AlertColorRow.tintStrengthAccessibilityTitle,
                     value: Binding(get: { appearance.tintStrength }, set: { value in update { $0.tintStrength = value } }),
@@ -172,15 +157,13 @@ struct AppearanceTab: View {
     }
 
     private func colorRow(_ row: AlertColorRow) -> some View {
-        SettingsRow(title: row.title, controlColumn: Self.controlColumn) {
+        SettingsRow(title: row.title) {
             SettingsColorChoice(
                 title: row.accessibilityTitle,
                 wellLabel: row.wellLabel,
                 choice: row.choice,
                 automaticDot: row == .tint ? .none : .automatic,
                 supportsOpacity: row.wellSupportsOpacity,
-                popUpWidth: Self.popUpWidth,
-                wellSide: .afterPopUp,
                 stored: { model.preferences.appearance.storedColor(for: row) },
                 shown: { model.preferences.appearance.shownColor(for: row) },
                 pick: { item in update { $0.pick(item, for: row) } },
@@ -193,13 +176,11 @@ struct AppearanceTab: View {
     @ViewBuilder
     private func legacyTextRow(_ kind: AlertButtonKind) -> some View {
         if appearance.showsLegacyText(for: kind), let text = appearance[button: kind].text {
-            SettingsRow(title: LegacyTextRow.title, indented: true, controlColumn: Self.controlColumn) {
+            SettingsRow(title: LegacyTextRow.title, indented: true) {
                 SettingsLegacyTextChoice(
                     title: kind.legacyTextAccessibilityTitle,
                     wellLabel: kind.legacyTextWellLabel,
                     color: text,
-                    popUpWidth: Self.popUpWidth,
-                    wellSide: .afterPopUp,
                     clear: { update { $0.clearLegacyText(for: kind) } },
                     setColor: { color in update { $0.setLegacyText(color, for: kind) } }
                 )
@@ -210,9 +191,7 @@ struct AppearanceTab: View {
     /// The tint's warning hangs under Strength, so it takes that row's indent.
     private func warningRows(under row: AlertColorRow, in warnings: [AlertContrastWarning]) -> some View {
         ForEach(warnings.filter { $0.row == row }) { warning in
-            SettingsWarning(message: warning.message)
-                .padding(.leading, row == .tint ? SettingsMetrics.indent : 0)
-                .padding(.bottom, 10)
+            SettingsRowWarning(message: warning.message, indented: row == .tint)
         }
     }
 
