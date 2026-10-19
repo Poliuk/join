@@ -66,7 +66,9 @@ struct SettingsSection<Content: View, Accessory: View>: View {
                         } else {
                             Spacer(minLength: 0)
                         }
+                        // Inset like the box's rows, so the button lines up with the controls above it.
                         accessory
+                            .padding(.trailing, SettingsMetrics.boxInset)
                     }
                 }
             }
