@@ -10,7 +10,8 @@ import JoinCore
 /// (`AlertCoordinator.pauseState`), the panel's dismissals and the Events choices (these two through
 /// `MeetingStore.alertableMeetings`), and Join from either kind or the menu bar panel finishes both. A pause or
 /// Never closes the cards on screen. A card on screen at quit comes back, silently, at the next launch while its
-/// time lasts. Fixture runs show cards too: they touch nothing outside the app.
+/// time lasts; one still waiting for a slot is due again. Fixture runs show cards too: they touch nothing outside
+/// the app.
 @Observable
 final class NotificationCoordinator {
     private static let heartbeatInterval: TimeInterval = 30
@@ -21,9 +22,9 @@ final class NotificationCoordinator {
     /// A card on screen or waiting for a slot, and when it closes by itself.
     private struct AutoClose {
         let card: NotificationCard
-        /// When it was shown: Close automatically counts from here.
-        let appearedAt: Date
-        /// Nil while Close automatically is Never.
+        /// When it first came on screen: Close automatically counts from here. Nil while it waits for a slot.
+        var appearedAt: Date?
+        /// Nil while it waits for a slot, and while Close automatically is Never.
         var timer: Timer?
     }
 
@@ -73,6 +74,12 @@ final class NotificationCoordinator {
         cards.onAnswer = { [weak self] response, card in
             self?.answer(response, card: card)
         }
+        cards.onAppear = { [weak self] card in
+            self?.cardDidAppear(card)
+        }
+        cards.isFullScreenAlertShowing = { [alerts] meetingID in
+            alerts.isAlerting(about: meetingID)
+        }
     }
 
     /// Plans the cards, following the meetings, Notify me, its time and the pause shared with the full-screen
@@ -101,7 +108,8 @@ final class NotificationCoordinator {
         }) { [weak self] in
             self?.autoCloseDidChange()
         }
-        // Also catches what no change announces: a meeting that ends, a timer late after sleep.
+        // Also catches what no change announces: a meeting that ends, a timer late after sleep, a card whose
+        // Close automatically time passed while the Mac slept.
         heartbeat = Timer.scheduledTimer(withTimeInterval: Self.heartbeatInterval, repeats: true) { [weak self] _ in
             MainActor.assumeIsolated { self?.meetingsDidChange() }
         }
@@ -121,7 +129,7 @@ final class NotificationCoordinator {
         // the loop ends once nothing more is due.
         var plan = nextPlan(now: now)
         while let due = plan, due.fireAt.timeIntervalSince(now) <= Self.fireLeeway {
-            show(due.meetings, now: now)
+            show(due.meetings)
             plan = nextPlan(now: now)
         }
         guard let plan else {
@@ -150,32 +158,49 @@ final class NotificationCoordinator {
         )
     }
 
-    /// Each meeting's card shows once (`NotificationSchedule.shownState`), with the alert sound unless its
-    /// full-screen alert is on screen. A full-screen alert due at this same moment goes up first, so the two
-    /// sounds never overlap.
-    private func show(_ meetings: [Meeting], now: Date) {
+    /// Each meeting's card shows once (`NotificationSchedule.shownState`), with the alert sound, as it comes on
+    /// screen, unless its full-screen alert is up then (`NotificationCardController.isFullScreenAlertShowing`). A
+    /// full-screen alert due at this same moment goes up first, so the two sounds never overlap.
+    private func show(_ meetings: [Meeting]) {
         alerts.replan()
         for meeting in meetings {
-            states[meeting.id] = AlertStateRecord(state: NotificationSchedule.shownState, expiresAt: meeting.end, appearedAt: now)
-            let playsSound = NotificationSchedule.playsSound(
-                preference: preferences.notificationPlaysSound,
-                fullScreenAlertShowing: alerts.isAlerting(about: meeting.id)
-            )
-            present(NotificationCard.meeting(meeting), playsSound: playsSound, appearedAt: now)
+            // When it appeared is written as it comes on screen (`cardDidAppear`): it may wait for a slot first.
+            states[meeting.id] = AlertStateRecord(state: NotificationSchedule.shownState, expiresAt: meeting.end)
+            present(NotificationCard.meeting(meeting), playsSound: preferences.notificationPlaysSound)
         }
         persistStates()
     }
 
-    private func present(_ card: NotificationCard, playsSound: Bool, appearedAt: Date) {
-        cards.show(card, playsSound: playsSound)
+    /// Hands `card` over to the controller. Its Close automatically starts once it's on screen
+    /// (`cardDidAppear`), which may be at once, inside `cards.show`, or once a slot frees.
+    private func present(_ card: NotificationCard, playsSound: Bool) {
         autoCloses[card.id]?.timer?.invalidate()
-        autoCloses[card.id] = AutoClose(card: card, appearedAt: appearedAt, timer: autoCloseTimer(for: card, appearedAt: appearedAt))
+        autoCloses[card.id] = AutoClose(card: card)
+        cards.show(card, playsSound: playsSound)
+    }
+
+    /// `card` came on screen for the first time: Close automatically counts from now, or, for a card brought
+    /// back after a relaunch, from when it first appeared before the quit, which its meeting's state keeps.
+    private func cardDidAppear(_ card: NotificationCard) {
+        guard autoCloses[card.id]?.card == card else { return }
+        var appearedAt = Date()
+        if !card.isTest, let record = states[card.id], record.state == NotificationSchedule.shownState {
+            if let restored = record.appearedAt {
+                appearedAt = restored
+            } else {
+                states[card.id] = AlertStateRecord(state: record.state, expiresAt: record.expiresAt, appearedAt: appearedAt)
+                persistStates()
+            }
+        }
+        autoCloses[card.id]?.appearedAt = appearedAt
+        autoCloses[card.id]?.timer = autoCloseTimer(for: card, appearedAt: appearedAt)
     }
 
     /// The alertable meetings changed: a calendar edit, an Events choice, or an event dismissed or restored
     /// in the panel. What's planned follows, and a card whose meeting left goes.
     private func meetingsDidChange() {
         restoreCardsAfterLaunch()
+        closeOverdue(now: Date())
         replan()
         withdrawStale()
     }
@@ -183,15 +208,16 @@ final class NotificationCoordinator {
     /// The cards on screen when Join! last quit (or installed an update) come back, without a sound, once the
     /// calendar has been read: those whose meeting is still alertable and hasn't ended, and whose Close
     /// automatically time hasn't come (`NotificationSchedule.reshowsAfterRelaunch`). While cards are stopped
-    /// (paused, Never) they're due again instead, as a pause leaves them.
+    /// (paused, Never) they're due again instead, as a pause leaves them, and so is a card that was still waiting
+    /// for a slot, which never appeared: the usual plan brings it, with its sound.
     private func restoreCardsAfterLaunch() {
         guard started, !restoredCards, store.lastRefreshed != nil else { return }
         restoredCards = true
         let now = Date()
         let stopped = NotificationSchedule.isStopped(isEnabled: preferences.notificationsEnabled, pauseState: alerts.pauseState, now: now)
         for meeting in store.alertableMeetings {
-            guard let record = states[meeting.id], record.state == NotificationSchedule.shownState, let appearedAt = record.appearedAt else { continue }
-            if stopped {
+            guard let record = states[meeting.id], record.state == NotificationSchedule.shownState else { continue }
+            guard !stopped, let appearedAt = record.appearedAt else {
                 states[meeting.id] = AlertStateRecord(state: NotificationSchedule.hiddenState, expiresAt: record.expiresAt)
                 continue
             }
@@ -203,7 +229,7 @@ final class NotificationCoordinator {
                 now: now
             )
             if reshows {
-                present(NotificationCard.meeting(meeting), playsSound: false, appearedAt: appearedAt)
+                present(NotificationCard.meeting(meeting), playsSound: false)
             }
         }
         persistStates()
@@ -211,10 +237,18 @@ final class NotificationCoordinator {
 
     /// Withdraws the cards whose meeting is no longer alertable (dismissed from the panel, cancelled, moved, now
     /// Show in the list only or excluded) or has ended. Only once the calendar has been read, or every meeting
-    /// would look gone.
+    /// would look gone. Their meetings become dismissed, which plans them no more, as on screen, and keeps a
+    /// relaunch from bringing the card back once the meeting is alertable again (Restore in the panel).
     private func withdrawStale() {
         guard started, store.lastRefreshed != nil else { return }
-        closeCards(NotificationSchedule.withdrawals(shown: cards.shownMeetingIDs, alertable: store.alertableMeetings, now: Date()))
+        let withdrawn = NotificationSchedule.withdrawals(shown: cards.shownMeetingIDs, alertable: store.alertableMeetings, now: Date())
+        guard !withdrawn.isEmpty else { return }
+        for id in withdrawn {
+            guard let record = states[id] else { continue }
+            states[id] = AlertStateRecord(state: .dismissed, expiresAt: record.expiresAt)
+        }
+        persistStates()
+        closeCards(withdrawn)
     }
 
     /// Pause alerts, or Notify me set to Never: the meetings' cards on screen close, unanswered, so they're due
@@ -244,13 +278,18 @@ final class NotificationCoordinator {
     // MARK: Close automatically
 
     /// Close automatically's time after `appearedAt`, or nil with Never.
-    private func autoCloseTimer(for card: NotificationCard, appearedAt: Date) -> Timer? {
-        let closesAt = NotificationSchedule.autoCloseTime(
+    private func autoCloseTime(appearedAt: Date) -> Date? {
+        NotificationSchedule.autoCloseTime(
             appearedAt: appearedAt,
             isEnabled: preferences.notificationAutoCloseEnabled,
             after: preferences.notificationAutoCloseAfter
         )
-        guard let closesAt else { return nil }
+    }
+
+    /// A timer at Close automatically's time after `appearedAt`, or nil with Never. It doesn't count while the
+    /// Mac sleeps: the heartbeat closes what it missed (`closeOverdue`).
+    private func autoCloseTimer(for card: NotificationCard, appearedAt: Date) -> Timer? {
+        guard let closesAt = autoCloseTime(appearedAt: appearedAt) else { return nil }
         let timer = Timer(fire: closesAt, interval: 0, repeats: false) { [weak self] _ in
             MainActor.assumeIsolated { self?.closeAutomatically(card) }
         }
@@ -260,11 +299,20 @@ final class NotificationCoordinator {
     }
 
     /// Close automatically changed: each card on screen closes at the new time after it appeared, at once if that
-    /// has passed, or stays with Never.
+    /// has passed, or stays with Never. Cards waiting for a slot start counting once they're on screen.
     private func autoCloseDidChange() {
         for (id, autoClose) in autoCloses {
+            guard let appearedAt = autoClose.appearedAt else { continue }
             autoClose.timer?.invalidate()
-            autoCloses[id]?.timer = autoCloseTimer(for: autoClose.card, appearedAt: autoClose.appearedAt)
+            autoCloses[id]?.timer = autoCloseTimer(for: autoClose.card, appearedAt: appearedAt)
+        }
+    }
+
+    /// Closes the cards whose Close automatically time has passed: their timers stood still while the Mac slept.
+    private func closeOverdue(now: Date) {
+        for autoClose in autoCloses.values {
+            guard let appearedAt = autoClose.appearedAt, let closesAt = autoCloseTime(appearedAt: appearedAt), closesAt <= now else { continue }
+            closeAutomatically(autoClose.card)
         }
     }
 
@@ -328,8 +376,7 @@ final class NotificationCoordinator {
     /// Test Full-Screen Alert works. It follows Show on, Play sound, Close automatically and the snooze times,
     /// and changes no real meeting's state.
     func showTestNotification() {
-        let now = Date()
-        present(NotificationCard.test(now: now), playsSound: preferences.notificationPlaysSound, appearedAt: now)
+        present(NotificationCard.test(now: Date()), playsSound: preferences.notificationPlaysSound)
     }
 
     // MARK: Helpers

@@ -8,9 +8,10 @@ import JoinCore
 struct AlertStateRecord: Codable {
     let state: AlertState
     let expiresAt: Date
-    /// When the meeting's notification card appeared, while it's on screen (`NotificationSchedule.shownState`):
-    /// its Close automatically counts from then, and after a relaunch it comes back until then
-    /// (`NotificationSchedule.reshowsAfterRelaunch`). Nil otherwise, and always for the full-screen alert.
+    /// When the meeting's notification card came on screen, while it's up (`NotificationSchedule.shownState`):
+    /// its Close automatically counts from then, and after a relaunch it comes back while that lasts
+    /// (`NotificationSchedule.reshowsAfterRelaunch`). Nil while the card waits for a slot, otherwise, and always
+    /// for the full-screen alert.
     var appearedAt: Date? = nil
 }
 

@@ -94,6 +94,14 @@ final class NotificationCardWindow: NSPanel {
         pointerInsideChanged?(pointer != nil)
     }
 
+    /// The pointer left while a menu tracked it, so no exit came: the × goes, and with it its shadow.
+    /// `pointerInsideChanged` isn't called; the caller holds the cards itself.
+    func pointerLeftUnseen() {
+        guard state.pointer != nil else { return }
+        state.pointer = nil
+        closeButtonVisibilityChanged()
+    }
+
     /// The × comes and goes with the pointer and the keyboard: the window's shadow, which follows what it draws,
     /// is worked out again once SwiftUI has drawn the change.
     private func closeButtonVisibilityChanged() {

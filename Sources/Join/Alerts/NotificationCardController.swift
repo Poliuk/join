@@ -8,9 +8,10 @@ import JoinCore
 /// stacked soonest first, at most `NotificationStack.maximumPerScreen` with the rest waiting their turn
 /// (`NotificationStack`). While the pointer is over a screen's cards, or one of their menus is up, nothing on that
 /// screen comes, goes or moves until half a second after it leaves; only the card answered goes at once. Cards slide
-/// in from the right and out again, or only fade with Reduce Motion. A card plays the user's alert sound and is
-/// announced to VoiceOver as it first comes on screen. Never takes the keyboard: Return and Esc act only on a card
-/// VoiceOver or Full Keyboard Access made key.
+/// in from the right and out again; they only fade with Reduce Motion, or where the slide would cross onto another
+/// display. A card plays the user's alert sound and is announced to VoiceOver as it first comes on screen; cards
+/// that come together share one sound and one announcement. Never takes the keyboard: Return and Esc act only on a
+/// card VoiceOver or Full Keyboard Access made key.
 final class NotificationCardController {
     private enum Motion {
         static let slideIn: TimeInterval = 0.3
@@ -35,6 +36,7 @@ final class NotificationCardController {
     /// One card that's up or waiting for a slot.
     private struct Entry {
         let card: NotificationCard
+        /// Whether its sound may play: it does, as it appears, unless its meeting's full-screen alert is up then.
         let playsSound: Bool
         /// Whether it has been on a screen yet: its sound and announcement come once, the first time.
         var hasAppeared = false
@@ -61,6 +63,10 @@ final class NotificationCardController {
     var onAnswer: ((AlertResponse, NotificationCard) -> Void)?
     /// What a card's menu offers, worked out as it opens.
     var makeMenu: ((NotificationCard) -> NotificationMenu)?
+    /// A card came on screen for the first time, maybe long after `show` if it waited for a slot.
+    var onAppear: ((NotificationCard) -> Void)?
+    /// Whether this meeting's full-screen alert is on screen: its card then appears without a sound.
+    var isFullScreenAlertShowing: ((Meeting.ID) -> Bool)?
     /// Show on: which screens get the cards. The cards up move over at once.
     var screens: AlertScreens = .main {
         didSet {
@@ -72,6 +78,8 @@ final class NotificationCardController {
     /// One per target screen while any card is up or waiting; picked again once none is.
     private var stacks: [ScreenStack] = []
     private let announcer = NotificationAnnouncer()
+    /// The cards that appeared in this turn of the run loop, played and announced together at the end of it.
+    private var pendingAppearances: [(announcement: String, playsSound: Bool)] = []
     private var screenObserver: NSObjectProtocol?
     private var keyMonitor: Any?
 
@@ -87,8 +95,9 @@ final class NotificationCardController {
     /// The meetings whose cards are up or waiting for a slot.
     var shownMeetingIDs: [Meeting.ID] { entries.map(\.card.id) }
 
-    /// Shows `card` on every target screen, with the user's alert sound when `playsSound`. A card already up for
-    /// the same meeting (Test Notification's, clicked again) goes at once, and this one comes as a new card.
+    /// Shows `card` on every target screen, with the user's alert sound when `playsSound` and its meeting's
+    /// full-screen alert isn't up as it appears. A card already up for the same meeting (Test Notification's,
+    /// clicked again) goes at once, and this one comes as a new card.
     func show(_ card: NotificationCard, playsSound: Bool) {
         if entries.contains(where: { $0.card.id == card.id }) {
             removeAtOnce(card.id)
@@ -143,7 +152,7 @@ final class NotificationCardController {
         // The windows may have missed the pointer leaving while the menu tracked it.
         let pointer = NSEvent.mouseLocation
         for window in stack.windows where !NSMouseInRect(pointer, window.frame, false) {
-            window.state.pointer = nil
+            window.pointerLeftUnseen()
         }
         holdBriefly(stack)
     }
@@ -177,7 +186,7 @@ final class NotificationCardController {
             if arrangedIDs.contains(window.card.id) {
                 current[window.card.id] = window
             } else {
-                slideOut(window)
+                slideOut(window, on: stack.screen)
             }
         }
 
@@ -189,7 +198,7 @@ final class NotificationCardController {
                 return window
             }
             let window = makeWindow(for: card, in: stack)
-            slideIn(window, to: frame, animated: animated)
+            slideIn(window, to: frame, on: stack.screen, animated: animated)
             didAppear(card)
             return window
         }
@@ -231,14 +240,34 @@ final class NotificationCardController {
         return window
     }
 
-    /// The first time a card is on screen: its sound, once however many screens show it, and its announcement.
+    /// The first time a card is on screen: its sound, once however many screens show it, unless its meeting's
+    /// full-screen alert is up now, and its announcement, both at the end of this turn with any other card's that
+    /// came with it (`flushAppearances`).
     private func didAppear(_ card: NotificationCard) {
         guard let index = entries.firstIndex(where: { $0.card.id == card.id }), !entries[index].hasAppeared else { return }
         entries[index].hasAppeared = true
-        if entries[index].playsSound {
+        let playsSound = NotificationSchedule.playsSound(
+            preference: entries[index].playsSound,
+            fullScreenAlertShowing: isFullScreenAlertShowing?(card.id) ?? false
+        )
+        if pendingAppearances.isEmpty {
+            DispatchQueue.main.async { [weak self] in
+                self?.flushAppearances()
+            }
+        }
+        pendingAppearances.append((card.announcement(now: Date()), playsSound))
+        onAppear?(card)
+    }
+
+    /// One sound and one announcement for the cards that came together: two alert sounds at once would stack,
+    /// and each high-priority announcement would cut off the one before it.
+    private func flushAppearances() {
+        let appearances = pendingAppearances
+        pendingAppearances = []
+        if appearances.contains(where: \.playsSound) {
             SystemSounds.playAlertSound()
         }
-        announcer.announce(card.announcement(now: Date()))
+        announcer.announce(appearances.map(\.announcement).joined(separator: " "))
     }
 
     /// Takes `meetingID`'s card off every screen now, whatever holds them: the user answered it, or it's being
@@ -250,7 +279,7 @@ final class NotificationCardController {
             guard let window = stack.windows.first(where: { $0.card.id == meetingID }) else { continue }
             let hadPointer = window.state.pointer != nil
             stack.windows.removeAll { $0 === window }
-            slideOut(window)
+            slideOut(window, on: stack.screen)
             if hadPointer { holdBriefly(stack) }
         }
     }
@@ -310,9 +339,10 @@ final class NotificationCardController {
 
     private var reducesMotion: Bool { NSWorkspace.shared.accessibilityDisplayShouldReduceMotion }
 
-    /// From just past the screen's right edge, fading in; with Reduce Motion it only fades in.
-    private func slideIn(_ window: NotificationCardWindow, to frame: NSRect, animated: Bool) {
-        let slides = animated && !reducesMotion
+    /// From just past the screen's right edge, fading in; it only fades in where the slide would cross onto
+    /// another display, and with Reduce Motion.
+    private func slideIn(_ window: NotificationCardWindow, to frame: NSRect, on screen: NSScreen, animated: Bool) {
+        let slides = animated && canSlide(from: frame, on: screen)
         window.setFrame(slides ? frame.offsetBy(dx: Self.slideDistance, dy: 0) : frame, display: false)
         window.alphaValue = animated ? 0 : 1
         window.orderFrontRegardless()
@@ -324,11 +354,12 @@ final class NotificationCardController {
         }
     }
 
-    /// Out to the right, fading, then closed; with Reduce Motion it only fades. It takes no more clicks meanwhile.
-    private func slideOut(_ window: NotificationCardWindow) {
+    /// Out to the right, fading, then closed; it only fades where the slide would cross onto another display, and
+    /// with Reduce Motion. It takes no more clicks meanwhile.
+    private func slideOut(_ window: NotificationCardWindow, on screen: NSScreen) {
         window.pointerInsideChanged = nil
         window.ignoresMouseEvents = true
-        let slides = !reducesMotion
+        let slides = canSlide(from: window.frame, on: screen)
         let frame = window.frame.offsetBy(dx: Self.slideDistance, dy: 0)
         Self.animate(duration: slides ? Motion.slideOut : Motion.fade, timing: .easeIn) {
             if slides { window.animator().setFrame(frame, display: true) }
@@ -348,6 +379,15 @@ final class NotificationCardController {
         Self.animate(duration: Motion.reflow, timing: .easeInEaseOut) {
             window.animator().setFrame(frame, display: true)
         }
+    }
+
+    /// Whether a card at `frame` on `screen` may slide to the right and back: not with Reduce Motion, nor where
+    /// its path runs onto a display arranged to the right, which would show it there for part of the slide.
+    /// Screens are told apart by frame: `NSScreen.screens` may hand out new objects for the same display.
+    private func canSlide(from frame: NSRect, on screen: NSScreen) -> Bool {
+        guard !reducesMotion else { return false }
+        let path = frame.union(frame.offsetBy(dx: Self.slideDistance, dy: 0))
+        return !NSScreen.screens.contains { $0.frame != screen.frame && $0.frame.intersects(path) }
     }
 
     /// Far enough that a card slides in from beyond the screen's right edge.
