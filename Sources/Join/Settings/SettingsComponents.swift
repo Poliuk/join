@@ -37,11 +37,14 @@ enum SettingsMetrics {
     static let boxInset: CGFloat = 12
 }
 
-/// A heading above a grouped box, and optionally a footnote under it, for what the box's rows can't say.
-struct SettingsSection<Content: View>: View {
+/// A heading above a grouped box, and optionally a footnote under it, for what the box's rows can't say, and a
+/// button under it at its right edge, beside the footnote when there is one, outside the box (the user's ask for
+/// the Alerts pane's Test buttons, 2026-10-19).
+struct SettingsSection<Content: View, Accessory: View>: View {
     let title: String
     var footnote: String? = nil
     @ViewBuilder var content: Content
+    @ViewBuilder var accessory: Accessory
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
@@ -51,15 +54,29 @@ struct SettingsSection<Content: View>: View {
                 .accessibilityAddTraits(.isHeader)
             VStack(alignment: .leading, spacing: 6) {
                 SettingsBox { content }
-                if let footnote {
-                    Text(footnote)
-                        .font(.subheadline)
-                        .foregroundStyle(.secondary)
-                        .fixedSize(horizontal: false, vertical: true)
-                        .padding(.horizontal, 2)
+                if footnote != nil || Accessory.self != EmptyView.self {
+                    HStack(alignment: .top, spacing: 16) {
+                        if let footnote {
+                            Text(footnote)
+                                .font(.subheadline)
+                                .foregroundStyle(.secondary)
+                                .fixedSize(horizontal: false, vertical: true)
+                                .padding(.horizontal, 2)
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                        } else {
+                            Spacer(minLength: 0)
+                        }
+                        accessory
+                    }
                 }
             }
         }
+    }
+}
+
+extension SettingsSection where Accessory == EmptyView {
+    init(title: String, footnote: String? = nil, @ViewBuilder content: () -> Content) {
+        self.init(title: title, footnote: footnote, content: content, accessory: { EmptyView() })
     }
 }
 
@@ -180,24 +197,6 @@ private struct SettingsChildConnector: View {
             .stroke(SettingsPalette.connector, style: StrokeStyle(lineWidth: 1.5, lineCap: .round))
         }
         .accessibilityHidden(true)
-    }
-}
-
-/// A box's last row, with no label: a button at the trailing edge, under a hairline. The Alerts pane's Test
-/// Full-Screen Alert and Test Notification, each in the box of the settings it tries.
-struct SettingsButtonRow<Content: View>: View {
-    @ViewBuilder var content: Content
-
-    var body: some View {
-        VStack(spacing: 0) {
-            SettingsSeparator()
-            HStack(spacing: 0) {
-                Spacer(minLength: 0)
-                content
-            }
-            .padding(.vertical, 6)
-            .frame(minHeight: 40)
-        }
     }
 }
 

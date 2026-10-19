@@ -38,7 +38,7 @@ Works with any calendar your Mac knows about (Google, iCloud, Exchange, Outlook,
   <img src="docs/screenshots/panel-dark.jpg" alt="The same menu bar panel in dark mode, with Join video call and Dismiss on the starting-soon card" width="49%">
 </p>
 <p align="center">
-  <img src="docs/screenshots/settings-alerts.jpg" alt="The Alerts settings pane: the Full-screen alert box with Alert me, Show on, Sound and Close automatically, and Test Full-Screen Alert at its bottom right; the Notification box with Notify me and Play sound, and Test Notification at its bottom right; and the Snooze box with the first and second snooze times both kinds share" width="49%">
+  <img src="docs/screenshots/settings-alerts.jpg" alt="The Alerts settings pane: the Full-screen alert box with Alert me, Show on, Sound and Close automatically, with Test Full-Screen Alert under it at the right; the Notification box with Notify me and Play sound, with Test Notification under it at the right, beside the note on System Settings; and the Snooze box with the first and second snooze times both kinds share" width="49%">
   <img src="docs/screenshots/settings.jpg" alt="The Appearance settings pane: a live preview of the full-screen alert with Preview over and Test Full-Screen Alert under it, five style cards (the four presets and Custom), and the Colors box, its backdrop, tint, event text and button controls lined up on one left edge" width="49%">
 </p>
 <p align="center"><sub>Screenshots show sample meetings, not a real calendar.</sub></p>
@@ -132,7 +132,7 @@ To turn full-screen alerts off altogether, set **Alert me** to **Never** under *
 
 Pick a time in **Notify me** (Settings › Alerts) and Join! sends a macOS notification that long before each meeting: the event's title, its time, and its calendar and location, with **Join** when there's a link, a **Snooze** action for each of the two snooze times ("Snooze 5 min") and, until the meeting starts, **At event start**. The first time you pick a time, or click **Test Notification**, macOS asks whether Join! may send notifications; Join! doesn't ask at launch or after an update.
 
-- **Test Notification**, at the bottom right of the Notification box, sends one for a sample event, whatever **Notify me** says and even while alerts are paused. It's off while macOS doesn't allow Join!'s notifications.
+- **Test Notification**, under the Notification box, at its right, sends one for a sample event, whatever **Notify me** says and even while alerts are paused. It's off while macOS doesn't allow Join!'s notifications.
 - **Join** opens the call and takes care of both kinds for that meeting: its full-screen alert won't come, or lets the meeting go if it's already up. A snooze brings the notification back later and leaves the full-screen alert alone, so a notification 5 minutes before and the full-screen alert at the start both come.
 - Clicking the notification itself does nothing, and macOS's close button only closes it.
 - **Play sound** gives it macOS's notification sound. It comes silently while that meeting's full-screen alert is on screen, so the two sounds don't overlap.

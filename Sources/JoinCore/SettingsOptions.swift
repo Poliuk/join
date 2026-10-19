@@ -68,7 +68,7 @@ public enum SettingsOptions {
     /// can show on the pane too.
     public static let alertMeFieldLabel = "\(alertMeTitle), minutes before the event"
 
-    /// The Full-screen alert box's last setting, above Test Full-Screen Alert, among Alert me's siblings, since
+    /// The Full-screen alert box's last row, among Alert me's siblings, since
     /// it only ever closes the full-screen alert: dimmed while Alert me is Never.
     public static let autoCloseRowTitle = "Close automatically"
 
@@ -100,7 +100,7 @@ public enum SettingsOptions {
 
     // MARK: Test buttons
 
-    /// At the bottom right of the Full-screen alert box, and at the end of Appearance's Preview over bar: shows
+    /// Under the Full-screen alert box at its right, and at the end of Appearance's Preview over bar: shows
     /// the full-screen alert for the demo event (`DemoEvent`). Show Demo until 2026-10-19, when the user found
     /// the demo buttons' labels confusing. Test Notification is `TestNotificationButton`.
     public static let testFullScreenAlertTitle = "Test Full-Screen Alert"

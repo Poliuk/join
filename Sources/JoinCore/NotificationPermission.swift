@@ -57,7 +57,7 @@ public enum NotificationPermission: Hashable, Sendable {
     }
 }
 
-/// The one line in the Notification box, above Test Notification, when something stops a notification from reaching
+/// The one line at the bottom of the Notification box, when something stops a notification from reaching
 /// the user, with Open System Settings beside it. Hidden while Notify me is Never, so there's no hint before the user opts in.
 /// No line for banners that close on their own: that's macOS's default and the user's choice, which the box's
 /// footnote covers.
@@ -125,7 +125,7 @@ public enum NotificationStatus: Hashable, Sendable, CaseIterable {
     }
 }
 
-/// Test Notification, at the bottom right of the Notification box: whether it works and its help tag. It sends
+/// Test Notification, under the Notification box at its right: whether it works and its help tag. It sends
 /// a real notification for the demo event (`NotificationContent.demo`), so it works while alerts are paused and
 /// while Notify me is Never, as Test Full-Screen Alert does; the first click asks macOS when nothing is decided
 /// yet. Send Demo Notification, beside Show Demo at the bottom of the pane, until 2026-10-19.

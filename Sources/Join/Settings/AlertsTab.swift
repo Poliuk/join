@@ -23,7 +23,7 @@ struct AlertsTab: View {
     /// mean 35 minutes and fire alerts early. Never leaves the rows below in view but dims and disables them, by
     /// the user's choice; their values stay as they were, and picking a time brings them back. Close
     /// automatically is one of them since 1.3.0: it only ever closes the full-screen alert. Test Full-Screen
-    /// Alert, the box's last row, works whatever Alert me says.
+    /// Alert, under the box at its right, works whatever Alert me says.
     private var fullScreenAlertSection: some View {
         @Bindable var preferences = model.preferences
         let alertsOn = preferences.fullScreenAlertsEnabled
@@ -92,9 +92,8 @@ struct AlertsTab: View {
                 .fixedSize()
                 .disabled(!alertsOn)
             }
-            SettingsButtonRow {
-                TestFullScreenAlertButton()
-            }
+        } accessory: {
+            TestFullScreenAlertButton()
         }
     }
 
@@ -153,7 +152,7 @@ struct AlertsTab: View {
     /// sibling, dimmed while it's Never. The status line under them shows only while Notify me has a time and
     /// something in System Settings stops a notification from reaching the user; the coordinator reads it
     /// again when Join! becomes active and when Settings becomes key, so it clears once that's fixed. Test
-    /// Notification, the box's last row, works whatever Notify me says.
+    /// Notification, under the box at its right, beside the footnote, works whatever Notify me says.
     private var notificationSection: some View {
         @Bindable var preferences = model.preferences
         let notificationsOn = preferences.notificationsEnabled
@@ -175,9 +174,8 @@ struct AlertsTab: View {
             if let status = model.notificationCoordinator.status {
                 NotificationStatusRow(status: status) { model.openNotificationSettings() }
             }
-            SettingsButtonRow {
-                TestNotificationButtonView()
-            }
+        } accessory: {
+            TestNotificationButtonView()
         }
     }
 
@@ -230,7 +228,7 @@ struct AlertsTab: View {
     }
 }
 
-/// The Notification box's row above Test Notification, with no label: why a notification won't reach the user
+/// The Notification box's last row, with no label: why a notification won't reach the user
 /// (`NotificationStatus`), orange with a warning sign when none reaches the screen and secondary otherwise, and
 /// Open System Settings, which opens Notifications › Join!.
 private struct NotificationStatusRow: View {
@@ -259,7 +257,7 @@ private struct NotificationStatusRow: View {
     }
 }
 
-/// Test Notification, at the bottom right of the Notification box: sends the demo event's notification. Off in a
+/// Test Notification, under the Notification box at its right, outside it: sends the demo event's notification. Off in a
 /// fixture run and while notifications are denied; the help tag says why (`TestNotificationButton`).
 private struct TestNotificationButtonView: View {
     @Environment(AppModel.self) private var model
@@ -272,8 +270,8 @@ private struct TestNotificationButtonView: View {
     }
 }
 
-/// Test Full-Screen Alert: shows the demo event's full-screen alert, at the bottom right of the Full-screen alert
-/// box and at the end of Appearance's Preview over bar. Off while a real one is on screen, which the test never
+/// Test Full-Screen Alert: shows the demo event's full-screen alert, under the Full-screen alert box at its right
+/// and at the end of Appearance's Preview over bar. Off while a real one is on screen, which the test never
 /// replaces; the help tag says why.
 struct TestFullScreenAlertButton: View {
     @Environment(AppModel.self) private var model
