@@ -230,6 +230,12 @@ final class AlertCoordinator {
         persistStates()
     }
 
+    /// `meeting` was joined from the menu bar panel: as Join on its notification card (`AlertResponse.join`),
+    /// its full-screen alert won't come, and one on screen drops it, closing once none is left.
+    func joinedFromPanel(_ meeting: Meeting) {
+        notificationAnswered(.join, meeting: meeting)
+    }
+
     /// Test Full-Screen Alert, on Alerts and Appearance, and the `showDemoAlert` script hook: the demo event's
     /// full-screen alert, on the chosen screens in the current look. Join opens the demo event's link, as a real
     /// alert's does, so the test tries it end to end (the user's ask, 2026-10-19); every button closes it.

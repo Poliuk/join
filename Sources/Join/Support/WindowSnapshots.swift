@@ -14,7 +14,8 @@ enum WindowSnapshots {
         let cleaned = String((name ?? "").unicodeScalars.filter { allowed.contains($0) }.map(Character.init))
         let folderName = cleaned.trimmingCharacters(in: CharacterSet(charactersIn: ".")).isEmpty ? "latest" : cleaned
         let folder = root.appendingPathComponent(folderName, isDirectory: true)
-        // The folder name comes from the script, and window titles are Settings pane names: nothing personal.
+        // The folder name comes from the script, and window titles are Settings pane names or fixed ones like the
+        // notification card's ("Join! notification"), never an event's title: nothing personal.
         do {
             try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
         } catch {

@@ -15,7 +15,7 @@ struct PanelSectionView: View {
 
     let section: PanelSection
     let heading: Heading
-    let perform: (PanelAction) -> Void
+    let perform: (PanelAction, Meeting) -> Void
     let dismissActions: PanelDismissActions
 
     var body: some View {
@@ -158,7 +158,7 @@ struct PanelRowView: View {
     private static let actionButtonSize: CGFloat = 30
 
     let row: PanelRow
-    let perform: (PanelAction) -> Void
+    let perform: (PanelAction, Meeting) -> Void
     let dismissActions: PanelDismissActions
 
     @State private var isHovered = false
@@ -262,7 +262,7 @@ struct PanelRowView: View {
     private func actionButton(_ action: PanelAction) -> some View {
         Button {
             guard !NSEvent.isRepeatedClick else { return }
-            perform(action)
+            perform(action, meeting)
         } label: {
             Image(systemName: action.symbolName)
                 .font(.system(size: 13, weight: .medium))

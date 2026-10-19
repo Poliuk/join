@@ -5,7 +5,7 @@ import JoinCore
 /// The single card at the top of the panel.
 struct PanelHeroView: View {
     let hero: PanelHero
-    let perform: (PanelAction) -> Void
+    let perform: (PanelAction, Meeting) -> Void
     let dismissActions: PanelDismissActions
 
     var body: some View {
@@ -59,7 +59,7 @@ private struct MeetingCard: View {
 
     let card: PanelCard
     let style: Style
-    let perform: (PanelAction) -> Void
+    let perform: (PanelAction, Meeting) -> Void
     let dismissActions: PanelDismissActions
 
     @State private var dismissAnchor = ViewAnchor()
@@ -197,7 +197,7 @@ private struct MeetingCard: View {
     private func actionButton(_ action: PanelAction) -> some View {
         let prominent = style != .neutral
         return Button {
-            perform(action)
+            perform(action, card.meeting)
         } label: {
             HStack(spacing: 7) {
                 Image(systemName: action.symbolName)

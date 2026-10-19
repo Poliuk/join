@@ -54,12 +54,11 @@ final class AppModel {
         self.meetingStore = store
         let alertCoordinator = AlertCoordinator(store: store, preferences: preferences, windows: AlertWindowController(), defaults: defaults)
         let notificationCoordinator = NotificationCoordinator(
-            presenter: LoggingNotificationPresenter(),
+            cards: NotificationCardController(),
             store: store,
             preferences: preferences,
             alerts: alertCoordinator,
-            defaults: defaults,
-            isFixture: fixture != nil
+            defaults: defaults
         )
         // Join on the full-screen alert finishes the meeting's notification too.
         alertCoordinator.didAnswer = { [weak notificationCoordinator] response, meeting in
@@ -73,7 +72,7 @@ final class AppModel {
     func start() {
         Task { await meetingStore.start() }
         if !isFixture { alertCoordinator.start() }
-        // A fixture run plans nothing.
+        // A fixture run shows notification cards too: they're Join!'s own windows, touching nothing outside it.
         notificationCoordinator.start()
 
         // Ticking on :00 and :30 keeps "in 4 min" in step with meetings, which start on whole minutes.
@@ -157,22 +156,22 @@ final class AppModel {
         now = Date()
     }
 
-    func join(_ meeting: Meeting) {
-        guard let url = meeting.joinURL else { return }
-        closePanel?()
-        NSWorkspace.shared.open(url)
-    }
-
-    func perform(_ action: PanelAction) {
+    /// The panel's Join and Directions for `meeting`. Join finishes both kinds of alert for it, as Join on either
+    /// does: its notification card goes, and its full-screen alert won't come, or drops it if it's up.
+    func perform(_ action: PanelAction, for meeting: Meeting) {
         closePanel?()
         switch action {
-        case .join(let url), .directions(let url):
+        case .join(let url):
+            NSWorkspace.shared.open(url)
+            alertCoordinator.joinedFromPanel(meeting)
+            notificationCoordinator.joinedFromPanel(meeting)
+        case .directions(let url):
             NSWorkspace.shared.open(url)
         }
     }
 
     /// The card's and a row's Dismiss buttons, or the choice made in a repeating event's Dismiss menu: no
-    /// alerts for this occurrence (a notification already delivered goes too), and with All Future Events for
+    /// alerts for this occurrence (a notification card on screen goes too), and with All Future Events for
     /// its series' later ones too (`DismissedEvents.dismissing`), and the menu bar item and the card move on
     /// to what comes next. The panel stays open and lists them as dismissed until they end. Only a meeting
     /// that may alert can be dismissed; anything else is left alone.

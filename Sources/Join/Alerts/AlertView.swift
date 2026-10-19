@@ -264,7 +264,7 @@ private struct AlertMeetingHeader: View {
         .frame(maxWidth: 960)
     }
 
-    /// The location, unless it's just the join link again; the notification's body shows it the same way.
+    /// The location, unless it's just the join link again; the notification card's third line shows it the same way.
     private var location: String? {
         LocationFormatter.alertLocation(meeting.location, joinURL: meeting.joinURL)
     }

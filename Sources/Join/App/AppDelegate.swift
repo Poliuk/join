@@ -50,6 +50,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             ("snapshot", { _, argument in WindowSnapshots.write(named: argument) }),
             // What Test Full-Screen Alert does (Show Demo until 2026-10-19; the hook kept its name).
             ("showDemoAlert", { delegate, _ in delegate.model.alertCoordinator.showDemoAlert() }),
+            // What Test Notification does: the demo event's card, which the `snapshot` hook captures with the rest.
+            ("showTestNotification", { delegate, _ in delegate.model.notificationCoordinator.showTestNotification() }),
             ("togglePanel", { delegate, _ in delegate.statusItem?.toggle() }),
             ("dismissAlert", { delegate, _ in delegate.model.alertCoordinator.dismiss() }),
             ("pause", { delegate, argument in

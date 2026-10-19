@@ -3,11 +3,15 @@ import OSLog
 import JoinCore
 
 /// How one meeting's alert state is saved, for either kind (`alertStates` for the full-screen alert,
-/// `notificationStates` for the notification), so snoozes, dismissals and sent notifications survive a
-/// relaunch until the meeting ends.
+/// `notificationStates` for the notification), so snoozes, dismissals and cards on screen survive a relaunch
+/// until the meeting ends.
 struct AlertStateRecord: Codable {
     let state: AlertState
     let expiresAt: Date
+    /// When the meeting's notification card appeared, while it's on screen (`NotificationSchedule.shownState`):
+    /// its Close automatically counts from then, and after a relaunch it comes back until then
+    /// (`NotificationSchedule.reshowsAfterRelaunch`). Nil otherwise, and always for the full-screen alert.
+    var appearedAt: Date? = nil
 }
 
 extension UserDefaults {

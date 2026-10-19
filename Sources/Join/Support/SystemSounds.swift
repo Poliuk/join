@@ -1,4 +1,5 @@
 import AppKit
+import AudioToolbox
 
 enum SystemSounds {
     /// Names of the sounds shipped with macOS, usable with `NSSound(named:)`.
@@ -14,5 +15,11 @@ enum SystemSounds {
     static func sound(named name: String?) -> NSSound? {
         guard let name else { return nil }
         return NSSound(named: NSSound.Name(name))
+    }
+
+    /// Plays the user's alert sound once, the one chosen in System Settings › Sound, through the device and at the
+    /// volume chosen there for alerts: a notification card's Play sound. `NSSound` would ignore the alert volume.
+    static func playAlertSound() {
+        AudioServicesPlayAlertSound(SystemSoundID(kSystemSoundID_UserPreferredAlert))
     }
 }

@@ -285,7 +285,7 @@ final class StatusItemController: NSObject, NSWindowDelegate {
             switch model.panelContent.hero {
             case .startingSoon(let card), .now(let card):
                 guard let action = card.action else { return false }
-                model.perform(action)
+                model.perform(action, for: card.meeting)
                 return true
             case .next, .nothingToday:
                 return false
