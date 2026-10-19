@@ -3,11 +3,15 @@ import OSLog
 import SwiftUI
 import JoinCore
 
+/// Which calendars Join! reads: a line saying what the checks do, with the count checked at its right, then one
+/// section per account, each calendar a row with its checkbox at the right, the account's count under its box and,
+/// with more than one calendar, Select All or Deselect All beside it. Then a footer: where to add a missing calendar,
+/// when the calendars were last read, and the buttons for both. Without calendar access, a prompt instead.
 struct CalendarsTab: View {
     @Environment(AppModel.self) private var model
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 18) {
+        VStack(alignment: .leading, spacing: SettingsMetrics.sectionSpacing) {
             if model.meetingStore.authorization == .authorized {
                 calendarList
                 footer
@@ -26,31 +30,21 @@ struct CalendarsTab: View {
         let enabled = model.preferences.enabledCalendarIDs
         let selected = CalendarSelection.enabledCount(of: allIDs, in: enabled)
 
-        VStack(alignment: .leading, spacing: 8) {
-            HStack(alignment: .firstTextBaseline, spacing: 16) {
-                Text("Join! alerts you about events in the checked calendars.")
-                    .foregroundStyle(.secondary)
-                Spacer(minLength: 0)
-                if !allIDs.isEmpty {
-                    Text("\(selected) of \(allIDs.count) selected")
-                        .font(.callout)
-                        .foregroundStyle(.secondary)
-                }
-            }
-            if !allIDs.isEmpty && selected == 0 {
-                Label(SettingsOptions.noCalendarsWarning, systemImage: "exclamationmark.triangle.fill")
-                    .font(.callout.weight(.semibold))
-                    .foregroundStyle(.orange)
+        SettingsNoteLine(
+            footnote: "Join! alerts you about events in the checked calendars.",
+            warning: !allIDs.isEmpty && selected == 0 ? SettingsOptions.noCalendarsWarning : nil
+        ) {
+            if !allIDs.isEmpty {
+                SettingsFootnote(SettingsOptions.calendarsSelected(selected, of: allIDs.count))
             }
         }
-        .padding(.horizontal, 2)
 
         if allIDs.isEmpty {
             SettingsBox {
-                Text("No calendars yet. Add an account in System Settings › Internet Accounts, or create a calendar in Calendar.")
-                    .foregroundStyle(.secondary)
-                    .fixedSize(horizontal: false, vertical: true)
-                    .padding(.vertical, 12)
+                SettingsStatusRow(
+                    message: "No calendars yet. Add an account in System Settings › Internet Accounts, or create a calendar in Calendar.",
+                    separator: false
+                )
             }
         } else {
             ForEach(model.meetingStore.calendarsBySource, id: \.source) { group in
@@ -59,80 +53,53 @@ struct CalendarsTab: View {
         }
     }
 
+    /// Select All and Deselect All act on the whole account, so they sit under its box, as the Test buttons do.
     private func calendarGroup(source: String, calendars: [CalendarInfo], enabled: Set<String>?, allIDs: [String]) -> some View {
         let ids = calendars.map(\.id)
         let count = CalendarSelection.enabledCount(of: ids, in: enabled)
         let allOn = count == ids.count
 
-        return VStack(alignment: .leading, spacing: 6) {
-            HStack(spacing: 12) {
-                Text(source)
-                    .font(.body.weight(.semibold))
-                    .lineLimit(1)
-                    .accessibilityAddTraits(.isHeader)
-                Spacer(minLength: 0)
-                HStack(spacing: 10) {
-                    Text("\(count) of \(ids.count)")
-                        .font(.subheadline)
-                        .foregroundStyle(.secondary)
-                    if ids.count > 1 {
-                        Button(allOn ? "Deselect All" : "Select All") {
-                            model.preferences.enabledCalendarIDs = CalendarSelection.setting(
-                                ids, enabled: !allOn, in: model.preferences.enabledCalendarIDs, allCalendarIDs: allIDs
-                            )
-                        }
-                        .buttonStyle(.link)
-                        .font(.callout)
-                        .accessibilityLabel(allOn ? "Deselect all \(source) calendars" : "Select all \(source) calendars")
-                    }
-                }
+        return SettingsSection(title: source, footnote: SettingsOptions.calendarsSelected(count, of: ids.count)) {
+            ForEach(Array(calendars.enumerated()), id: \.element.id) { index, calendar in
+                calendarRow(calendar, separator: index > 0, allIDs: allIDs)
             }
-            .frame(minHeight: 24)
-            .padding(.horizontal, 2)
-
-            SettingsBox {
-                ForEach(Array(calendars.enumerated()), id: \.element.id) { index, calendar in
-                    if index > 0 { SettingsSeparator() }
-                    Toggle(isOn: binding(for: calendar.id, allIDs: allIDs)) {
-                        Text(calendar.title)
-                            .lineLimit(1)
-                            .truncationMode(.tail)
-                    }
-                    .toggleStyle(CalendarCheckboxStyle(color: Color(calendar.color)))
-                    .frame(minHeight: 36)
+        } accessory: {
+            if ids.count > 1 {
+                Button(allOn ? "Deselect All" : "Select All") {
+                    model.preferences.enabledCalendarIDs = CalendarSelection.setting(
+                        ids, enabled: !allOn, in: model.preferences.enabledCalendarIDs, allCalendarIDs: allIDs
+                    )
                 }
+                .accessibilityLabel(allOn ? "Deselect all \(source) calendars" : "Select all \(source) calendars")
             }
         }
     }
 
-    private var footer: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            HStack(alignment: .firstTextBaseline, spacing: 8) {
-                Image(systemName: "info.circle")
-                Text("Missing a calendar? Add its account in System Settings › Internet Accounts. How often calendars sync is set in Calendar › Settings › Accounts.")
-                    .fixedSize(horizontal: false, vertical: true)
-            }
-            .font(.subheadline)
-            .foregroundStyle(.secondary)
+    /// The calendar's name, then its checkbox at the right. A click anywhere on the row toggles it; one on the
+    /// checkbox goes to the checkbox alone, whose button takes it before the row's tap gesture.
+    private func calendarRow(_ calendar: CalendarInfo, separator: Bool, allIDs: [String]) -> some View {
+        let isOn = binding(for: calendar.id, allIDs: allIDs)
+        return SettingsRow(title: calendar.title, separator: separator) {
+            CalendarCheckbox(color: Color(calendar.color), isOn: isOn, title: calendar.title)
+        }
+        .contentShape(Rectangle())
+        .onTapGesture { isOn.wrappedValue.toggle() }
+    }
 
-            HStack(spacing: 8) {
-                if let lastRefreshed = model.meetingStore.lastRefreshed {
-                    TimelineView(.periodic(from: .now, by: 30)) { context in
-                        Text(SettingsOptions.updatedLabel(lastRefreshed: lastRefreshed, now: context.date))
-                            .font(.subheadline)
-                            .foregroundStyle(.secondary)
-                    }
-                }
-                Button("Open Internet Accounts…") { openInternetAccounts() }
-                Button {
-                    model.meetingStore.refresh()
-                } label: {
-                    Label("Refresh Calendars", systemImage: "arrow.clockwise")
-                        .labelStyle(.titleAndIcon)
+    /// Two lines under the last account: where to add a missing calendar, then when the calendars were last read,
+    /// with the buttons at the right, on the line the boxes' controls end on.
+    private var footer: some View {
+        VStack(alignment: .leading, spacing: SettingsMetrics.underBoxSpacing) {
+            SettingsNoteLine(footnote: "Missing a calendar? Add its account in System Settings › Internet Accounts. How often calendars sync is set in Calendar › Settings › Accounts.")
+            TimelineView(.periodic(from: .now, by: 30)) { context in
+                SettingsNoteLine(footnote: model.meetingStore.lastRefreshed.map {
+                    SettingsOptions.updatedLabel(lastRefreshed: $0, now: context.date)
+                }) {
+                    Button("Open Internet Accounts…") { openInternetAccounts() }
+                    Button("Refresh Calendars") { model.meetingStore.refresh() }
                 }
             }
         }
-        .padding(.horizontal, 2)
     }
 
     private var permissionPrompt: some View {
@@ -178,35 +145,34 @@ struct CalendarsTab: View {
     }
 }
 
-/// A checkbox filled with its calendar's color.
-private struct CalendarCheckboxStyle: ToggleStyle {
+/// A checkbox filled with its calendar's color, a calendar row's control. VoiceOver sees a standard checkbox named
+/// after the calendar.
+private struct CalendarCheckbox: View {
     let color: Color
+    @Binding var isOn: Bool
+    let title: String
 
-    func makeBody(configuration: Configuration) -> some View {
+    var body: some View {
         Button {
-            configuration.isOn.toggle()
+            isOn.toggle()
         } label: {
-            HStack(spacing: 10) {
-                ZStack {
-                    RoundedRectangle(cornerRadius: 4, style: .continuous)
-                        .fill(configuration.isOn ? color : .clear)
-                    RoundedRectangle(cornerRadius: 4, style: .continuous)
-                        .strokeBorder(color, lineWidth: 1.5)
-                    if configuration.isOn {
-                        Image(systemName: "checkmark")
-                            .font(.system(size: 9, weight: .bold))
-                            .foregroundStyle(.white)
-                    }
+            ZStack {
+                RoundedRectangle(cornerRadius: 4, style: .continuous)
+                    .fill(isOn ? color : .clear)
+                RoundedRectangle(cornerRadius: 4, style: .continuous)
+                    .strokeBorder(color, lineWidth: 1.5)
+                if isOn {
+                    Image(systemName: "checkmark")
+                        .font(.system(size: 9, weight: .bold))
+                        .foregroundStyle(.white)
                 }
-                .frame(width: 16, height: 16)
-                configuration.label
-                    .frame(maxWidth: .infinity, alignment: .leading)
             }
+            .frame(width: 16, height: 16)
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
         .accessibilityRepresentation {
-            Toggle(isOn: configuration.$isOn) { configuration.label }
+            Toggle(title, isOn: $isOn)
                 .toggleStyle(.checkbox)
         }
     }
