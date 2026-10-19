@@ -2,8 +2,9 @@ import SwiftUI
 import JoinCore
 
 /// What Join! does with events nobody else is on and with out-of-office events, a pop-up for each,
-/// then the keywords that make an event out of office. One section, as the user picked from the
-/// settings design's options; 1.1 had a switch here and a separate Out of office section with two.
+/// then the keywords that make an event out of office, a row whose control is Restore Defaults, with the field
+/// under it, and the footnote under the box. One section, as the user picked from the settings design's options;
+/// 1.1 had a switch here and a separate Out of office section with two.
 struct EventsSection: View {
     @Environment(AppModel.self) private var model
     /// Held here so Restore Defaults can drop a half-typed keyword before the field commits it.
@@ -12,30 +13,19 @@ struct EventsSection: View {
     var body: some View {
         @Bindable var preferences = model.preferences
 
-        SettingsSection(title: SettingsOptions.eventsSectionTitle) {
+        SettingsSection(title: SettingsOptions.eventsSectionTitle, footnote: SettingsOptions.eventsFootnote) {
             visibilityRow(SettingsOptions.eventsWithoutParticipantsTitle, selection: $preferences.eventsWithoutParticipants, separator: false)
             visibilityRow(SettingsOptions.outOfOfficeEventsTitle, selection: $preferences.outOfOfficeEvents)
-            SettingsSeparator()
-            VStack(alignment: .leading, spacing: 8) {
-                HStack(spacing: 12) {
-                    Text(SettingsOptions.outOfOfficeKeywordsTitle)
-                    Spacer(minLength: 0)
-                    Button("Restore Defaults") {
-                        keywordDraft = ""
-                        preferences.resetOutOfOfficeKeywords()
-                    }
-                    .buttonStyle(.link)
-                    .font(.callout)
-                    .disabled(preferences.outOfOfficeKeywords == OutOfOfficeDetector.defaultKeywords)
+            // Restore Defaults puts back the keywords only, so it's the keywords row's own control.
+            SettingsRow(title: SettingsOptions.outOfOfficeKeywordsTitle) {
+                Button("Restore Defaults") {
+                    keywordDraft = ""
+                    preferences.resetOutOfOfficeKeywords()
                 }
-                KeywordTokenField(keywords: $preferences.outOfOfficeKeywords, draft: $keywordDraft)
-                Text(SettingsOptions.eventsFootnote)
-                    .font(.subheadline)
-                    .foregroundStyle(.secondary)
-                    .fixedSize(horizontal: false, vertical: true)
+                .disabled(preferences.outOfOfficeKeywords == OutOfOfficeDetector.defaultKeywords)
             }
-            .padding(.top, 8)
-            .padding(.bottom, 12)
+            KeywordTokenField(keywords: $preferences.outOfOfficeKeywords, draft: $keywordDraft)
+                .padding(.bottom, SettingsMetrics.boxInset)
         }
     }
 

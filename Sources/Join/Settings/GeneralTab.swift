@@ -19,15 +19,13 @@ struct GeneralTab: View {
     var body: some View {
         @Bindable var preferences = model.preferences
 
-        VStack(alignment: .leading, spacing: 22) {
-            SettingsBox {
+        VStack(alignment: .leading, spacing: SettingsMetrics.sectionSpacing) {
+            // The pane's first box, with no heading: its one switch names it. The approval hint and a failure stop
+            // Join! from opening at login, so they're warnings; the fixture note isn't.
+            SettingsSection(title: nil) {
                 SettingsSwitchRow(title: "Open at login", isOn: openAtLogin, separator: false, enabled: !model.isFixture)
                 if let note = model.isFixture ? SettingsOptions.openAtLoginFixtureNote : loginItemFailure ?? SettingsOptions.openAtLoginHint(loginItem) {
-                    Text(note)
-                        .font(.subheadline)
-                        .foregroundStyle(model.isFixture ? Color.secondary : Color.red)
-                        .fixedSize(horizontal: false, vertical: true)
-                        .padding(.bottom, 8)
+                    SettingsStatusRow(message: note, isWarning: !model.isFixture)
                 }
             }
 
@@ -50,9 +48,7 @@ struct GeneralTab: View {
 
             SettingsSection(title: UpdateCopy.sectionTitle) {
                 SettingsSwitchRow(title: UpdateCopy.automaticChecksTitle, isOn: $preferences.checksForUpdates, separator: false)
-                SettingsSeparator()
                 updateStatusRow
-                updateNotes
             }
         }
         .padding(SettingsMetrics.panePadding)
@@ -153,8 +149,7 @@ struct GeneralTab: View {
         }
 
         if let warning = pill.contrastWarning(accent: accent) {
-            SettingsWarning(message: warning)
-                .padding(.bottom, 10)
+            SettingsRowWarning(message: warning, indented: false)
         }
     }
 
@@ -171,61 +166,41 @@ struct GeneralTab: View {
 
     // MARK: Updates
 
-    /// "Join! 1.0.0 · Checked 5 minutes ago" or the update on offer, then how an install is going ("Install
-    /// 1.1.0" once downloaded and verified), with Check Now and the update bar's button:
-    /// Install, Install and Relaunch once ready, Download Page after a failed install, Show in Finder once
-    /// revealed. Install and Install and Relaunch wait for a check under way, which may change the offer;
-    /// Check Now works while an update is ready, and a newer release takes its place.
+    /// The Updates box's status row: "Join! 1.0.0 · Checked 5 minutes ago" or the update on offer, then how an
+    /// install is going ("Install 1.1.0" once downloaded and verified), then why the last install failed, as a
+    /// warning, or that a fixture run can't install. At the right, Check Now and the update bar's button: Install,
+    /// Install and Relaunch once ready, Download Page after a failed install, Show in Finder once revealed. Install
+    /// and Install and Relaunch wait for a check under way, which may change the offer; Check Now works while an
+    /// update is ready, and a newer release takes its place.
     private var updateStatusRow: some View {
         let checker = model.updateChecker
         let status = checker.status
         let offered = checker.offeredUpdate
         let lastCheck = checker.lastCheck
-        return HStack(spacing: 16) {
-            VStack(alignment: .leading, spacing: 2) {
-                TimelineView(.periodic(from: .now, by: 30)) { context in
-                    Text(UpdateCopy.statusLine(
-                        current: checker.currentVersion, status: status, offered: offered, lastCheck: lastCheck, now: context.date
-                    ))
-                }
-                if let update = checker.offeredUpdate, checker.install != .idle {
-                    Text(UpdateCopy.barMessage(version: update.version, install: checker.install))
-                        .font(.subheadline.monospacedDigit())
-                        .foregroundStyle(.secondary)
-                }
+        return SettingsStatusRow {
+            TimelineView(.periodic(from: .now, by: 30)) { context in
+                Text(UpdateCopy.statusLine(
+                    current: checker.currentVersion, status: status, offered: offered, lastCheck: lastCheck, now: context.date
+                ))
             }
-            Spacer(minLength: 0)
-            HStack(spacing: 8) {
-                Button(UpdateCopy.checkNowTitle) { checker.checkNow() }
-                    .disabled(checker.currentVersion == nil || checker.isChecking || checker.isInstalling)
-                if let update = checker.offeredUpdate {
-                    let title = UpdateCopy.barButtonTitle(install: checker.install)
-                    Button(title ?? UpdateCopy.installTitle) { model.performUpdateAction() }
-                        .disabled(!UpdateCopy.barButtonEnabled(install: checker.install, canInstall: checker.canInstall, isChecking: checker.isChecking))
-                        .help(UpdateCopy.barButtonHelp(version: update.version, install: checker.install, canInstall: checker.canInstall) ?? "")
-                }
+            if let update = checker.offeredUpdate, checker.install != .idle {
+                Text(UpdateCopy.barMessage(version: update.version, install: checker.install))
+                    .monospacedDigit()
             }
-        }
-        .padding(.vertical, 6)
-        .frame(minHeight: 40)
-    }
-
-    /// Why the last install failed, or that a fixture run can't install.
-    @ViewBuilder
-    private var updateNotes: some View {
-        let checker = model.updateChecker
-        if case .failed(let failure) = checker.install {
-            Text(UpdateCopy.failureReason(failure))
-                .font(.subheadline)
-                .foregroundStyle(Color.red)
-                .fixedSize(horizontal: false, vertical: true)
-                .padding(.bottom, 8)
-        } else if checker.offeredUpdate != nil, checker.install == .idle, !checker.canInstall {
-            Text(UpdateCopy.installFixtureNote)
-                .font(.subheadline)
-                .foregroundStyle(.secondary)
-                .fixedSize(horizontal: false, vertical: true)
-                .padding(.bottom, 8)
+            if case .failed(let failure) = checker.install {
+                SettingsWarning(message: UpdateCopy.failureReason(failure))
+            } else if checker.offeredUpdate != nil, checker.install == .idle, !checker.canInstall {
+                Text(UpdateCopy.installFixtureNote)
+            }
+        } controls: {
+            Button(UpdateCopy.checkNowTitle) { checker.checkNow() }
+                .disabled(checker.currentVersion == nil || checker.isChecking || checker.isInstalling)
+            if let update = checker.offeredUpdate {
+                let title = UpdateCopy.barButtonTitle(install: checker.install)
+                Button(title ?? UpdateCopy.installTitle) { model.performUpdateAction() }
+                    .disabled(!UpdateCopy.barButtonEnabled(install: checker.install, canInstall: checker.canInstall, isChecking: checker.isChecking))
+                    .help(UpdateCopy.barButtonHelp(version: update.version, install: checker.install, canInstall: checker.canInstall) ?? "")
+            }
         }
     }
 }
