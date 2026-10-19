@@ -145,14 +145,16 @@ struct SettingsLegacyTextChoice: View {
     }
 }
 
-/// A pop-up at a fixed width, or fitted to its items.
+/// A pop-up at a fixed width, or fitted to its items. A menu pop-up keeps its own width inside the frame, so it's
+/// pinned to the frame's leading edge: on Appearance every pop-up then starts where the control column does,
+/// rather than sitting centered in it (the user's ask, 2026-10-19).
 private struct SettingsPopUpWidth<Content: View>: View {
     let width: CGFloat?
     @ViewBuilder var content: Content
 
     var body: some View {
         if let width {
-            content.frame(width: width)
+            content.frame(width: width, alignment: .leading)
         } else {
             content.fixedSize()
         }
