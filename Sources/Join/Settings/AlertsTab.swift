@@ -1,10 +1,10 @@
 import SwiftUI
 import JoinCore
 
-/// Both kinds of alert, each with its own time or Never, then the snooze durations they share: the Full-screen
-/// alert box (when, where and how loudly it comes up, and when it closes by itself), the Notification box (when,
-/// whether it plays a sound, and what in System Settings stops it), the Snooze box, and Send Demo Notification
-/// and Show Demo to try them, beside the settings they show. How the full-screen alert looks is on Appearance.
+/// Both kinds of alert, each with its own time or Never and a button to try it, then the snooze durations they
+/// share: the Full-screen alert box (when, where and how loudly it comes up, and when it closes by itself, then
+/// Test Full-Screen Alert), the Notification box (when, whether it plays a sound, and what in System Settings
+/// stops it, then Test Notification), and the Snooze box. How the full-screen alert looks is on Appearance.
 struct AlertsTab: View {
     @Environment(AppModel.self) private var model
 
@@ -13,12 +13,6 @@ struct AlertsTab: View {
             fullScreenAlertSection
             notificationSection
             snoozeSection
-
-            HStack {
-                Spacer()
-                SendDemoNotificationButtonView()
-                ShowDemoButton()
-            }
         }
         .padding(SettingsMetrics.panePadding)
     }
@@ -28,7 +22,8 @@ struct AlertsTab: View {
     /// Custom lead times save on Return or when the field loses focus, so editing "3" → "35" → "5" can't briefly
     /// mean 35 minutes and fire alerts early. Never leaves the rows below in view but dims and disables them, by
     /// the user's choice; their values stay as they were, and picking a time brings them back. Close
-    /// automatically is one of them since 1.3.0: it only ever closes the full-screen alert.
+    /// automatically is one of them since 1.3.0: it only ever closes the full-screen alert. Test Full-Screen
+    /// Alert, the box's last row, works whatever Alert me says.
     private var fullScreenAlertSection: some View {
         @Bindable var preferences = model.preferences
         let alertsOn = preferences.fullScreenAlertsEnabled
@@ -97,6 +92,9 @@ struct AlertsTab: View {
                 .fixedSize()
                 .disabled(!alertsOn)
             }
+            SettingsButtonRow {
+                TestFullScreenAlertButton()
+            }
         }
     }
 
@@ -154,7 +152,8 @@ struct AlertsTab: View {
     /// the notification coordinator asks macOS (`NotificationPermission.needsAsking`). Play sound is its
     /// sibling, dimmed while it's Never. The status line under them shows only while Notify me has a time and
     /// something in System Settings stops a notification from reaching the user; the coordinator reads it
-    /// again when Join! becomes active and when Settings becomes key, so it clears once that's fixed.
+    /// again when Join! becomes active and when Settings becomes key, so it clears once that's fixed. Test
+    /// Notification, the box's last row, works whatever Notify me says.
     private var notificationSection: some View {
         @Bindable var preferences = model.preferences
         let notificationsOn = preferences.notificationsEnabled
@@ -176,6 +175,9 @@ struct AlertsTab: View {
             if let status = model.notificationCoordinator.status {
                 NotificationStatusRow(status: status) { model.openNotificationSettings() }
             }
+            SettingsButtonRow {
+                TestNotificationButtonView()
+            }
         }
     }
 
@@ -196,16 +198,21 @@ struct AlertsTab: View {
 
     // MARK: Snooze
 
-    /// Shared by both kinds, and enabled whatever either is set to, as the user scoped Never: Show Demo and Send
-    /// Demo Notification still use it.
+    /// Shared by both kinds, which the footnote spells out, and enabled whatever either is set to, as the user
+    /// scoped Never: both test buttons still use it.
     private var snoozeSection: some View {
         SettingsSection(title: SettingsOptions.snoozeSectionTitle, footnote: SettingsOptions.snoozeFootnote) {
-            snoozeChoice("First snooze button", \.first, separator: false)
-            snoozeChoice("Second snooze button", \.second, separator: true)
+            snoozeChoice(SettingsOptions.firstSnoozeTitle, fieldLabel: SettingsOptions.firstSnoozeFieldLabel, \.first, separator: false)
+            snoozeChoice(SettingsOptions.secondSnoozeTitle, fieldLabel: SettingsOptions.secondSnoozeFieldLabel, \.second, separator: true)
         }
     }
 
-    private func snoozeChoice(_ title: String, _ button: WritableKeyPath<SnoozeDurations, TimeInterval>, separator: Bool) -> some View {
+    private func snoozeChoice(
+        _ title: String,
+        fieldLabel: String,
+        _ snooze: WritableKeyPath<SnoozeDurations, TimeInterval>,
+        separator: Bool
+    ) -> some View {
         let preferences = model.preferences
         return SettingsMinutesChoice(
             title: title,
@@ -214,18 +221,18 @@ struct AlertsTab: View {
             range: SettingsOptions.customSnoozeRange,
             presetTitle: SettingsOptions.durationTitle(minutes:),
             unit: SettingsOptions.minutesUnit,
-            fieldLabel: "\(title), minutes",
+            fieldLabel: fieldLabel,
             minutes: Binding(
-                get: { SettingsOptions.wholeMinutes(preferences.snoozeDurations[keyPath: button]) },
-                set: { minutes in preferences.snoozeDurations[keyPath: button] = TimeInterval(minutes * 60) }
+                get: { SettingsOptions.wholeMinutes(preferences.snoozeDurations[keyPath: snooze]) },
+                set: { minutes in preferences.snoozeDurations[keyPath: snooze] = TimeInterval(minutes * 60) }
             )
         )
     }
 }
 
-/// The Notification box's last row, with no label: why a notification won't reach the user (`NotificationStatus`),
-/// orange with a warning sign when none reaches the screen and secondary otherwise, and Open System Settings,
-/// which opens Notifications › Join!.
+/// The Notification box's row above Test Notification, with no label: why a notification won't reach the user
+/// (`NotificationStatus`), orange with a warning sign when none reaches the screen and secondary otherwise, and
+/// Open System Settings, which opens Notifications › Join!.
 private struct NotificationStatusRow: View {
     let status: NotificationStatus
     let openSettings: () -> Void
@@ -252,28 +259,29 @@ private struct NotificationStatusRow: View {
     }
 }
 
-/// Sends the demo event's notification, left of Show Demo. Off in a fixture run and while notifications are
-/// denied; the help tag says why (`SendDemoNotificationButton`).
-private struct SendDemoNotificationButtonView: View {
+/// Test Notification, at the bottom right of the Notification box: sends the demo event's notification. Off in a
+/// fixture run and while notifications are denied; the help tag says why (`TestNotificationButton`).
+private struct TestNotificationButtonView: View {
     @Environment(AppModel.self) private var model
 
     var body: some View {
-        let button = model.notificationCoordinator.sendDemoButton
-        Button(SendDemoNotificationButton.title) { model.notificationCoordinator.sendDemoNotification() }
+        let button = model.notificationCoordinator.testNotificationButton
+        Button(TestNotificationButton.title) { model.notificationCoordinator.sendDemoNotification() }
             .disabled(!button.isEnabled)
             .help(button.help)
     }
 }
 
-/// Shows the demo full-screen alert, on Alerts and beside Appearance's preview. Off while a real one is on
-/// screen, which the demo never replaces; the help tag says why.
-struct ShowDemoButton: View {
+/// Test Full-Screen Alert: shows the demo event's full-screen alert, at the bottom right of the Full-screen alert
+/// box and at the end of Appearance's Preview over bar. Off while a real one is on screen, which the test never
+/// replaces; the help tag says why.
+struct TestFullScreenAlertButton: View {
     @Environment(AppModel.self) private var model
 
     var body: some View {
         let alerting = model.alertCoordinator.isAlerting
-        Button("Show Demo") { model.alertCoordinator.showDemoAlert() }
+        Button(SettingsOptions.testFullScreenAlertTitle) { model.alertCoordinator.showDemoAlert() }
             .disabled(alerting)
-            .help(alerting ? SettingsOptions.showDemoUnavailableHelp : SettingsOptions.showDemoHelp)
+            .help(alerting ? SettingsOptions.testFullScreenAlertUnavailableHelp : SettingsOptions.testFullScreenAlertHelp)
     }
 }

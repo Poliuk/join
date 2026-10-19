@@ -1,7 +1,7 @@
 import Foundation
 
 /// The rows of Appearance's **Colors** box that pick a color: each a pop-up of named swatches, a separator
-/// and Other…, with a color well before the pop-up while Other… is picked. Backdrop, the tint's Strength and
+/// and Other…, with a color well after the pop-up while Other… is picked. Backdrop, the tint's Strength and
 /// the buttons' legacy Text rows are the box's other rows.
 public enum AlertColorRow: String, CaseIterable, Identifiable, Sendable {
     case tint

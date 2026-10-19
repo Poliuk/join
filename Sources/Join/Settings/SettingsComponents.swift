@@ -33,6 +33,8 @@ enum SettingsMetrics {
     static let panePadding = EdgeInsets(top: 20, leading: 20, bottom: 24, trailing: 20)
     /// How far a dependent row sits in from its parent; its connector line lives in this gutter.
     static let indent: CGFloat = 30
+    /// A box's padding either side of its rows.
+    static let boxInset: CGFloat = 12
 }
 
 /// A heading above a grouped box, and optionally a footnote under it, for what the box's rows can't say.
@@ -67,7 +69,7 @@ struct SettingsBox<Content: View>: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) { content }
-            .padding(.horizontal, 12)
+            .padding(.horizontal, SettingsMetrics.boxInset)
             .frame(maxWidth: .infinity, alignment: .leading)
             .background(SettingsPalette.box, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
             .overlay {
@@ -85,7 +87,9 @@ struct SettingsSeparator: View {
     }
 }
 
-/// Label on the left, control on the right, with a hairline above unless it opens its box.
+/// Label on the left, control on the right, with a hairline above unless it opens its box. With a control
+/// column, as on Appearance, the control starts that far from the row's leading edge instead, so the controls
+/// down the pane share one left edge.
 /// An indented row depends on the row above it, and is left out, not dimmed, while that row is
 /// off: no sound, no tint, a preset rather than Custom…. The disabled tone is for rows beside a
 /// setting that turns them off, as Show on and Sound are while Alert me is Never, and Play sound while
@@ -101,22 +105,34 @@ struct SettingsRow<Control: View>: View {
     var tone: Tone = .primary
     var indented = false
     var separator = true
+    /// Where the control starts, from the row's leading edge, an indented row's included, so it lines up with
+    /// its parent's; it must clear the longest label. Nil puts the control at the trailing edge.
+    var controlColumn: CGFloat? = nil
     @ViewBuilder var control: Control
 
     var body: some View {
         VStack(spacing: 0) {
             if separator {
                 SettingsSeparator()
-                    .padding(.leading, indented ? SettingsMetrics.indent : 0)
+                    .padding(.leading, leadingInset)
             }
-            HStack(spacing: 16) {
-                Text(title)
-                    .foregroundStyle(labelStyle)
-                    .accessibilityHidden(true)
-                Spacer(minLength: 0)
-                control
+            Group {
+                if let controlColumn {
+                    HStack(spacing: 0) {
+                        label
+                            .frame(width: controlColumn - leadingInset, alignment: .leading)
+                        control
+                        Spacer(minLength: 0)
+                    }
+                } else {
+                    HStack(spacing: 16) {
+                        label
+                        Spacer(minLength: 0)
+                        control
+                    }
+                }
             }
-            .padding(.leading, indented ? SettingsMetrics.indent : 0)
+            .padding(.leading, leadingInset)
             .padding(.vertical, 6)
             .frame(minHeight: 40)
         }
@@ -128,6 +144,16 @@ struct SettingsRow<Control: View>: View {
                     .frame(width: SettingsMetrics.indent)
             }
         }
+    }
+
+    private var leadingInset: CGFloat {
+        indented ? SettingsMetrics.indent : 0
+    }
+
+    private var label: some View {
+        Text(title)
+            .foregroundStyle(labelStyle)
+            .accessibilityHidden(true)
     }
 
     private var labelStyle: HierarchicalShapeStyle {
@@ -154,6 +180,24 @@ private struct SettingsChildConnector: View {
             .stroke(SettingsPalette.connector, style: StrokeStyle(lineWidth: 1.5, lineCap: .round))
         }
         .accessibilityHidden(true)
+    }
+}
+
+/// A box's last row, with no label: a button at the trailing edge, under a hairline. The Alerts pane's Test
+/// Full-Screen Alert and Test Notification, each in the box of the settings it tries.
+struct SettingsButtonRow<Content: View>: View {
+    @ViewBuilder var content: Content
+
+    var body: some View {
+        VStack(spacing: 0) {
+            SettingsSeparator()
+            HStack(spacing: 0) {
+                Spacer(minLength: 0)
+                content
+            }
+            .padding(.vertical, 6)
+            .frame(minHeight: 40)
+        }
     }
 }
 

@@ -84,13 +84,27 @@ public enum SettingsOptions {
     /// Under the Notification box: what Join! can't set for a notification.
     public static let notificationFootnote = "How long a notification stays on screen, and whether it shows during a Focus or while you share your screen, is up to System Settings › Notifications. The full-screen alert comes up either way."
 
-    /// Under the Snooze box, naming the button both kinds add after these.
-    public static let snoozeFootnote = "The full-screen alert and the notification both offer these, then \(AlertCountdown.snoozeUntilStartLabel)."
+    /// The Snooze box's rows, the two times both kinds share. "First snooze button" and "Second snooze button"
+    /// until 2026-10-19: the notification offers them as actions, not buttons.
+    public static let firstSnoozeTitle = "First snooze"
+    public static let secondSnoozeTitle = "Second snooze"
+    /// What VoiceOver calls each row's custom minutes field and stepper.
+    public static let firstSnoozeFieldLabel = "\(firstSnoozeTitle), minutes"
+    public static let secondSnoozeFieldLabel = "\(secondSnoozeTitle), minutes"
 
-    /// Show Demo's help tags, on the Alerts and Appearance panes, while it works and while a real full-screen
-    /// alert is on screen.
-    public static let showDemoHelp = "Shows a real full-screen alert with a sample event. Press Esc to close it."
-    public static let showDemoUnavailableHelp = "Close the current full-screen alert first."
+    /// Under the Snooze box: that both kinds use these two times, each in its own way, then the snooze both add
+    /// after them. The user asked for the section's explanation to be clearer (2026-10-19).
+    public static let snoozeFootnote = "The full-screen alert's snooze buttons and the notification's Snooze actions both offer these two times, then \(AlertCountdown.snoozeUntilStartLabel)."
+
+    // MARK: Test buttons
+
+    /// At the bottom right of the Full-screen alert box, and at the end of Appearance's Preview over bar: shows
+    /// the full-screen alert for the demo event (`DemoEvent`). Show Demo until 2026-10-19, when the user found
+    /// the demo buttons' labels confusing. Test Notification is `TestNotificationButton`.
+    public static let testFullScreenAlertTitle = "Test Full-Screen Alert"
+    /// Its help tags, while it works and while a real full-screen alert is on screen.
+    public static let testFullScreenAlertHelp = "Shows a test full-screen alert with a sample event. Press Esc to close it."
+    public static let testFullScreenAlertUnavailableHelp = "Close the current full-screen alert first."
 
     // MARK: Appearance pane
 
@@ -99,7 +113,7 @@ public enum SettingsOptions {
 
     /// Under the preview while Alert me is Never, which stops real full-screen alerts only, whatever Notify me
     /// says: the pane is the full-screen alert's look, and notifications have none to set.
-    public static let alertMeNeverNote = "\(alertMeTitle) is set to \(leadTimeNeverTitle) in \(alertsPaneTitle). Show Demo still works."
+    public static let alertMeNeverNote = "\(alertMeTitle) is set to \(leadTimeNeverTitle) in \(alertsPaneTitle). \(testFullScreenAlertTitle) still works."
 
     /// Restore Defaults' help tag, at the bottom right of the pane: it restores the look only.
     public static let restoreAppearanceHelp = "Goes back to the Dark style. Your own style stays on the Custom card."

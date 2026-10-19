@@ -2,11 +2,20 @@ import AppKit
 import SwiftUI
 import JoinCore
 
-/// A color pop-up: named swatches, a separator and Other…. While Other… is picked a well sits before the
-/// pop-up, so the pop-up stays put at the row's trailing edge, and picking Other… opens the color panel on
-/// that well. Which item shows is `ColorChoice.selection`, in JoinCore. Like `SettingsMinutesChoice` with
-/// Custom…, this view keeps whether Other… was picked: until another item is, or the color changes from
-/// elsewhere (a Style card, Restore Defaults).
+/// Which side of its pop-up a color well takes: away from the edge the row's control keeps, so the pop-up
+/// stays put whether the well shows or not.
+enum SettingsWellSide {
+    /// Before the pop-up, which keeps the row's trailing edge (General).
+    case beforePopUp
+    /// After the pop-up, which keeps the control column's left edge (Appearance).
+    case afterPopUp
+}
+
+/// A color pop-up: named swatches, a separator and Other…. While Other… is picked a well sits beside the
+/// pop-up, on the side `wellSide` names, and picking Other… opens the color panel on that well. Which item
+/// shows is `ColorChoice.selection`, in JoinCore. Like `SettingsMinutesChoice` with Custom…, this view keeps
+/// whether Other… was picked: until another item is, or the color changes from elsewhere (a Style card,
+/// Restore Defaults).
 struct SettingsColorChoice: View {
     /// The pop-up's name for VoiceOver.
     let title: String
@@ -19,6 +28,7 @@ struct SettingsColorChoice: View {
     var supportsOpacity = false
     /// A fixed width, so the pop-ups down a box line up; nil fits the pop-up to its items.
     var popUpWidth: CGFloat? = nil
+    var wellSide: SettingsWellSide = .beforePopUp
     /// The row's stored color, nil for its automatic item. Read live, so a write can be told apart.
     let stored: () -> RGBA?
     /// The color the row draws with, opacity included: what the well shows and the swatches are matched to.
@@ -46,15 +56,8 @@ struct SettingsColorChoice: View {
         let current = colors
         let selected = choice.selection(stored: current.stored, shown: current.shown, otherPicked: other != .unpicked)
         HStack(spacing: 8) {
-            if selected == .other {
-                SettingsColorWell(
-                    label: wellLabel,
-                    color: current.shown,
-                    supportsOpacity: supportsOpacity,
-                    opensPanel: other == .picked(opensPanel: true),
-                    panelDidOpen: { if other == .picked(opensPanel: true) { other = .picked(opensPanel: false) } },
-                    onChange: { color in write { setColor(color) } }
-                )
+            if selected == .other, wellSide == .beforePopUp {
+                well(showing: current.shown)
             }
             SettingsPopUpWidth(width: popUpWidth) {
                 Picker(title, selection: Binding(get: { selected }, set: select)) {
@@ -67,6 +70,9 @@ struct SettingsColorChoice: View {
                         .tag(ColorChoice.Item.other)
                 }
                 .labelsHidden()
+            }
+            if selected == .other, wellSide == .afterPopUp {
+                well(showing: current.shown)
             }
         }
         .onChange(of: current) { _, newValue in
@@ -83,6 +89,17 @@ struct SettingsColorChoice: View {
         Colors(stored: stored(), shown: shown())
     }
 
+    private func well(showing color: RGBA) -> some View {
+        SettingsColorWell(
+            label: wellLabel,
+            color: color,
+            supportsOpacity: supportsOpacity,
+            opensPanel: other == .picked(opensPanel: true),
+            panelDidOpen: { if other == .picked(opensPanel: true) { other = .picked(opensPanel: false) } },
+            onChange: { color in write { setColor(color) } }
+        )
+    }
+
     private func select(_ item: ColorChoice.Item) {
         other = item == .other ? .picked(opensPanel: true) : .unpicked
         write { pick(item) }
@@ -96,21 +113,22 @@ struct SettingsColorChoice: View {
     }
 }
 
-/// The legacy **Text** row's control: a well, then Automatic / Custom. It only shows while a label color
-/// saved by an earlier build is stored, so Custom is always the item shown; Automatic clears the color,
-/// and the row goes.
+/// The legacy **Text** row's control: a well beside Automatic / Custom, on the side `wellSide` names. It only
+/// shows while a label color saved by an earlier build is stored, so Custom is always the item shown;
+/// Automatic clears the color, and the row goes.
 struct SettingsLegacyTextChoice: View {
     /// The pop-up's name for VoiceOver.
     let title: String
     let wellLabel: String
     let color: RGBA
     var popUpWidth: CGFloat? = nil
+    var wellSide: SettingsWellSide = .beforePopUp
     let clear: () -> Void
     let setColor: (RGBA) -> Void
 
     var body: some View {
         HStack(spacing: 8) {
-            SettingsColorWell(label: wellLabel, color: color, onChange: setColor)
+            if wellSide == .beforePopUp { well }
             SettingsPopUpWidth(width: popUpWidth) {
                 Picker(title, selection: Binding(get: { true }, set: { custom in if !custom { clear() } })) {
                     Text(LegacyTextRow.automaticTitle).tag(false)
@@ -118,7 +136,12 @@ struct SettingsLegacyTextChoice: View {
                 }
                 .labelsHidden()
             }
+            if wellSide == .afterPopUp { well }
         }
+    }
+
+    private var well: some View {
+        SettingsColorWell(label: wellLabel, color: color, onChange: setColor)
     }
 }
 

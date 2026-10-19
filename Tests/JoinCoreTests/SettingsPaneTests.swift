@@ -4,12 +4,12 @@ import Testing
 
 struct SettingsPaneTests {
     /// The toolbar, in order: each pane's raw value (what the `openSettings` hook takes), its label, which is
-    /// also the window's title, and its symbol. Alerts was Full-Screen Alert until 1.3.0 and keeps the bell, the
-    /// panel's Pause alerts symbol.
+    /// also the window's title, and its symbol. Alerts is second, as the user asked (2026-10-19); it was
+    /// Full-Screen Alert until 1.3.0 and keeps the bell, the panel's Pause alerts symbol.
     @Test func theToolbar() {
-        #expect(SettingsPane.allCases.map(\.rawValue) == ["general", "calendars", "alerts", "appearance"])
-        #expect(SettingsPane.allCases.map(\.title) == ["General", "Calendars", "Alerts", "Appearance"])
-        #expect(SettingsPane.allCases.map(\.symbolName) == ["gearshape", "calendar", "bell", "paintpalette"])
+        #expect(SettingsPane.allCases.map(\.rawValue) == ["general", "alerts", "calendars", "appearance"])
+        #expect(SettingsPane.allCases.map(\.title) == ["General", "Alerts", "Calendars", "Appearance"])
+        #expect(SettingsPane.allCases.map(\.symbolName) == ["gearshape", "bell", "calendar", "paintpalette"])
         #expect(SettingsPane.alerts.title == SettingsOptions.alertsPaneTitle)
     }
 
@@ -17,9 +17,9 @@ struct SettingsPaneTests {
     /// written for 1.2.x still open it.
     @Test(arguments: [
         ("general", SettingsPane.general),
-        ("calendars", .calendars),
         ("alerts", .alerts),
         ("fullScreenAlert", .alerts),
+        ("calendars", .calendars),
         ("appearance", .appearance),
     ] as [(String, SettingsPane)])
     func theHookNamesAPane(_ argument: String, _ pane: SettingsPane) {

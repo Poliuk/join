@@ -56,6 +56,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             // A pane's raw value, or fullScreenAlert, the Alerts pane's until 1.3.0 (`SettingsPane(hookArgument:)`).
             ("openSettings", { delegate, argument in delegate.model.openSettings(pane: argument.flatMap(SettingsPane.init(hookArgument:))) }),
             ("snapshot", { _, argument in WindowSnapshots.write(named: argument) }),
+            // What Test Full-Screen Alert does (Show Demo until 2026-10-19; the hook kept its name).
             ("showDemoAlert", { delegate, _ in delegate.model.alertCoordinator.showDemoAlert() }),
             ("togglePanel", { delegate, _ in delegate.statusItem?.toggle() }),
             ("dismissAlert", { delegate, _ in delegate.model.alertCoordinator.dismiss() }),

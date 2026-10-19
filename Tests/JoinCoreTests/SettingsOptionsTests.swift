@@ -150,13 +150,28 @@ struct SettingsOptionsTests {
             SettingsOptions.notificationFootnote,
             "How long a notification stays on screen, and whether it shows during a Focus or while you share your screen, is up to System Settings › Notifications. The full-screen alert comes up either way."
         ),
-        Copy("Snooze footnote", SettingsOptions.snoozeFootnote,
-             "The full-screen alert and the notification both offer these, then At event start."),
+        // "Snooze", not "snooze button": the notification offers them as actions (2026-10-19).
+        Copy("First snooze row", SettingsOptions.firstSnoozeTitle, "First snooze"),
+        Copy("Second snooze row", SettingsOptions.secondSnoozeTitle, "Second snooze"),
+        Copy("First snooze's custom field", SettingsOptions.firstSnoozeFieldLabel, "First snooze, minutes"),
+        Copy("Second snooze's custom field", SettingsOptions.secondSnoozeFieldLabel, "Second snooze, minutes"),
+        // Clearer about both kinds using these, as the user asked (2026-10-19).
+        Copy(
+            "Snooze footnote",
+            SettingsOptions.snoozeFootnote,
+            "The full-screen alert's snooze buttons and the notification's Snooze actions both offer these two times, then At event start."
+        ),
         Copy("Calendars' warning with none checked", SettingsOptions.noCalendarsWarning, "No calendars selected: you won't get any alerts."),
-        Copy("Show Demo's help tag", SettingsOptions.showDemoHelp, "Shows a real full-screen alert with a sample event. Press Esc to close it."),
-        Copy("Show Demo's help tag during an alert", SettingsOptions.showDemoUnavailableHelp, "Close the current full-screen alert first."),
+        // Show Demo until the user found the demo buttons' labels confusing (2026-10-19).
+        Copy("Test Full-Screen Alert", SettingsOptions.testFullScreenAlertTitle, "Test Full-Screen Alert"),
+        Copy(
+            "Test Full-Screen Alert's help tag",
+            SettingsOptions.testFullScreenAlertHelp,
+            "Shows a test full-screen alert with a sample event. Press Esc to close it."
+        ),
+        Copy("Test Full-Screen Alert's help tag during an alert", SettingsOptions.testFullScreenAlertUnavailableHelp, "Close the current full-screen alert first."),
         Copy("Colors section", SettingsOptions.colorsSectionTitle, "Colors"),
-        Copy("Appearance's Never note", SettingsOptions.alertMeNeverNote, "Alert me is set to Never in Alerts. Show Demo still works."),
+        Copy("Appearance's Never note", SettingsOptions.alertMeNeverNote, "Alert me is set to Never in Alerts. Test Full-Screen Alert still works."),
         Copy("Restore Defaults' help tag", SettingsOptions.restoreAppearanceHelp, "Goes back to the Dark style. Your own style stays on the Custom card."),
         Copy("Events section", SettingsOptions.eventsSectionTitle, "Events"),
         Copy("Events with no participants row", SettingsOptions.eventsWithoutParticipantsTitle, "Events with no participants"),
@@ -179,10 +194,11 @@ struct SettingsOptionsTests {
 
     /// The footnotes name what they point at as it's named elsewhere, so a rename can't leave them stale: the
     /// Snooze box's the button both kinds add after the durations, Appearance's Never note the pane Alert me
-    /// is on.
+    /// is on and the button that still works.
     @Test func theAlertsFootnotesNameWhatTheyPointAt() {
         #expect(SettingsOptions.snoozeFootnote.contains(AlertCountdown.snoozeUntilStartLabel))
         #expect(SettingsOptions.alertMeNeverNote.contains(" in \(SettingsOptions.alertsPaneTitle)."))
+        #expect(SettingsOptions.alertMeNeverNote.contains(SettingsOptions.testFullScreenAlertTitle + " still works."))
     }
 
     /// The footnote names the choice as the pop-up does, so renaming the choice can't leave it stale.

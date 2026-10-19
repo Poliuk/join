@@ -230,6 +230,8 @@ final class AlertCoordinator {
         persistStates()
     }
 
+    /// Test Full-Screen Alert, on Alerts and Appearance, and the `showDemoAlert` script hook: the demo event's
+    /// full-screen alert, on the chosen screens in the current look, whose buttons only close it.
     func showDemoAlert() {
         guard !isAlerting else { return }
         let demo = DemoEvent.meeting(now: Date())

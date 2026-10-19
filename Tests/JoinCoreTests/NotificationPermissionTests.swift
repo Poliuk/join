@@ -2,8 +2,7 @@ import Foundation
 import Testing
 @testable import JoinCore
 
-/// What macOS allows, the status line under the Notification box, its Open System Settings, and Send Demo
-/// Notification.
+/// What macOS allows, the status line in the Notification box, its Open System Settings, and Test Notification.
 struct NotificationPermissionTests {
     static let allowed = NotificationPermission.allowed(showsOnScreen: true, playsSound: true)
     static let hidden = NotificationPermission.allowed(showsOnScreen: false, playsSound: true)
@@ -120,22 +119,22 @@ struct NotificationPermissionTests {
         #expect(NotificationPermission.fixtureVariable == "JOIN_FIXTURE_NOTIFICATIONS")
     }
 
-    // MARK: Send Demo Notification
+    // MARK: Test Notification
 
     /// It works unless notifications are denied, and never in a fixture run, which never touches the real
-    /// notification center; the help tag says why.
+    /// notification center; the help tag says why. Send Demo Notification until 2026-10-19.
     @Test(arguments: [
-        ("not answered: the first click asks", NotificationPermission.notDetermined, false, true, "Sends a notification with a sample event."),
-        ("allowed", allowed, false, true, "Sends a notification with a sample event."),
-        ("never on screen", hidden, false, true, "Sends a notification with a sample event."),
+        ("not answered: the first click asks", NotificationPermission.notDetermined, false, true, "Sends a test notification with a sample event."),
+        ("allowed", allowed, false, true, "Sends a test notification with a sample event."),
+        ("never on screen", hidden, false, true, "Sends a test notification with a sample event."),
         ("denied", .denied, false, false, "Allow notifications for Join! in System Settings first."),
         ("a fixture run", allowed, true, false, "Not available in fixture mode."),
         ("a fixture run, denied", .denied, true, false, "Not available in fixture mode."),
     ] as [(String, NotificationPermission, Bool, Bool, String)])
-    func sendDemoNotification(_ name: String, permission: NotificationPermission, isFixture: Bool, isEnabled: Bool, help: String) {
-        let button = SendDemoNotificationButton(permission: permission, isFixture: isFixture)
+    func theTestNotificationButton(_ name: String, permission: NotificationPermission, isFixture: Bool, isEnabled: Bool, help: String) {
+        let button = TestNotificationButton(permission: permission, isFixture: isFixture)
         #expect(button.isEnabled == isEnabled)
         #expect(button.help == help)
-        #expect(SendDemoNotificationButton.title == "Send Demo Notification")
+        #expect(TestNotificationButton.title == "Test Notification")
     }
 }

@@ -10,8 +10,12 @@ struct AppearanceTab: View {
     /// The contrast warnings VoiceOver has been told about, or that were already shown.
     @State private var announcedWarnings: Set<AlertContrastWarning.Subject> = []
 
-    /// The Colors box's pop-ups share one width, so they line up down the box.
+    /// The Colors box's pop-ups share one width, so their right edges line up down the box too.
     private static let popUpWidth: CGFloat = 168
+    /// Where every control on the pane starts, from a row's leading edge in its box, so the controls share one
+    /// left edge whatever their width, as the user asked (2026-10-19): the Colors box's, indented rows' included,
+    /// and Preview over's segmented control. Clear of the longest label, Snooze & Dismiss buttons, about 158 pt.
+    private static let controlColumn: CGFloat = 180
 
     var body: some View {
         VStack(alignment: .leading, spacing: 22) {
@@ -52,8 +56,9 @@ struct AppearanceTab: View {
 
     // MARK: Preview
 
-    /// The preview, what it's drawn over and Show Demo, then, while Alert me is Never, a note that only
-    /// real alerts stop.
+    /// The preview, what it's drawn over and Test Full-Screen Alert, then, while Alert me is Never, a note that
+    /// only real alerts stop. Preview over's control starts at the Colors box's control column; the bar has no
+    /// box, so its column takes the box's inset too.
     private var preview: some View {
         VStack(alignment: .leading, spacing: 10) {
             AppearancePreview(
@@ -61,24 +66,22 @@ struct AppearanceTab: View {
                 backdrop: previewBackdrop,
                 snoozeDurations: model.preferences.snoozeDurations.all
             )
-            HStack(spacing: 16) {
-                HStack(spacing: 8) {
-                    Text("Preview over")
-                        .font(.system(size: 12))
-                        .foregroundStyle(.secondary)
-                        .fixedSize()
-                    Picker("Preview over", selection: $previewBackdrop) {
-                        ForEach(AppearancePreviewBackdrop.allCases) { backdrop in
-                            Text(backdrop.title).tag(backdrop)
-                        }
+            HStack(spacing: 0) {
+                Text("Preview over")
+                    .font(.system(size: 12))
+                    .foregroundStyle(.secondary)
+                    .frame(width: Self.controlColumn + SettingsMetrics.boxInset, alignment: .leading)
+                Picker("Preview over", selection: $previewBackdrop) {
+                    ForEach(AppearancePreviewBackdrop.allCases) { backdrop in
+                        Text(backdrop.title).tag(backdrop)
                     }
-                    .pickerStyle(.segmented)
-                    .labelsHidden()
-                    .controlSize(.small)
-                    .fixedSize()
                 }
-                Spacer()
-                ShowDemoButton()
+                .pickerStyle(.segmented)
+                .labelsHidden()
+                .controlSize(.small)
+                .fixedSize()
+                Spacer(minLength: 16)
+                TestFullScreenAlertButton()
             }
             .font(.system(size: 13))
             if !model.preferences.fullScreenAlertsEnabled {
@@ -124,11 +127,12 @@ struct AppearanceTab: View {
 
     /// Backdrop, then a pop-up of named swatches for each color, with Strength under a tint and an earlier
     /// build's label color on a Text row under its button. Each contrast warning sits under the row to change.
+    /// Every control starts at the control column, and a well goes after its pop-up, keeping that edge clean.
     @ViewBuilder
     private var colorRows: some View {
         let warnings = appearance.contrastWarnings
 
-        SettingsRow(title: AlertColorRow.backdropTitle, separator: false) {
+        SettingsRow(title: AlertColorRow.backdropTitle, separator: false, controlColumn: Self.controlColumn) {
             Picker(AlertColorRow.backdropTitle, selection: Binding(
                 get: { appearance.blurMode },
                 set: { mode in update { $0.blurMode = mode } }
@@ -144,7 +148,7 @@ struct AppearanceTab: View {
 
         colorRow(.tint)
         if appearance.tint != nil {
-            SettingsRow(title: AlertColorRow.tintStrengthTitle, indented: true) {
+            SettingsRow(title: AlertColorRow.tintStrengthTitle, indented: true, controlColumn: Self.controlColumn) {
                 AppearancePercentSlider(
                     title: AlertColorRow.tintStrengthAccessibilityTitle,
                     value: Binding(get: { appearance.tintStrength }, set: { value in update { $0.tintStrength = value } }),
@@ -168,7 +172,7 @@ struct AppearanceTab: View {
     }
 
     private func colorRow(_ row: AlertColorRow) -> some View {
-        SettingsRow(title: row.title) {
+        SettingsRow(title: row.title, controlColumn: Self.controlColumn) {
             SettingsColorChoice(
                 title: row.accessibilityTitle,
                 wellLabel: row.wellLabel,
@@ -176,6 +180,7 @@ struct AppearanceTab: View {
                 automaticDot: row == .tint ? .none : .automatic,
                 supportsOpacity: row.wellSupportsOpacity,
                 popUpWidth: Self.popUpWidth,
+                wellSide: .afterPopUp,
                 stored: { model.preferences.appearance.storedColor(for: row) },
                 shown: { model.preferences.appearance.shownColor(for: row) },
                 pick: { item in update { $0.pick(item, for: row) } },
@@ -188,12 +193,13 @@ struct AppearanceTab: View {
     @ViewBuilder
     private func legacyTextRow(_ kind: AlertButtonKind) -> some View {
         if appearance.showsLegacyText(for: kind), let text = appearance[button: kind].text {
-            SettingsRow(title: LegacyTextRow.title, indented: true) {
+            SettingsRow(title: LegacyTextRow.title, indented: true, controlColumn: Self.controlColumn) {
                 SettingsLegacyTextChoice(
                     title: kind.legacyTextAccessibilityTitle,
                     wellLabel: kind.legacyTextWellLabel,
                     color: text,
                     popUpWidth: Self.popUpWidth,
+                    wellSide: .afterPopUp,
                     clear: { update { $0.clearLegacyText(for: kind) } },
                     setColor: { color in update { $0.setLegacyText(color, for: kind) } }
                 )

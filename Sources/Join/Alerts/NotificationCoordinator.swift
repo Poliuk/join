@@ -29,9 +29,9 @@ final class NotificationCoordinator {
         )
     }
 
-    /// Whether Send Demo Notification works, and its help tag.
-    var sendDemoButton: SendDemoNotificationButton {
-        SendDemoNotificationButton(permission: permission, isFixture: isFixture)
+    /// Whether Test Notification works, and its help tag.
+    var testNotificationButton: TestNotificationButton {
+        TestNotificationButton(permission: permission, isFixture: isFixture)
     }
 
     /// Opens Settings on the Alerts pane: System Settings › Notifications › Join!'s link back.
@@ -338,11 +338,11 @@ final class NotificationCoordinator {
         NotificationSchedule.ignoresReopen(lastResponse: responder?.lastResponse, now: Date())
     }
 
-    // MARK: Send Demo Notification
+    // MARK: Test Notification
 
-    /// Sends the demo event's notification at once: while alerts are paused and while Notify me is Never too,
-    /// as Show Demo works. The first click asks macOS when nothing is decided yet; nothing is sent while
-    /// notifications are denied. It follows Play sound and the snooze durations.
+    /// Test Notification: sends the demo event's notification at once, while alerts are paused and while Notify
+    /// me is Never too, as Test Full-Screen Alert works. The first click asks macOS when nothing is decided yet;
+    /// nothing is sent while notifications are denied. It follows Play sound and the snooze durations.
     func sendDemoNotification() {
         askIfNeeded { [weak self] permission in
             guard let self else { return }

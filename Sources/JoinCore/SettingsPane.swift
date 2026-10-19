@@ -1,13 +1,14 @@
 import Foundation
 
-/// The Settings toolbar's panes, one subject each, in the toolbar's order. The raw values are what the
-/// `openSettings` script hook takes (`init(hookArgument:)`).
+/// The Settings toolbar's panes, one subject each, in the toolbar's order: General, Alerts, Calendars,
+/// Appearance, with Alerts second since 2026-10-19, at the user's request. The raw values are what the
+/// `openSettings` script hook takes (`init(hookArgument:)`), and don't depend on the order.
 public enum SettingsPane: String, CaseIterable, Sendable {
     case general
-    case calendars
     /// Both kinds of alert, the full-screen alert and the notification, and the snooze durations they share.
-    /// Full-Screen Alert (`fullScreenAlert`) until 1.3.0.
+    /// Full-Screen Alert (`fullScreenAlert`) until 1.3.0, and third, after Calendars, until 2026-10-19.
     case alerts
+    case calendars
     case appearance
 
     /// The pane's toolbar label and the window's title while it's selected: title-style, as macOS toolbar
@@ -15,8 +16,8 @@ public enum SettingsPane: String, CaseIterable, Sendable {
     public var title: String {
         switch self {
         case .general: return "General"
-        case .calendars: return "Calendars"
         case .alerts: return SettingsOptions.alertsPaneTitle
+        case .calendars: return "Calendars"
         case .appearance: return "Appearance"
         }
     }
@@ -25,8 +26,8 @@ public enum SettingsPane: String, CaseIterable, Sendable {
     public var symbolName: String {
         switch self {
         case .general: return "gearshape"
-        case .calendars: return "calendar"
         case .alerts: return "bell"
+        case .calendars: return "calendar"
         case .appearance: return "paintpalette"
         }
     }

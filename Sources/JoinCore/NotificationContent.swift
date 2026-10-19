@@ -17,7 +17,8 @@ public struct NotificationContent: Equatable, Sendable {
     public let title: String
     /// "10:00 – 10:30 AM".
     public let subtitle: String
-    /// "Work · Conference Room A", "Work", "Conference Room A", or empty.
+    /// "Work · Conference Room A", "Work", "Conference Room A", or empty; the test notification's says what it
+    /// is (`DemoEvent.notificationBody`).
     public let body: String
     /// Which actions it offers (`NotificationCategory.actions`).
     public let category: NotificationCategory
@@ -34,25 +35,40 @@ public struct NotificationContent: Equatable, Sendable {
         locale: Locale = .current,
         timeZone: TimeZone = .current
     ) -> NotificationContent {
-        NotificationContent(.meeting(meeting.id), meeting: meeting, playsSound: playsSound, now: now, locale: locale, timeZone: timeZone)
+        NotificationContent(
+            .meeting(meeting.id), meeting: meeting, body: body(for: meeting),
+            playsSound: playsSound, now: now, locale: locale, timeZone: timeZone
+        )
     }
 
-    /// Send Demo Notification's notification: the demo event (`DemoEvent`), starting 3 minutes from `now`. Its
-    /// actions only close it (`NotificationIdentifier.demo`), and withdrawals leave it alone.
+    /// Test Notification's notification: the demo event (`DemoEvent`), starting 3 minutes from `now`, with a body
+    /// that says it's a test. Its actions only close it (`NotificationIdentifier.demo`), and withdrawals leave it
+    /// alone.
     public static func demo(
         playsSound: Bool,
         now: Date,
         locale: Locale = .current,
         timeZone: TimeZone = .current
     ) -> NotificationContent {
-        NotificationContent(.demo, meeting: DemoEvent.meeting(now: now), playsSound: playsSound, now: now, locale: locale, timeZone: timeZone)
+        NotificationContent(
+            .demo, meeting: DemoEvent.meeting(now: now), body: DemoEvent.notificationBody,
+            playsSound: playsSound, now: now, locale: locale, timeZone: timeZone
+        )
     }
 
-    private init(_ identifier: NotificationIdentifier, meeting: Meeting, playsSound: Bool, now: Date, locale: Locale, timeZone: TimeZone) {
+    private init(
+        _ identifier: NotificationIdentifier,
+        meeting: Meeting,
+        body: String,
+        playsSound: Bool,
+        now: Date,
+        locale: Locale,
+        timeZone: TimeZone
+    ) {
         self.identifier = identifier
         title = meeting.title
         subtitle = MeetingTimeFormatter.timeRange(start: meeting.start, end: meeting.end, locale: locale, timeZone: timeZone)
-        body = Self.body(for: meeting)
+        self.body = body
         category = NotificationCategory(meeting: meeting, now: now)
         self.playsSound = playsSound
         payload = NotificationPayload(meeting: meeting)

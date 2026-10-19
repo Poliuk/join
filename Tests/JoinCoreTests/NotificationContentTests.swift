@@ -66,21 +66,22 @@ struct NotificationContentTests {
         #expect(Self.content(meeting, at: time).category == NotificationCategory(offersJoin: offersJoin, offersAtEventStart: offersAtEventStart))
     }
 
-    /// Send Demo Notification: the demo event, starting 3 minutes from now, on the Work calendar in Conference
-    /// Room A, under the demo's own identifier.
-    @Test func theDemoNotification() {
+    /// Test Notification: the demo event, starting 3 minutes from now, under the demo's own identifier, with a
+    /// body that says it's a test where a meeting's has its calendar and location.
+    @Test func theTestNotification() {
         let content = NotificationContent.demo(playsSound: true, now: Self.now, locale: F.us, timeZone: F.calendar.timeZone)
         #expect(content.identifier == .demo)
         #expect(content.identifier.rawValue == "demo")
         #expect(content.title == "Hello, I’m a demo event")
         #expect(F.squash(content.subtitle) == "9:58 – 10:58 AM")
-        #expect(content.body == "Work · Conference Room A")
+        #expect(content.body == "This is a test notification.")
+        #expect(content.body == DemoEvent.notificationBody)
         #expect(content.category == NotificationCategory(offersJoin: true, offersAtEventStart: true))
         #expect(content.payload.meetingID == DemoEvent.id)
     }
 
-    /// Show Demo and Send Demo Notification share the event: 3 minutes from now on a whole second, an hour
-    /// long, with a link.
+    /// Test Full-Screen Alert and Test Notification share the event: 3 minutes from now on a whole second, an hour
+    /// long, with a link. The test full-screen alert says what it is under its buttons.
     @Test func theDemoEvent() {
         let demo = DemoEvent.meeting(now: Date(timeIntervalSinceReferenceDate: 1000.75))
         #expect(demo.id == "demo")
@@ -90,6 +91,7 @@ struct NotificationContentTests {
         #expect(demo.calendarTitle == "Work")
         #expect(demo.location == "Conference Room A")
         #expect(demo.joinURL?.absoluteString == "https://meet.google.com/abc-defg-hij")
+        #expect(DemoEvent.fullScreenAlertNote == "This is a test full-screen alert. Press Esc to close it.")
     }
 
     // MARK: Identifiers and payload

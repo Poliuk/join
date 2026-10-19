@@ -34,7 +34,7 @@ public enum NotificationPermission: Hashable, Sendable {
         }
     }
 
-    /// Whether Join! asks macOS now, when Notify me leaves Never or Send Demo Notification is clicked: only
+    /// Whether Join! asks macOS now, when Notify me leaves Never or Test Notification is clicked: only
     /// while nothing is decided, since macOS prompts once and answers later requests with the stored choice.
     /// Join! never asks at launch, so an upgrade never prompts.
     public var needsAsking: Bool { self == .notDetermined }
@@ -125,12 +125,13 @@ public enum NotificationStatus: Hashable, Sendable, CaseIterable {
     }
 }
 
-/// Send Demo Notification, at the bottom right of the Alerts pane, left of Show Demo: whether it works and its
-/// help tag. It sends a real notification for the demo event, so it works while alerts are paused and while
-/// Notify me is Never, as Show Demo does; the first click asks macOS when nothing is decided yet.
-public struct SendDemoNotificationButton: Equatable, Sendable {
-    public static let title = "Send Demo Notification"
-    static let help = "Sends a notification with a sample event."
+/// Test Notification, at the bottom right of the Notification box: whether it works and its help tag. It sends
+/// a real notification for the demo event (`NotificationContent.demo`), so it works while alerts are paused and
+/// while Notify me is Never, as Test Full-Screen Alert does; the first click asks macOS when nothing is decided
+/// yet. Send Demo Notification, beside Show Demo at the bottom of the pane, until 2026-10-19.
+public struct TestNotificationButton: Equatable, Sendable {
+    public static let title = "Test Notification"
+    static let help = "Sends a test notification with a sample event."
     static let deniedHelp = "Allow notifications for Join! in System Settings first."
 
     public let isEnabled: Bool

@@ -208,8 +208,8 @@ private final class SettingsPaneController: NSViewController {
     private static func content(for pane: SettingsPane) -> some View {
         switch pane {
         case .general: GeneralTab()
-        case .calendars: CalendarsTab()
         case .alerts: AlertsTab()
+        case .calendars: CalendarsTab()
         case .appearance: AppearanceTab()
         }
     }

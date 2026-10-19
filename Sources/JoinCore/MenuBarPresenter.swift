@@ -40,7 +40,7 @@ public enum MenuBarPresenter {
     public static let withinHourWindow: TimeInterval = 60 * 60
     public static let maxTitleLength = 24
 
-    /// The demo event's title, on Show Demo's full-screen alert and in Settings' previews.
+    /// The demo event's title, on the test full-screen alert and notification and in Settings' previews.
     public static let demoEventTitle = "Hello, I’m a demo event"
 
     /// What General's Starting soon preview shows beside the pill's icon: the demo event starting in 4 minutes,
