@@ -95,7 +95,8 @@ extension SettingsSection where Accessory == EmptyView {
 
 /// A line outside a box: a footnote and a warning at the left, from the box's edge, and buttons at the right, on the
 /// line the box's controls end on. Under a box (`SettingsSection`), Calendars' intro line and its footer use it.
-/// Drawn only when it has something to show.
+/// The text's first line sits on the buttons' baseline, wrapped or not, as a label beside a control does: beside
+/// a button it starts a few points lower than the button's top. Drawn only when it has something to show.
 struct SettingsNoteLine<Accessory: View>: View {
     var footnote: String? = nil
     var warning: String? = nil
@@ -103,7 +104,7 @@ struct SettingsNoteLine<Accessory: View>: View {
 
     var body: some View {
         if hasText || hasAccessory {
-            HStack(alignment: .top, spacing: SettingsMetrics.rowSpacing) {
+            HStack(alignment: .firstTextBaseline, spacing: SettingsMetrics.rowSpacing) {
                 if hasText {
                     VStack(alignment: .leading, spacing: 4) {
                         if let footnote { SettingsFootnote(footnote) }
@@ -183,6 +184,8 @@ struct SettingsSeparator: View {
 /// off: no sound, no tint, a preset rather than Custom…. The disabled tone is for rows beside a
 /// setting that turns them off, as Show on and Sound are while Alert me is Never, and Play sound while
 /// Notify me is.
+/// VoiceOver skips the label, since the control carries the same name, unless `labelIsAccessible` says the control
+/// doesn't name what the row is about.
 struct SettingsRow<Control: View>: View {
     enum Tone {
         case primary
@@ -194,6 +197,9 @@ struct SettingsRow<Control: View>: View {
     var tone: Tone = .primary
     var indented = false
     var separator = true
+    /// Whether VoiceOver reads the label on its own: only where the row's name exists nowhere else, as for the
+    /// out-of-office keywords, whose control is Restore Defaults and whose field has no label.
+    var labelIsAccessible = false
     @ViewBuilder var control: Control
 
     var body: some View {
@@ -230,7 +236,7 @@ struct SettingsRow<Control: View>: View {
             .lineLimit(1)
             .truncationMode(.tail)
             .foregroundStyle(labelStyle)
-            .accessibilityHidden(true)
+            .accessibilityHidden(!labelIsAccessible)
     }
 
     private var labelStyle: HierarchicalShapeStyle {

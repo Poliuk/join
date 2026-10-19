@@ -16,8 +16,9 @@ struct EventsSection: View {
         SettingsSection(title: SettingsOptions.eventsSectionTitle, footnote: SettingsOptions.eventsFootnote) {
             visibilityRow(SettingsOptions.eventsWithoutParticipantsTitle, selection: $preferences.eventsWithoutParticipants, separator: false)
             visibilityRow(SettingsOptions.outOfOfficeEventsTitle, selection: $preferences.outOfOfficeEvents)
-            // Restore Defaults puts back the keywords only, so it's the keywords row's own control.
-            SettingsRow(title: SettingsOptions.outOfOfficeKeywordsTitle) {
+            // Restore Defaults puts back the keywords only, so it's the keywords row's own control. VoiceOver reads
+            // the row's title, as it read the plain text before: neither the button nor the field names the keywords.
+            SettingsRow(title: SettingsOptions.outOfOfficeKeywordsTitle, labelIsAccessible: true) {
                 Button("Restore Defaults") {
                     keywordDraft = ""
                     preferences.resetOutOfOfficeKeywords()
