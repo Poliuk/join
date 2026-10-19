@@ -111,12 +111,14 @@ final class NotificationCardWindow: NSPanel {
     }
 }
 
-/// The card's content: buttons work on the first click (`FirstMouseHostingView`), a click never makes the panel
+/// The card's content: buttons work on the first click, as in `FirstMouseHostingView`, a click never makes the panel
 /// key, so the keyboard stays with the user's app, and the pointer is tracked whether or not Join! is active.
-final class NotificationCardHostingView<Content: View>: FirstMouseHostingView<Content> {
+final class NotificationCardHostingView<Content: View>: NSHostingView<Content> {
     /// The pointer from the view's top left, or nil once it leaves.
     var pointerChanged: ((CGPoint?) -> Void)?
     private var trackingArea: NSTrackingArea?
+
+    override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
 
     override var needsPanelToBecomeKey: Bool { false }
 

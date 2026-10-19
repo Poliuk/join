@@ -193,8 +193,8 @@ extension AlertScreens {
     }
 }
 
-/// Lets a click on a window that isn't key (the alert on a secondary display, a notification card) hit its button
-/// directly.
-class FirstMouseHostingView<Content: View>: NSHostingView<Content> {
+/// Lets a click on a window that isn't key (the alert on a secondary display) hit its button directly. Final: Swift
+/// 6.3's optimizer crashes inlining into the deinit of this generic class once it has a subclass.
+final class FirstMouseHostingView<Content: View>: NSHostingView<Content> {
     override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
 }
