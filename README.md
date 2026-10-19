@@ -39,7 +39,7 @@ Works with any calendar your Mac knows about (Google, iCloud, Exchange, Outlook,
 </p>
 <p align="center">
   <img src="docs/screenshots/settings-alerts.jpg" alt="The Alerts settings pane: the Full-screen alert box with Alert me, Show on, Sound and Close automatically, with Test Full-Screen Alert under it at the right; the Notification box with Notify me and Play sound, with Test Notification under it at the right, beside the note on System Settings; and the Snooze box with the first and second snooze times both kinds share" width="49%">
-  <img src="docs/screenshots/settings.jpg" alt="The Appearance settings pane: a live preview of the full-screen alert with Preview over and Test Full-Screen Alert under it, five style cards (the four presets and Custom), and the Colors box, its backdrop, tint, event text and button controls lined up on one left edge" width="49%">
+  <img src="docs/screenshots/settings.jpg" alt="The Appearance settings pane: a live preview of the full-screen alert with Preview over at its right and Test Full-Screen Alert under it, five style cards (the four presets and Custom), and the Colors box with its backdrop, tint, event text and button controls at the right, Restore Defaults under it" width="49%">
 </p>
 <p align="center"><sub>Screenshots show sample meetings, not a real calendar.</sub></p>
 
