@@ -9,7 +9,7 @@ struct AlertsTab: View {
     @Environment(AppModel.self) private var model
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 22) {
+        VStack(alignment: .leading, spacing: SettingsMetrics.sectionSpacing) {
             fullScreenAlertSection
             notificationSection
             snoozeSection
@@ -51,7 +51,7 @@ struct AlertsTab: View {
                 .disabled(!alertsOn)
             }
             SettingsRow(title: "Sound", tone: alertsOn ? .primary : .disabled) {
-                HStack(spacing: 8) {
+                HStack(spacing: SettingsMetrics.controlSpacing) {
                     Button {
                         playSound(preferences.soundName)
                     } label: {
@@ -149,10 +149,12 @@ struct AlertsTab: View {
 
     /// Notify me works as Alert me does, Never included, with its own time; the first time it leaves Never,
     /// the notification coordinator asks macOS (`NotificationPermission.needsAsking`). Play sound is its
-    /// sibling, dimmed while it's Never. The status line under them shows only while Notify me has a time and
-    /// something in System Settings stops a notification from reaching the user; the coordinator reads it
-    /// again when Join! becomes active and when Settings becomes key, so it clears once that's fixed. Test
-    /// Notification, under the box at its right, beside the footnote, works whatever Notify me says.
+    /// sibling, dimmed while it's Never. The status line under them, the box's last row, shows only while Notify me
+    /// has a time and something in System Settings stops a notification from reaching the user
+    /// (`NotificationStatus`): orange with a warning sign when none reaches the screen, secondary otherwise, with
+    /// Open System Settings, which opens Notifications › Join!. The coordinator reads it again when Join! becomes
+    /// active and when Settings becomes key, so it clears once that's fixed. Test Notification, under the box at its
+    /// right, beside the footnote, works whatever Notify me says.
     private var notificationSection: some View {
         @Bindable var preferences = model.preferences
         let notificationsOn = preferences.notificationsEnabled
@@ -172,7 +174,9 @@ struct AlertsTab: View {
             )
             SettingsSwitchRow(title: SettingsOptions.playSoundTitle, isOn: $preferences.notificationPlaysSound, enabled: notificationsOn)
             if let status = model.notificationCoordinator.status {
-                NotificationStatusRow(status: status) { model.openNotificationSettings() }
+                SettingsStatusRow(message: status.text, isWarning: status.isWarning) {
+                    Button(NotificationStatus.openSettingsTitle) { model.openNotificationSettings() }
+                }
             }
         } accessory: {
             TestNotificationButtonView()
@@ -228,35 +232,6 @@ struct AlertsTab: View {
     }
 }
 
-/// The Notification box's last row, with no label: why a notification won't reach the user
-/// (`NotificationStatus`), orange with a warning sign when none reaches the screen and secondary otherwise, and
-/// Open System Settings, which opens Notifications › Join!.
-private struct NotificationStatusRow: View {
-    let status: NotificationStatus
-    let openSettings: () -> Void
-
-    var body: some View {
-        VStack(spacing: 0) {
-            SettingsSeparator()
-            HStack(spacing: 16) {
-                if status.isWarning {
-                    SettingsWarning(message: status.text)
-                } else {
-                    Text(status.text)
-                        .font(.subheadline)
-                        .foregroundStyle(.secondary)
-                        .fixedSize(horizontal: false, vertical: true)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                }
-                Button(NotificationStatus.openSettingsTitle, action: openSettings)
-                    .fixedSize()
-            }
-            .padding(.vertical, 6)
-            .frame(minHeight: 40)
-        }
-    }
-}
-
 /// Test Notification, under the Notification box at its right, outside it: sends the demo event's notification. Off in a
 /// fixture run and while notifications are denied; the help tag says why (`TestNotificationButton`).
 private struct TestNotificationButtonView: View {
@@ -271,7 +246,7 @@ private struct TestNotificationButtonView: View {
 }
 
 /// Test Full-Screen Alert: shows the demo event's full-screen alert, under the Full-screen alert box at its right
-/// and at the end of Appearance's Preview over bar. Off while a real one is on screen, which the test never
+/// and under Appearance's preview box at its right. Off while a real one is on screen, which the test never
 /// replaces; the help tag says why.
 struct TestFullScreenAlertButton: View {
     @Environment(AppModel.self) private var model
