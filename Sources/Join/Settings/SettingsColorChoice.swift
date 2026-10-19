@@ -48,7 +48,8 @@ struct SettingsColorChoice: View {
             if selected == .other {
                 well(showing: current.shown)
             }
-            Picker(title, selection: Binding(get: { selected }, set: select)) {
+            // A closure, not `set: select`: Swift 6.3's IR generation crashes on the thunk it makes for the method.
+            Picker(title, selection: Binding(get: { selected }, set: { select($0) })) {
                 ForEach(choice.swatches) { swatch in
                     SettingsSwatchItem(name: swatch.name, dot: swatch.color.map(SettingsSwatchDot.color) ?? automaticDot)
                         .tag(ColorChoice.Item.swatch(swatch))
