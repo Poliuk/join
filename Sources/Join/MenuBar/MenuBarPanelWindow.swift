@@ -27,7 +27,7 @@ final class MenuBarPanelWindow: NSPanel {
         // Not drawn on a borderless window; VoiceOver and the window chooser announce it.
         title = "Join! meetings"
 
-        let hosting = PanelHostingView(rootView: rootView)
+        let hosting = PanelHostingView(rootView: AnyView(rootView))
         hosting.sizingOptions = []
         contentView = Self.makeBackground(around: hosting)
     }
@@ -91,7 +91,8 @@ final class MenuBarPanelWindow: NSPanel {
     }
 }
 
-/// Buttons in the panel work on the first click, even when another window had focus.
-private final class PanelHostingView<Content: View>: NSHostingView<Content> {
+/// Buttons in the panel work on the first click, even when another window had focus. Not generic, like
+/// `FirstMouseHostingView`, for Swift 6.3's optimizer.
+private final class PanelHostingView: NSHostingView<AnyView> {
     override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
 }

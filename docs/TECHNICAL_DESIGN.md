@@ -383,7 +383,7 @@ panel.hidesOnDeactivate = false
 panel.becomesKeyOnlyIfNeeded = false
 panel.isOpaque = false
 panel.backgroundColor = .clear
-panel.contentView = FirstMouseHostingView(rootView: AlertRootView(session: session))
+panel.contentView = FirstMouseHostingView(rootView: AnyView(AlertRootView(session: session)))
 panel.makeKeyAndOrderFront(nil)                   // no NSApp.activate
 ```
 

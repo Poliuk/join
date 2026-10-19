@@ -58,7 +58,7 @@ final class NotificationCardWindow: NSPanel {
         let background = MenuBarPanelWindow.makeBackground(around: NSView(), size: cardSize)
         background.frame.origin = NSPoint(x: Self.closeButtonOverhang, y: 0)
         container.addSubview(background)
-        let hosting = NotificationCardHostingView(rootView: content(state))
+        let hosting = NotificationCardHostingView(rootView: AnyView(content(state)))
         // The window is always exactly the card's size; the content must not resize it.
         hosting.sizingOptions = []
         hosting.frame = container.bounds
@@ -112,8 +112,9 @@ final class NotificationCardWindow: NSPanel {
 }
 
 /// The card's content: buttons work on the first click, as in `FirstMouseHostingView`, a click never makes the panel
-/// key, so the keyboard stays with the user's app, and the pointer is tracked whether or not Join! is active.
-final class NotificationCardHostingView<Content: View>: NSHostingView<Content> {
+/// key, so the keyboard stays with the user's app, and the pointer is tracked whether or not Join! is active. Not
+/// generic, like `FirstMouseHostingView`, for Swift 6.3's optimizer.
+final class NotificationCardHostingView: NSHostingView<AnyView> {
     /// The pointer from the view's top left, or nil once it leaves.
     var pointerChanged: ((CGPoint?) -> Void)?
     private var trackingArea: NSTrackingArea?

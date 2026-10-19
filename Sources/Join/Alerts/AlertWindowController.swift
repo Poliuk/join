@@ -171,7 +171,7 @@ final class AlertWindow: NSPanel {
         hasShadow = false
         animationBehavior = .none
         setFrame(screen.frame, display: false)
-        let hosting = FirstMouseHostingView(rootView: AlertRootView(session: session).ignoresSafeArea())
+        let hosting = FirstMouseHostingView(rootView: AnyView(AlertRootView(session: session).ignoresSafeArea()))
         // The window is always exactly its screen; the content must not resize it.
         hosting.sizingOptions = []
         contentView = hosting
@@ -193,8 +193,9 @@ extension AlertScreens {
     }
 }
 
-/// Lets a click on a window that isn't key (the alert on a secondary display) hit its button directly. Final: Swift
-/// 6.3's optimizer crashes inlining into the deinit of this generic class once it has a subclass.
-final class FirstMouseHostingView<Content: View>: NSHostingView<Content> {
+/// Lets a click on a window that isn't key (the alert on a secondary display) hit its button directly. Not generic:
+/// Swift 6.3's optimizer crashes on the deinit of a generic hosting view subclass when the deployment target is
+/// below the SDK's (fixed in Swift 6.4).
+final class FirstMouseHostingView: NSHostingView<AnyView> {
     override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
 }
