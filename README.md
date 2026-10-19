@@ -3,7 +3,7 @@
 # Join!
 
 [![macOS 14+](https://img.shields.io/badge/macOS-14%2B-blue)](#requirements)
-[![Swift](https://img.shields.io/badge/Swift-6.2%2B-orange)](Package.swift)
+[![Swift 6.2+](https://img.shields.io/badge/Swift-6.2%2B-orange)](Package.swift)
 [![License: MIT](https://img.shields.io/badge/license-MIT-green)](LICENSE)
 
 A free, open-source macOS menu bar app that makes calendar meetings impossible to miss.
@@ -16,25 +16,30 @@ Join! watches the calendars on your Mac and, a few minutes before each meeting, 
 
 ## Features
 
-- **Full-screen alert** a few minutes before each meeting, on every display (or just the main one, the one with the menu bar; just the secondary ones, or the main one when it's the only display; or the one with the pointer), above everything else. It shows a live countdown, the title, time and location, and buttons to Join, Snooze, snooze until the start, or Dismiss.
-- **Notifications**, if you want them: a macOS notification before each meeting, instead of the full-screen alert or as well, at its own time (**Notify me**, off until you pick a time). It has **Join**, a snooze button per snooze duration and **At event start**, and **Join** on either one takes care of both. Clicking the notification itself does nothing.
+- **Full-screen alert** a few minutes before each meeting, on every display (or just the main one, the one with the menu bar; just the secondary ones, or the main one when it's the only display; or the one with the pointer), above everything else. It shows a live countdown, the title, time and location, and buttons to Join, snooze for one of two times or until the start (**At event start**), or Dismiss.
+- **Notifications**, if you want them: a macOS notification before each meeting, instead of the full-screen alert or as well, at its own time (**Notify me**, off until you pick a time). It offers **Join**, a **Snooze** action for each of the same two snooze times and **At event start**, and **Join** on either one takes care of both. Clicking the notification itself does nothing.
 - **Menu bar item** that tells you where you are in your day: a countdown to the next meeting today ("Next in 11 h 40 min", "Next in 42 min") or its day and time ("Tomorrow at 1:00 PM", "In 3 days at 9:10 AM"), an accent pill when a meeting is about to start (5 minutes before by default), and a draining ring with "40 min left" during a meeting. Event titles are optional.
 - **Menu bar panel** with one card for what matters now (starting soon, in progress, next, or nothing left today), then everything still to come today and in the coming days. Overlapping meetings are flagged, and a Today | 7 Days switch narrows the list to today. It's frosted glass that stays readable over any wallpaper or window, in light and dark mode.
 - **Dismiss a meeting** from the menu bar panel, with **Dismiss** on the top card or the crossed-out bell on its row: no alerts for it (a notification already sent goes away), and the menu bar item and the card move on to what comes next. It stays in the list, greyed, until it ends, and **Restore** brings it back. For a repeating meeting, choose **This Event** or **All Future Events**.
 - **One-click Join** for Google Meet, Zoom, Microsoft Teams and Webex links found in the event, and **Directions** in Apple Maps for in-person meetings.
 - **Choose what counts**: tick the calendars Join! watches, and decide what happens to events nobody else is invited to (focus time, reminders you add for yourself) and to out-of-office events: show and alert, show in the list only, or exclude.
-- **Pause alerts** for an hour, until tomorrow, or until you resume: no full-screen alert and no notification meanwhile. Or set **Alert me** (and **Notify me**, if you turned it on) to **Never** to turn alerts off and keep just the menu bar item and its panel.
-- **Configurable** lead time for each kind of alert, snooze durations (shared by both), auto-close and sound, and the full-screen alert's look: four styles plus a Custom one that keeps your own, a light or dark backdrop, and tint, event text and button colors picked from named swatches or any color, with contrast warnings, a live preview and a demo. The starting-soon pill's color, and how long before a meeting it appears, are configurable too.
-- **Updates in the app**: once a day Join! asks GitHub whether there's a new release. When there is, the menu bar panel says so, and **Install** downloads it and checks it. Join! then says the new version is ready and keeps running until you click **Install and Relaunch**, which replaces the app and relaunches it. A switch in Settings turns the daily check off.
+- **Pause alerts** from the bell in the menu bar panel, for an hour, until tomorrow, or until you resume: no full-screen alert and no notification meanwhile. Or set **Alert me** (and **Notify me**, if you turned it on) to **Never** to turn alerts off and keep just the menu bar item and its panel.
+- **Settings**, which opens in front of every other window (from the panel's gear, with **⌘,** in the panel, or by opening Join! again), has four panes, in this order:
+  - **General**: open at login; what the menu bar item shows, and when its starting-soon pill appears and in which color; what happens to events with no participants and to out-of-office events; updates.
+  - **Alerts**: both kinds of alert. The full-screen alert's time, screens, sound and auto-close, with **Test Full-Screen Alert**; the notification's time and sound, with **Test Notification**; and the two snooze times both kinds share.
+  - **Calendars**: which calendars Join! watches.
+  - **Appearance**: the full-screen alert's look. Four styles plus a Custom one that keeps your own, a light or dark backdrop, and tint, event text and button colors picked from named swatches or any color, with contrast warnings, a live preview and **Test Full-Screen Alert**.
+- **Updates in the app**: once a day Join! asks GitHub whether there's a new release. When there is, the menu bar panel says so ("Join! 1.4.0 is available"), and **Install** downloads it and checks it. Join! then says "Install 1.4.0" and keeps running until you click **Install and Relaunch**, which replaces the app and relaunches it. A switch in Settings turns the daily check off.
 
 Works with any calendar your Mac knows about (Google, iCloud, Exchange, Outlook, CalDAV) through macOS Calendar. Native Swift and SwiftUI, no third-party dependencies.
 
 <p align="center">
-  <img src="docs/screenshots/panel-light.jpg" alt="The menu bar panel in light mode, under a pill that reads Next in 4 min: a starting-soon card with Join video call and Dismiss buttons, the meeting in progress, and the coming days" width="49%">
-  <img src="docs/screenshots/panel-dark.jpg" alt="The same menu bar panel in dark mode" width="49%">
+  <img src="docs/screenshots/panel-light.jpg" alt="The menu bar panel in light mode, under the menu bar's pill reading Next in 4 min: the card for the meeting starting in 4 minutes with its Join video call and Dismiss buttons, the Today and 7 Days switch, the meeting in progress, and the coming days" width="49%">
+  <img src="docs/screenshots/panel-dark.jpg" alt="The same menu bar panel in dark mode, with Join video call and Dismiss on the starting-soon card" width="49%">
 </p>
 <p align="center">
-  <img src="docs/screenshots/settings.jpg" alt="The Appearance settings: a live preview of the full-screen alert, five style cards (the four presets and Custom), and the Colors box with its backdrop, tint, event text and button colors" width="60%">
+  <img src="docs/screenshots/settings-alerts.jpg" alt="The Alerts settings pane: the Full-screen alert box with Alert me, Show on, Sound and Close automatically, and Test Full-Screen Alert at its bottom right; the Notification box with Notify me and Play sound, and Test Notification at its bottom right; and the Snooze box with the first and second snooze times both kinds share" width="49%">
+  <img src="docs/screenshots/settings.jpg" alt="The Appearance settings pane: a live preview of the full-screen alert with Preview over and Test Full-Screen Alert under it, five style cards (the four presets and Custom), and the Colors box, its backdrop, tint, event text and button controls lined up on one left edge" width="49%">
 </p>
 <p align="center"><sub>Screenshots show sample meetings, not a real calendar.</sub></p>
 
@@ -48,12 +53,12 @@ Links only open, in your browser or Apple Maps, when you click Join, Directions 
 
 ## Requirements
 
-- macOS 14 Sonoma or later
-- To build and test: Swift 6.2 or later, from Xcode 26 or later or its Command Line Tools (`xcode-select --install`).
+- macOS 14 Sonoma or later, on an Apple silicon or Intel Mac
+- To build and test: Swift 6.2 or later, from Xcode 26 or later (Xcode 27 included) or the matching Command Line Tools (`xcode-select --install`). The tests use Swift Testing, which comes with both. The Command Line Tools for Xcode 27 alone build the app against the macOS 26.5 SDK they also install, which `make` picks by itself ([Development](#development)).
 
 ## Install
 
-Download **[Join.zip](https://github.com/Poliuk/join/releases/latest/download/Join.zip)** from the [latest release](https://github.com/Poliuk/join/releases/latest), open it, and move **Join.app** to your Applications folder. It runs on Apple silicon and Intel Macs. The app lives in the menu bar only; there is no Dock icon. Opening the app again while it runs opens Settings.
+Download **[Join.zip](https://github.com/Poliuk/join/releases/latest/download/Join.zip)** from the [latest release](https://github.com/Poliuk/join/releases/latest), open it, and move **Join.app** to your Applications folder. It runs on Apple silicon and Intel Macs. The app lives in the menu bar only; there is no Dock icon. Opening the app again while it runs opens Settings, in front of other windows.
 
 Join! is signed ad hoc but not notarized by Apple, so the first time you open a downloaded copy, macOS stops it ("Apple could not verify “Join” is free of malware…"):
 
@@ -64,7 +69,7 @@ On macOS 14 Sonoma you can instead right-click Join.app and choose **Open**. You
 
 ### Updates
 
-From 1.1.0 on, Join! checks for a new release once a day. When it finds one, the menu bar panel shows "Join! 1.4.0 is available" with **Install**, which downloads the new version from GitHub and checks it. From 1.3.0 on, nothing is replaced and nothing quits at that point: the panel then says "Install 1.4.0", with **Install and Relaunch**, and only that click replaces the app and relaunches Join!. If you quit Join! before clicking it, nothing is installed and the download is deleted; the next launch offers the update again. Copies on 1.2.x and earlier still replace the app and relaunch as soon as the download is checked, so the update to 1.3.0 itself works that way. Join! downloads updates itself, so macOS doesn't quarantine them and there's no Open Anyway step. If Join! can't replace itself, for example because it runs from a folder you can't write to, **Install and Relaunch** puts the new version in `~/Downloads/Join 1.4.0/` instead, shows it in Finder and says "Quit Join!, then move Join! 1.4.0 to Applications". A release that needs a newer macOS than yours is still offered, because GitHub doesn't say which macOS a release needs; once Install finds out, Settings says "Join! 2.0.0 needs macOS 15.0 or later" and that release isn't offered again. **Settings › General › Updates** shows when Join! last checked, has **Check Now** and the panel's Install and Install and Relaunch buttons, and turns the daily check off.
+From 1.1.0 on, Join! checks for a new release once a day. When it finds one, the menu bar panel shows "Join! 1.4.0 is available" with **Install**, which downloads the new version from GitHub and checks it. From 1.3.0 on, nothing is replaced and nothing quits at that point: the panel then says "Install 1.4.0", with **Install and Relaunch**, and only that click replaces the app and relaunches Join!. If you quit Join! before clicking it, nothing is installed and the download is deleted; the next launch offers the update again. Copies on 1.1.x and 1.2.x still replace the app and relaunch as soon as the download is checked, so the update to 1.3.0 itself works that way. Join! downloads updates itself, so macOS doesn't quarantine them and there's no Open Anyway step. If Join! can't replace itself, for example because it runs from a folder you can't write to, **Install and Relaunch** puts the new version in `~/Downloads/Join 1.4.0/` instead, shows it in Finder and says "Quit Join!, then move Join! 1.4.0 to Applications". A release that needs a newer macOS than yours is still offered, because GitHub doesn't say which macOS a release needs; once Install finds out, Settings says "Join! 2.0.0 needs macOS 15.0 or later" and that release isn't offered again. **Settings › General › Updates** shows when Join! last checked, has **Check Now** and the panel's Install and Install and Relaunch buttons, and turns the daily check off.
 
 Join! 1.0.0 doesn't check for updates, so update it by hand once: quit Join!, download the latest release, replace the app in Applications, and open it with Open Anyway as above.
 
@@ -78,13 +83,13 @@ cd join
 make run
 ```
 
-This builds `build/Join.app` for your Mac and opens it. Move it to `/Applications` to keep it. To build without launching, `make app`. A copy you built yourself opens without the Gatekeeper step, and the calendar permission survives rebuilds too.
+It needs Xcode or its Command Line Tools ([Requirements](#requirements)). This builds `build/Join.app` for your Mac and opens it. Move it to `/Applications` to keep it. To build without launching, `make app`. A copy you built yourself opens without the Gatekeeper step, and the calendar permission survives rebuilds too.
 
 ## First launch
 
 1. macOS asks for calendar access. Approve it. If you miss the prompt, grant it in System Settings › Privacy & Security › Calendars.
 2. Click the menu bar item → the gear → **Settings** → **Calendars** and untick the calendars you don't want Join! to watch (holidays, birthdays). To leave out events nobody else is invited to, such as focus time, set **Events with no participants** to **Exclude** under **General** › **Events**.
-3. The full-screen alert appears 3 minutes before each meeting. Change that with **Alert me** under **Alerts**. For a notification instead, or as well, pick a time in **Notify me** there; macOS then asks whether Join! may send notifications.
+3. The full-screen alert appears 3 minutes before each meeting. Change that with **Alert me** under **Alerts**. For a notification instead, or as well, pick a time in **Notify me** there; macOS then asks whether Join! may send notifications. To see what each looks like, click **Test Full-Screen Alert** or **Test Notification**, at the bottom right of their boxes.
 
 ### Google Calendar
 
@@ -111,24 +116,28 @@ An out-of-office event nobody else is invited to is both kinds, and gets whichev
 
 On the full-screen alert, **Return** joins the call and **Esc** dismisses. Keys are ignored for the first moment after it appears, so a keystroke you were already typing elsewhere can't dismiss it by accident.
 
+Its snooze buttons bring it back after one of two times, **First snooze** and **Second snooze** under **Snooze** in **Settings › Alerts** (1, 3, 5 or 10 minutes, or Custom…), or with **At event start**, when the meeting starts. A notification's **Snooze** actions offer the same two times, then At event start.
+
 If a meeting starts while its alert is due (the Mac was asleep, the app was launched late), the alert comes immediately, unless the meeting started more than 5 minutes ago.
 
-To take a break, click the bell in the menu bar panel and pick **Pause for 1 hour**, **Pause until tomorrow** or **Pause until I resume**. While alerts are paused, no full-screen alert or notification comes; the menu bar shows a crossed-out bell and the panel says until when ("Alerts paused until 11:50 AM"), with **Resume**. The pause survives a relaunch.
+To take a break, click the bell at the top of the menu bar panel (**Pause alerts**) and pick **Pause for 1 hour**, **Pause until tomorrow** or **Pause until I resume**. While alerts are paused, no full-screen alert or notification comes; the menu bar shows a crossed-out bell and the panel says until when ("Alerts paused until 11:50 AM"), with **Resume**; the panel's bell, crossed out now (**Resume alerts**), resumes too. The pause survives a relaunch.
 
 To skip a single meeting, click **Dismiss** on the menu bar panel's top card, or point at its row in the list and click the crossed-out bell. It gets no alerts, a notification already delivered for it goes away, and the menu bar item and the top card move on to what comes next, while the panel still lists it, greyed and marked Dismissed, until it ends. The bell on its row, **Restore**, brings it back, alerts included if they're still due. This isn't the full-screen alert's own **Dismiss**, which only closes the alert.
 
 For a repeating meeting, the button opens a small menu instead: **Dismiss This Event** skips just this occurrence, and **Dismiss All Future Events** skips this one and every later one, including those weeks away, until you restore them; they show in the list, greyed, as they come into the panel's 7 days. Restore asks only on a meeting that All Future Events dismissed. Any other restores at once with its bell, just that one, and other occurrences you dismissed stay dismissed. When it asks: **Restore This Event** brings back just that one (the rest of the series stays dismissed), and **Restore All Future Events** brings back that one and every later one, however they were dismissed; earlier ones stay dismissed.
 
-To turn full-screen alerts off altogether, set **Alert me** to **Never** under **Settings › Alerts**. The menu bar item, its starting-soon pill and the panel keep working, and **Show Demo** still shows one. **Show on**, **Sound** and **Close automatically** stay as they were, dimmed until you pick a time again to turn alerts back on. Notifications don't depend on it: **Notify me** has its own time or Never.
+To turn full-screen alerts off altogether, set **Alert me** to **Never** under **Settings › Alerts**. The menu bar item, its starting-soon pill and the panel keep working, and **Test Full-Screen Alert**, on Alerts and on Appearance, still shows one. **Show on**, **Sound** (and **Repeat until it's closed**) and **Close automatically** stay as they were, dimmed until you pick a time again to turn alerts back on. Notifications don't depend on it: **Notify me** has its own time or Never.
 
 ### Notifications
 
-Pick a time in **Notify me** (Settings › Alerts) and Join! sends a macOS notification that long before each meeting: the event's title, its time, and its calendar and location, with **Join** when there's a link, a snooze button for each snooze duration and **At event start**. The first time you pick one, or click **Send Demo Notification**, macOS asks whether Join! may send notifications; Join! doesn't ask at launch or after an update.
+Pick a time in **Notify me** (Settings › Alerts) and Join! sends a macOS notification that long before each meeting: the event's title, its time, and its calendar and location, with **Join** when there's a link, a **Snooze** action for each of the two snooze times ("Snooze 5 min") and, until the meeting starts, **At event start**. The first time you pick a time, or click **Test Notification**, macOS asks whether Join! may send notifications; Join! doesn't ask at launch or after an update.
+
+- **Test Notification**, at the bottom right of the Notification box, sends one for a sample event, whatever **Notify me** says and even while alerts are paused. It's off while macOS doesn't allow Join!'s notifications.
 
 - **Join** opens the call and takes care of both kinds for that meeting: its full-screen alert won't come, or lets the meeting go if it's already up. A snooze brings the notification back later and leaves the full-screen alert alone, so a notification 5 minutes before and the full-screen alert at the start both come.
 - Clicking the notification itself does nothing, and macOS's close button only closes it.
 - **Play sound** gives it macOS's notification sound. It comes silently while that meeting's full-screen alert is on screen, so the two sounds don't overlap.
-- If macOS stops Join!'s notifications (not allowed, not shown on screen, sound off, or its prompt not answered yet), a line at the bottom of the Notification box says what to change, with **Open System Settings**.
+- If macOS stops Join!'s notifications (not allowed, not shown on screen, sound off, or its prompt not answered yet), a line in the Notification box, above **Test Notification**, says what to change, with **Open System Settings**. It shows only while **Notify me** has a time.
 - How long a notification stays on screen, and whether it shows during a Focus or while you share your screen, is up to System Settings › Notifications. By default macOS holds notifications back while the screen is mirrored or shared, as when you present in a call. The full-screen alert comes up either way.
 - Your calendars may send their own reminders for an event too (an alert set on the event, or a calendar's default alert), so with **Notify me** on you may get two notifications for one meeting. Join! can't tell which events have them.
 
@@ -136,12 +145,12 @@ Pick a time in **Notify me** (Settings › Alerts) and Join! sends a macOS notif
 
 ```sh
 swift build          # debug build
-swift test           # unit tests (Swift Testing)
-scripts/build-app.sh # assemble build/Join.app
+make test            # unit tests (Swift Testing)
+make app             # assemble build/Join.app (scripts/build-app.sh)
 make icon            # redraw Resources/AppIcon.icns after changing scripts/make-icon.swift
 ```
 
-The package needs Swift 6.2 or later and builds in the Swift 6 language mode, with complete data-race checking. Xcode builds it with its default SDK. The Command Line Tools for Xcode 27 default to the macOS 27 SDK, whose SwiftUI needs a macro plugin that only Xcode ships, so with them alone the app builds against the macOS 26.5 SDK they also install. `make` and `scripts/build-app.sh` pick it by themselves (`scripts/select-sdk.sh`); `swift build` and `swift test` need it named:
+The package needs Swift 6.2 or later and builds in the Swift 6 language mode, with complete data-race checking. The tests use Swift Testing. With Xcode selected (26 or later; CI uses Xcode 26.6), plain `swift build` and `swift test` work too, with Xcode's default SDK: Xcode 27 builds against the macOS 27 SDK and CI against the macOS 26.5 SDK, so a change has to build with both. The Command Line Tools for Xcode 27 default to the macOS 27 SDK, whose SwiftUI needs a macro plugin that only Xcode ships, so with them alone the app builds against the macOS 26.5 SDK they also install. `make` and `scripts/build-app.sh` pick it by themselves (`scripts/select-sdk.sh`); `swift build` and `swift test` need it named:
 
 ```sh
 SDKROOT=/Library/Developer/CommandLineTools/SDKs/MacOSX26.5.sdk swift build
@@ -173,7 +182,7 @@ Fixture runs keep their settings in a separate defaults domain, never schedule f
 open --env JOIN_FIXTURE=busy --env JOIN_FIXTURE_UPDATE=available build/Join.app
 ```
 
-`JOIN_FIXTURE_NOTIFICATIONS` sets the notification permission the Alerts pane sees, to check each of its status lines: `notDetermined` (the default), `denied`, `hidden` (allowed, never on screen), `soundOff` (allowed, macOS's sound off) or `authorized`. A line shows only once **Notify me** has a time in the fixture's own Settings, where it starts at Never (`soundOff`'s only with **Play sound** on); picking one asks nothing in a fixture run, and **Send Demo Notification** isn't available.
+`JOIN_FIXTURE_NOTIFICATIONS` sets the notification permission the Alerts pane sees, to check each of its status lines: `notDetermined` (the default), `denied`, `hidden` (allowed, never on screen), `soundOff` (allowed, macOS's sound off) or `authorized`. A line shows only once **Notify me** has a time in the fixture's own Settings, where it starts at Never (`soundOff`'s only with **Play sound** on); picking one asks nothing in a fixture run, and **Test Notification** isn't available.
 
 Only fixture runs listen for a few distributed notifications (`com.poliuk.join.fixture.openSettings`, `snapshot`, `togglePanel`, `pause`, `appearance`, `checkForUpdates`, `installUpdate`, `installAndRelaunch`, …) so scripts can open windows, take snapshots, switch light/dark, and check for and install updates; a normal run ignores them. See [Testing strategy](docs/TECHNICAL_DESIGN.md#12-testing-strategy) in the technical design.
 
@@ -185,7 +194,7 @@ Commits to main never publish a release; pushing a version tag does. `make relea
 
 ## Contributing
 
-Issues and pull requests are welcome. Work on a branch and open a pull request against `main`; CI builds and tests it. Keep `JoinCore` free of UI, EventKit and network code, add tests there for new logic, and update the docs in `docs/` when behavior changes.
+Issues and pull requests are welcome. Work on a branch and open a pull request against `main`; CI builds and tests it. Keep `JoinCore` free of UI, EventKit and network code, add Swift Testing tests there for new logic (`make test` runs them), and update the docs in `docs/` when behavior changes.
 
 ## License
 
