@@ -283,10 +283,10 @@ struct SettingsSwitchRow: View {
     }
 }
 
-/// A box's last row, or its only one, with no label: a changing state about the box (the Notification box's
-/// status, Open at login's note, the Updates status, Calendars' "No calendars yet"), with a hairline above. Its text
-/// is secondary, or a `SettingsWarning`, which keeps its own font and colors, when the state stops the setting from
-/// working; a second or third line sits under the first. The controls that fix or refresh the state sit at the
+/// A box's last row, or its only one, with no label: a changing state about the box (Open at login's note, the
+/// Updates status, Calendars' "No calendars yet"), with a hairline above. Its text is secondary, or a
+/// `SettingsWarning`, which keeps its own font and colors, when the state stops the setting from working; a second or
+/// third line sits under the first. The controls that fix or refresh the state sit at the
 /// right, on the line the box's controls end on.
 struct SettingsStatusRow<Message: View, Controls: View>: View {
     var separator = true

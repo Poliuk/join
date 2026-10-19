@@ -3,8 +3,8 @@ import JoinCore
 
 /// Both kinds of alert, each with its own time or Never and a button to try it, then the snooze durations they
 /// share: the Full-screen alert box (when, where and how loudly it comes up, and when it closes by itself, then
-/// Test Full-Screen Alert), the Notification box (when, and whether it plays a sound, then Test Notification),
-/// and the Snooze box. How the full-screen alert looks is on Appearance.
+/// Test Full-Screen Alert), the Notification box (the same for Join!'s notification card, with the alert sound or
+/// none, then Test Notification), and the Snooze box. How the full-screen alert looks is on Appearance.
 struct AlertsTab: View {
     @Environment(AppModel.self) private var model
 
@@ -40,16 +40,7 @@ struct AlertsTab: View {
                 minutes: leadMinutes(preferences),
                 never: (SettingsOptions.leadTimeNeverTitle, alertsOff(preferences))
             )
-            SettingsRow(title: "Show on", tone: alertsOn ? .primary : .disabled) {
-                Picker("Show on", selection: $preferences.alertScreens) {
-                    ForEach(AlertScreens.allCases, id: \.self) { choice in
-                        Text(choice.displayName).tag(choice)
-                    }
-                }
-                .labelsHidden()
-                .fixedSize()
-                .disabled(!alertsOn)
-            }
+            showOnRow(selection: $preferences.alertScreens, enabled: alertsOn)
             SettingsRow(title: "Sound", tone: alertsOn ? .primary : .disabled) {
                 HStack(spacing: SettingsMetrics.controlSpacing) {
                     Button {
@@ -80,18 +71,7 @@ struct AlertsTab: View {
             if preferences.soundName != nil {
                 SettingsSwitchRow(title: "Repeat until it's closed", isOn: $preferences.soundRepeats, indented: true, enabled: alertsOn)
             }
-            SettingsRow(title: SettingsOptions.autoCloseRowTitle, tone: alertsOn ? .primary : .disabled) {
-                // The tags are `Int?`, nil for Never, the selection's type: a mismatch would show nothing as selected.
-                Picker(SettingsOptions.autoCloseRowTitle, selection: autoCloseSelection) {
-                    ForEach(autoCloseChoices, id: \.self) { minutes in
-                        Text(SettingsOptions.autoCloseTitle(minutes: minutes))
-                            .tag(minutes)
-                    }
-                }
-                .labelsHidden()
-                .fixedSize()
-                .disabled(!alertsOn)
-            }
+            autoCloseRow(enabled: \.autoCloseEnabled, after: \.autoCloseAfter, rowEnabled: alertsOn)
         } accessory: {
             TestFullScreenAlertButton()
         }
@@ -123,33 +103,65 @@ struct AlertsTab: View {
         sound.play()
     }
 
-    /// Never (nil), then the minutes.
-    private var autoCloseChoices: [Int?] {
-        let preferences = model.preferences
-        let current = SettingsOptions.autoCloseSelection(enabled: preferences.autoCloseEnabled, after: preferences.autoCloseAfter)
-        return [nil] + SettingsOptions.autoCloseChoices(including: current)
+    // MARK: Rows both boxes have
+
+    /// Show on: which screens that kind comes up on (`AlertScreens`), each kind with its own choice.
+    private func showOnRow(selection: Binding<AlertScreens>, enabled: Bool) -> some View {
+        SettingsRow(title: SettingsOptions.showOnTitle, tone: enabled ? .primary : .disabled) {
+            Picker(SettingsOptions.showOnTitle, selection: selection) {
+                ForEach(AlertScreens.allCases, id: \.self) { choice in
+                    Text(choice.displayName).tag(choice)
+                }
+            }
+            .labelsHidden()
+            .fixedSize()
+            .disabled(!enabled)
+        }
     }
 
-    private var autoCloseSelection: Binding<Int?> {
+    /// Close automatically, on a kind's pair of settings: Never, or after a time counted from when it appears. A
+    /// stored time that's no preset (an earlier build's, say) is listed as its own item.
+    private func autoCloseRow(
+        enabled: ReferenceWritableKeyPath<Preferences, Bool>,
+        after: ReferenceWritableKeyPath<Preferences, TimeInterval>,
+        rowEnabled: Bool
+    ) -> some View {
         let preferences = model.preferences
-        return Binding(
-            get: { SettingsOptions.autoCloseSelection(enabled: preferences.autoCloseEnabled, after: preferences.autoCloseAfter) },
+        let current = SettingsOptions.autoCloseSelection(enabled: preferences[keyPath: enabled], after: preferences[keyPath: after])
+        // Never (nil), then the minutes.
+        let choices: [Int?] = [nil] + SettingsOptions.autoCloseChoices(including: current)
+        let selection = Binding<Int?>(
+            get: { SettingsOptions.autoCloseSelection(enabled: preferences[keyPath: enabled], after: preferences[keyPath: after]) },
             set: { minutes in
                 if let minutes {
-                    preferences.autoCloseAfter = TimeInterval(minutes * 60)
-                    preferences.autoCloseEnabled = true
+                    preferences[keyPath: after] = TimeInterval(minutes * 60)
+                    preferences[keyPath: enabled] = true
                 } else {
-                    preferences.autoCloseEnabled = false
+                    preferences[keyPath: enabled] = false
                 }
             }
         )
+        return SettingsRow(title: SettingsOptions.autoCloseRowTitle, tone: rowEnabled ? .primary : .disabled) {
+            // The tags are `Int?`, nil for Never, the selection's type: a mismatch would show nothing as selected.
+            Picker(SettingsOptions.autoCloseRowTitle, selection: selection) {
+                ForEach(choices, id: \.self) { minutes in
+                    Text(SettingsOptions.autoCloseTitle(minutes: minutes))
+                        .tag(minutes)
+                }
+            }
+            .labelsHidden()
+            .fixedSize()
+            .disabled(!rowEnabled)
+        }
     }
 
     // MARK: Notification
 
-    /// Notify me works as Alert me does, Never included, with its own time. Play sound is its sibling, dimmed
-    /// while it's Never. Test Notification, under the box at its right, beside the footnote, works whatever
-    /// Notify me says.
+    /// The full-screen box's rows for Join!'s notification card, in the same order: Notify me works as Alert me
+    /// does, Never included, with its own time; Show on, Play sound and Close automatically are its siblings, dimmed
+    /// while it's Never, each with its own value. There's no Sound pop-up: Play sound is the user's alert sound from
+    /// System Settings › Sound, or none. The footnote says the card shows during a Focus and a screen share; Test
+    /// Notification, under the box at its right, beside it, works whatever Notify me says.
     private var notificationSection: some View {
         @Bindable var preferences = model.preferences
         let notificationsOn = preferences.notificationsEnabled
@@ -167,7 +179,10 @@ struct AlertsTab: View {
                 never: (SettingsOptions.leadTimeNeverTitle, notificationsOff(preferences)),
                 help: SettingsOptions.notifyMeHelp
             )
+            showOnRow(selection: $preferences.notificationScreens, enabled: notificationsOn)
             SettingsSwitchRow(title: SettingsOptions.playSoundTitle, isOn: $preferences.notificationPlaysSound, enabled: notificationsOn)
+                .help(SettingsOptions.playSoundHelp)
+            autoCloseRow(enabled: \.notificationAutoCloseEnabled, after: \.notificationAutoCloseAfter, rowEnabled: notificationsOn)
         } accessory: {
             TestNotificationButtonView()
         }
@@ -222,8 +237,8 @@ struct AlertsTab: View {
     }
 }
 
-/// Test Notification, under the Notification box at its right, outside it: shows the demo event's card. Always
-/// enabled.
+/// Test Notification, under the Notification box at its right, beside the footnote: shows the demo event's card,
+/// replacing one already up. Always enabled: paused, under Never and in a fixture run too.
 private struct TestNotificationButtonView: View {
     @Environment(AppModel.self) private var model
 
