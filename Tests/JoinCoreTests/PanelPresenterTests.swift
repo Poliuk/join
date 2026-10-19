@@ -306,11 +306,11 @@ struct PanelPresenterTests {
         #expect(card.action == action)
         #expect(card.detail == .upcoming(location: location, overlap: nil))
 
-        let row = try #require(row(block.id, in: result))
-        #expect(row.isMuted)
-        #expect(row.action == nil)
-        #expect(row.detail == nil)
-        #expect(row.dismissal == .dismissable(asksScope: false))
+        let listed = try #require(row(block.id, in: result))
+        #expect(listed.isMuted)
+        #expect(listed.action == nil)
+        #expect(listed.detail == nil)
+        #expect(listed.dismissal == .dismissable(asksScope: false))
     }
 
     static let alpha = Meeting(id: "a", title: "Alpha", start: F.date(6, 9), end: F.date(6, 10))
