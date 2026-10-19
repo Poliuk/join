@@ -40,6 +40,9 @@ final class PreferencesTests {
         #expect(!preferences.notificationsEnabled, "Notify me is Never")
         #expect(preferences.notificationLeadTime == 300, "Custom… keeps 5 minutes")
         #expect(preferences.notificationPlaysSound)
+        #expect(preferences.notificationScreens == .main)
+        #expect(preferences.notificationAutoCloseEnabled)
+        #expect(preferences.notificationAutoCloseAfter == 10 * 60)
         #expect(preferences.snoozeDurations == SnoozeDurations(first: 60, second: 300))
         #expect(preferences.alertScreens == .all)
         #expect(preferences.menuBarDisplay == .time)
@@ -70,6 +73,9 @@ final class PreferencesTests {
         case notificationsEnabled
         case notificationLeadTime
         case notificationPlaysSound
+        case notificationScreensAll, notificationScreensSecondary, notificationScreensPointer, notificationScreensBackToMain
+        case notificationAutoCloseEnabled
+        case notificationAutoCloseAfter
         case snoozeDurations
         case alertScreensMain, alertScreensSecondary, alertScreensPointer, alertScreensBackToAll
         case menuBarDisplayIconOnly, menuBarDisplayTitleAndTime
@@ -131,6 +137,12 @@ final class PreferencesTests {
         case .notificationsEnabled: Probe(\.notificationsEnabled, key: Keys.notificationsEnabled, to: true)
         case .notificationLeadTime: Probe(\.notificationLeadTime, key: Keys.notificationLeadTime, to: 60)
         case .notificationPlaysSound: Probe(\.notificationPlaysSound, key: Keys.notificationPlaysSound, to: false)
+        case .notificationScreensAll: Probe(\.notificationScreens, key: Keys.notificationScreens, to: .all)
+        case .notificationScreensSecondary: Probe(\.notificationScreens, key: Keys.notificationScreens, to: .secondary)
+        case .notificationScreensPointer: Probe(\.notificationScreens, key: Keys.notificationScreens, to: .pointer)
+        case .notificationScreensBackToMain: Probe(\.notificationScreens, key: Keys.notificationScreens, from: .pointer, to: .main)
+        case .notificationAutoCloseEnabled: Probe(\.notificationAutoCloseEnabled, key: Keys.notificationAutoCloseEnabled, to: false)
+        case .notificationAutoCloseAfter: Probe(\.notificationAutoCloseAfter, key: Keys.notificationAutoCloseAfter, to: 30 * 60)
         case .snoozeDurations: Probe(\.snoozeDurations, key: Keys.snoozeDurations, to: SnoozeDurations(first: 180, second: 600))
         case .alertScreensMain: Probe(\.alertScreens, key: Keys.alertScreens, to: .main)
         case .alertScreensSecondary: Probe(\.alertScreens, key: Keys.alertScreens, to: .secondary)
@@ -213,6 +225,9 @@ final class PreferencesTests {
         Unreadable(testDescription: "snooze buttons without two durations", key: Keys.snoozeDurations, stored: [120.0]) {
             $0.snoozeDurations == Preferences.defaultSnoozeDurations
         },
+        Unreadable(testDescription: "the notification's Show on", key: Keys.notificationScreens, stored: "everywhere") {
+            $0.notificationScreens == .main
+        },
         Unreadable(testDescription: "panel list filter", key: Keys.panelListFilter, stored: "everything") {
             $0.panelListFilter == .week
         },
@@ -282,6 +297,36 @@ final class PreferencesTests {
         #expect(preferences.autoCloseAfter == expected, "loaded")
         preferences.autoCloseAfter = seconds
         #expect(preferences.autoCloseAfter == expected, "set")
+    }
+
+    /// The card's auto-close timer gets this value, so it's whole minutes, as its pop-up shows it, and never
+    /// under a minute, set or loaded.
+    @Test(arguments: [(0.0, 60.0), (30, 60), (-300, 60), (60, 60), (89, 60), (90, 120), (150, 180), (600, 600)])
+    func notificationAutoCloseIsWholeMinutesOfAtLeastOne(seconds: TimeInterval, expected: TimeInterval) {
+        defaults.set(seconds, forKey: Keys.notificationAutoCloseAfter)
+        let preferences = Preferences(defaults: defaults)
+        #expect(preferences.notificationAutoCloseAfter == expected, "loaded")
+        preferences.notificationAutoCloseAfter = seconds
+        #expect(preferences.notificationAutoCloseAfter == expected, "set")
+    }
+
+    /// The card's Show on and Close automatically are its own: changing them leaves the full-screen alert's as
+    /// they were, and the other way round.
+    @Test func eachKindKeepsItsOwnScreensAndAutoClose() {
+        let preferences = Preferences(defaults: defaults)
+        preferences.notificationScreens = .pointer
+        preferences.notificationAutoCloseEnabled = false
+        preferences.notificationAutoCloseAfter = 5 * 60
+        preferences.alertScreens = .secondary
+        preferences.autoCloseAfter = 30 * 60
+
+        let reopened = Preferences(defaults: defaults)
+        #expect(reopened.notificationScreens == .pointer)
+        #expect(!reopened.notificationAutoCloseEnabled)
+        #expect(reopened.notificationAutoCloseAfter == 5 * 60)
+        #expect(reopened.alertScreens == .secondary)
+        #expect(reopened.autoCloseEnabled)
+        #expect(reopened.autoCloseAfter == 30 * 60)
     }
 
     /// Stored as earlier builds stored them, so their settings still read: the snooze buttons as two
@@ -355,8 +400,8 @@ final class PreferencesTests {
     // MARK: Settings from earlier builds
 
     /// An upgrade from 1.2.x, whose settings have no notification keys, keeps exactly its behaviour: every
-    /// stored value carries over, Notify me reads Never, so nothing is sent and macOS isn't asked, and reading
-    /// writes nothing new.
+    /// stored value carries over, Notify me reads Never, so no card shows, the card's own settings read their
+    /// defaults whatever the full-screen alert's say, and reading writes nothing new.
     @Test func anUpgradeFrom12KeepsNotificationsOff() {
         let stored: [String: any Sendable] = [
             Keys.leadTime: 60.0,
@@ -364,6 +409,7 @@ final class PreferencesTests {
             Keys.snoozeDurations: [120.0, 600.0],
             Keys.soundName: "Glass",
             Keys.autoCloseEnabled: false,
+            Keys.alertScreens: "pointer",
         ]
         for (key, value) in stored { defaults.set(value, forKey: key) }
         let before = Set((defaults.persistentDomain(forName: suiteName) ?? [:]).keys)
@@ -372,6 +418,9 @@ final class PreferencesTests {
         #expect(!preferences.notificationsEnabled)
         #expect(preferences.notificationLeadTime == Preferences.defaultNotificationLeadTime)
         #expect(preferences.notificationPlaysSound)
+        #expect(preferences.notificationScreens == .main)
+        #expect(preferences.notificationAutoCloseEnabled)
+        #expect(preferences.notificationAutoCloseAfter == Preferences.defaultNotificationAutoCloseAfter)
         #expect(preferences.leadTime == 60)
         #expect(preferences.fullScreenAlertsEnabled)
         #expect(preferences.snoozeDurations == SnoozeDurations(first: 120, second: 600))
@@ -468,6 +517,14 @@ final class PreferencesTests {
         preferences.alertScreens = .pointer
         #expect(Preferences(defaults: defaults).alertScreens == .pointer)
         #expect(defaults.object(forKey: Keys.legacyShowOnAllScreens) == nil)
+    }
+
+    /// The legacy switch was the full-screen alert's only: the card's Show on keeps its own default.
+    @Test func legacyShowOnAllScreensLeavesTheNotificationAlone() {
+        defaults.set(true, forKey: Keys.legacyShowOnAllScreens)
+        let preferences = Preferences(defaults: defaults)
+        #expect(preferences.alertScreens == .all)
+        #expect(preferences.notificationScreens == .main)
     }
 
     // MARK: Appearance and the Custom card

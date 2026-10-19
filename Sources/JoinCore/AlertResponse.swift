@@ -6,20 +6,21 @@ import Foundation
 public enum AlertKind: Hashable, Sendable, CaseIterable {
     /// The window over every screen, at Alert me's time.
     case fullScreen
-    /// The macOS notification, at Notify me's time.
+    /// Join!'s notification card at the top right of the screen, at Notify me's time.
     case notification
 }
 
-/// What the user did with an alert of either kind, the full-screen alert's buttons or a notification's actions.
+/// What the user did with an alert of either kind, the full-screen alert's buttons or a notification card's
+/// button and menu.
 public enum AlertResponse: Hashable, Sendable {
     /// Join: opens the meeting's link.
     case join
-    /// A snooze button or action: the alert comes back after this long.
+    /// A snooze button or menu item: the alert comes back after this long.
     case snooze(TimeInterval)
     /// At event start: the alert comes back when the meeting starts.
     case snoozeUntilStart
-    /// The full-screen alert's Dismiss or its auto-close. A notification has no Join! Dismiss action: macOS's
-    /// own close button changes nothing, since a sent notification is already done (`NotificationSchedule`).
+    /// Dismiss, or closing automatically: the full-screen alert's Dismiss, Esc and auto-close, and a
+    /// notification card's ×, its menu's Dismiss and its Close automatically.
     case close
 
     /// A snooze until the start that's less than this far ahead finishes the alert instead, as the full-screen
@@ -27,10 +28,12 @@ public enum AlertResponse: Hashable, Sendable {
     static let startingTolerance: TimeInterval = 1
 
     /// The state of `kind` for `meeting` once the user has answered an alert of kind `source`, or nil to leave
-    /// it as it is. Join, from either kind, finishes both: the meeting is joined, so neither comes back.
+    /// it as it is. Join, from either kind or the menu bar panel, finishes both: the meeting is joined, so
+    /// neither comes back.
     /// Snooze, At event start and close act on their own kind only, so a gentle-then-loud setup (a notification
     /// 5 minutes before, the full-screen alert at the start) still brings the full-screen alert when a
-    /// notification is snoozed or closed. At event start finishes the alert once the meeting has started.
+    /// notification is snoozed or closed, and dismissing the full-screen alert leaves the card (the user's
+    /// choice, 2026-10-19). At event start finishes the alert once the meeting has started.
     public func state(of kind: AlertKind, answering source: AlertKind, meeting: Meeting, now: Date) -> AlertState? {
         switch self {
         case .join:

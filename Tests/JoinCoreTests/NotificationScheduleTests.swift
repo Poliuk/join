@@ -27,7 +27,7 @@ struct NotificationScheduleTests {
 
     // MARK: Planning
 
-    /// When a meeting's notification is sent, in seconds from now: Notify me's time before the start, at once
+    /// When a meeting's card is shown, in seconds from now: Notify me's time before the start, at once
     /// when that's past (after sleep, a late launch, or a Restore from the panel) within the late grace, or when
     /// its snooze ends.
     @Test(arguments: [
@@ -43,15 +43,16 @@ struct NotificationScheduleTests {
         #expect(plan?.meetings.map(\.id) == ["a"])
     }
 
-    /// Nothing to send: Notify me on Never, a pause (which covers both kinds), a meeting started past the
-    /// grace, one that ended, and one whose notification was sent.
+    /// Nothing to show: Notify me on Never, a pause (which covers both kinds), a meeting started past the
+    /// grace, one that ended, one whose card is on screen and one whose card was closed.
     @Test(arguments: [
         ("Notify me is Never", 900, AlertState.pending, false, PauseState.active),
         ("paused for an hour", 900, .pending, true, .until(now.addingTimeInterval(3600))),
         ("paused until resumed", 900, .pending, true, .indefinitely),
         ("started a second past the grace", -(grace + 1), .pending, true, .active),
         ("ended", -7200, .pending, true, .active),
-        ("sent", 900, NotificationSchedule.sentState, true, .active),
+        ("on screen", 900, NotificationSchedule.shownState, true, .active),
+        ("dismissed", 900, .dismissed, true, .active),
     ] as [(String, TimeInterval, AlertState, Bool, PauseState)])
     func nothingIsSent(_ name: String, startsIn offset: TimeInterval, state: AlertState, isEnabled: Bool, pause: PauseState) {
         #expect(Self.plan([Self.meeting("a", startsIn: offset)], states: ["a": state], isEnabled: isEnabled, pause: pause) == nil)
@@ -66,12 +67,11 @@ struct NotificationScheduleTests {
         #expect(Self.plan([meeting], pause: pause)?.fireAt == Self.now)
     }
 
-    /// Meetings at the same time share a plan, and each gets a notification of its own.
-    @Test func meetingsAtTheSameTimeAreSentTogether() {
+    /// Meetings at the same time share a plan, and each gets a card of its own.
+    @Test func meetingsAtTheSameTimeAreShownTogether() {
         let plan = Self.plan([Self.meeting("b", startsIn: 900), Self.meeting("a", startsIn: 900), Self.meeting("c", startsIn: 1800)])
         #expect(plan?.meetings.map(\.id) == ["a", "b"])
-        let identifiers = plan?.meetings.map { NotificationContent.meeting($0, playsSound: true, now: Self.now).identifier }
-        #expect(identifiers == [.meeting("a"), .meeting("b")])
+        #expect(plan?.meetings.map { NotificationCard.meeting($0).id } == ["a", "b"])
     }
 
     /// The notification keeps its own time and states: the full-screen alert's time, its Never, and an alert on
@@ -87,16 +87,18 @@ struct NotificationScheduleTests {
         #expect(AlertScheduler.nextPlan(meetings: [meeting], states: fullScreenStates, leadTime: 0, isPaused: false, now: Self.now) == nil)
     }
 
-    /// A meeting already notified isn't notified again when Notify me's time changes, even to one still ahead.
+    /// A meeting whose card is on screen, or was closed, isn't planned again when Notify me's time changes, even
+    /// to one still ahead.
     @Test(arguments: [0.0, 60, 300, 600, 7200])
-    func aSentNotificationIsntSentAgainWhenTheTimeChanges(_ leadTime: TimeInterval) {
+    func aShownCardIsntShownAgainWhenTheTimeChanges(_ leadTime: TimeInterval) {
         let meeting = Self.meeting("a", startsIn: 900)
-        #expect(Self.plan([meeting], states: ["a": NotificationSchedule.sentState], leadTime: leadTime) == nil)
+        #expect(Self.plan([meeting], states: ["a": NotificationSchedule.shownState], leadTime: leadTime) == nil)
+        #expect(Self.plan([meeting], states: ["a": .dismissed], leadTime: leadTime) == nil)
     }
 
-    /// One meeting through its notification's life: sent, snoozed, sent again, then At event start, sent at
-    /// the start, and then nothing.
-    @Test func aMeetingsNotificationLife() throws {
+    /// One meeting through its card's life: shown, snoozed, shown again, then At event start, shown at the
+    /// start, closed (Dismiss, or closing automatically), and then nothing.
+    @Test func aMeetingsCardLife() throws {
         let meeting = Self.meeting("a", startsIn: 900)
         var states: [String: AlertState] = [:]
         var time = Self.now
@@ -104,47 +106,58 @@ struct NotificationScheduleTests {
         let first = try #require(Self.plan([meeting], states: states, at: time))
         #expect(first.fireAt == meeting.start.addingTimeInterval(-Self.leadTime))
         time = first.fireAt
-        states["a"] = NotificationSchedule.sentState
+        states["a"] = NotificationSchedule.shownState
         #expect(Self.plan([meeting], states: states, at: time) == nil)
 
         states["a"] = AlertResponse.snooze(60).state(of: .notification, answering: .notification, meeting: meeting, now: time)
         let snoozed = try #require(Self.plan([meeting], states: states, at: time))
         #expect(snoozed.fireAt == time.addingTimeInterval(60))
         time = snoozed.fireAt
-        states["a"] = NotificationSchedule.sentState
+        states["a"] = NotificationSchedule.shownState
 
         states["a"] = AlertResponse.snoozeUntilStart.state(of: .notification, answering: .notification, meeting: meeting, now: time)
         #expect(Self.plan([meeting], states: states, at: time)?.fireAt == meeting.start)
-        states["a"] = NotificationSchedule.sentState
+        states["a"] = NotificationSchedule.shownState
+        #expect(Self.plan([meeting], states: states, at: meeting.start) == nil)
+
+        states["a"] = AlertResponse.close.state(of: .notification, answering: .notification, meeting: meeting, now: meeting.start)
+        #expect(states["a"] == .dismissed)
         #expect(Self.plan([meeting], states: states, at: meeting.start) == nil)
     }
 
-    // MARK: Asking
+    // MARK: Pause and Never
 
-    /// Sending waits while Notify me has a time its ask hasn't started for (a preset picked from Never writes
-    /// the time first, so a re-plan can come before the ask), and for a minute after asking, so a notification
-    /// due at once comes after the user answers macOS's prompt rather than failing before it.
+    /// Cards stop, and those on screen close, while alerts are paused or Notify me is Never.
     @Test(arguments: [
-        ("Notify me just got a time, not asked yet", true, false, nil, true),
-        ("Notify me just got a time, asked a moment ago", true, false, 10, true),
-        ("asked 10 s ago", true, true, 10, true),
-        ("asked 59 s ago", true, true, 59, true),
-        ("asked a minute ago, unanswered", true, true, 60, false),
-        ("asked 61 s ago, unanswered", true, true, 61, false),
-        ("not asking", true, true, nil, false),
-        ("Notify me just went back to Never", false, true, nil, false),
-        ("Never, the demo asked 10 s ago", false, false, 10, true),
-        ("Never, nothing asked", false, false, nil, false),
-    ] as [(String, Bool, Bool, TimeInterval?, Bool)])
-    func sendingWaitsForTheAsk(_ name: String, enabled: Bool, handled: Bool, askedAgo: TimeInterval?, holds: Bool) {
-        let askedAt = askedAgo.map { Self.now.addingTimeInterval(-$0) }
-        #expect(NotificationSchedule.holdsSending(notificationsEnabled: enabled, handledEnabled: handled, askedAt: askedAt, now: Self.now) == holds)
+        ("Notify me has a time", true, PauseState.active, false),
+        ("Notify me is Never", false, .active, true),
+        ("paused for an hour", true, .until(now.addingTimeInterval(3600)), true),
+        ("paused until resumed", true, .indefinitely, true),
+        ("a pause that ended", true, .until(now), false),
+    ] as [(String, Bool, PauseState, Bool)])
+    func cardsStop(_ name: String, isEnabled: Bool, pause: PauseState, stopped: Bool) {
+        #expect(NotificationSchedule.isStopped(isEnabled: isEnabled, pauseState: pause, now: Self.now) == stopped)
+    }
+
+    /// A card closed by a pause or by Never wasn't answered: once the pause ends, or Notify me gets a time, it
+    /// comes back at once, unless its meeting started more than the late grace ago.
+    @Test(arguments: [
+        ("before the start", 120, true),
+        ("started 4 minutes ago", -240, true),
+        ("started past the grace", -(grace + 1), false),
+    ] as [(String, TimeInterval, Bool)])
+    func aCardClosedByAPauseComesBackWhenItEnds(_ name: String, startsIn offset: TimeInterval, comesBack: Bool) {
+        let meeting = Self.meeting("a", startsIn: offset)
+        let states = ["a": NotificationSchedule.hiddenState]
+        #expect(Self.plan([meeting], states: states, pause: .indefinitely) == nil)
+        #expect(Self.plan([meeting], states: states, isEnabled: false) == nil)
+        #expect((Self.plan([meeting], states: states)?.fireAt == Self.now) == comesBack)
     }
 
     // MARK: Sound
 
-    /// Play sound decides, except while the meeting's full-screen alert is on screen: the notification comes
-    /// silently then, so the two sounds never overlap.
+    /// Play sound decides, except while the meeting's full-screen alert is on screen: the card comes silently
+    /// then, so the two sounds never overlap.
     @Test(arguments: [
         (true, false, true),
         (true, true, false),
@@ -157,45 +170,63 @@ struct NotificationScheduleTests {
 
     // MARK: Withdrawals
 
-    /// A delivered notification is withdrawn once its meeting is no longer alertable (dismissed from the panel,
-    /// cancelled, moved to another start, which makes a new occurrence id, or now Show in the list only) or has
-    /// ended. The demo's, and notifications Join! didn't make, are left alone.
-    @Test func deliveredNotificationsAreWithdrawnWhenTheirMeetingGoes() {
+    /// A card on screen or waiting is withdrawn once its meeting is no longer alertable (dismissed from the
+    /// panel, cancelled, moved to another start, which makes a new occurrence id, or now Show in the list only)
+    /// or has ended. Test Notification's card is left alone.
+    @Test func cardsAreWithdrawnWhenTheirMeetingGoes() {
         let ongoing = Self.meeting("ongoing", startsIn: -600)
         let upcoming = Self.meeting("upcoming", startsIn: 600)
         let ended = Self.meeting("ended", startsIn: -7200)
-        let delivered = [
-            NotificationIdentifier.meeting("ongoing").rawValue,
-            NotificationIdentifier.meeting("upcoming").rawValue,
-            NotificationIdentifier.meeting("ended").rawValue,
-            NotificationIdentifier.meeting("dismissed").rawValue,
-            NotificationIdentifier.meeting("event@1800000000").rawValue,
-            NotificationIdentifier.demo.rawValue,
-            "something else",
-        ]
-        let withdrawn = NotificationSchedule.withdrawals(delivered: delivered, alertable: [ongoing, upcoming, ended], now: Self.now)
-        #expect(withdrawn == ["meeting:ended", "meeting:dismissed", "meeting:event@1800000000"])
+        let shown = ["ongoing", "upcoming", "ended", "dismissed", "event@1800000000", DemoEvent.id]
+        let withdrawn = NotificationSchedule.withdrawals(shown: shown, alertable: [ongoing, upcoming, ended], now: Self.now)
+        #expect(withdrawn == ["ended", "dismissed", "event@1800000000"])
     }
 
-    @Test func nothingDeliveredNothingWithdrawn() {
-        #expect(NotificationSchedule.withdrawals(delivered: [], alertable: [Self.meeting("a", startsIn: 60)], now: Self.now).isEmpty)
+    @Test func nothingShownNothingWithdrawn() {
+        #expect(NotificationSchedule.withdrawals(shown: [], alertable: [Self.meeting("a", startsIn: 60)], now: Self.now).isEmpty)
     }
 
-    // MARK: Reopen
+    // MARK: Closing automatically and relaunching
 
-    /// A reopen event within a second after a notification response came with the click, so it's ignored and
-    /// nothing opens; any other reopen opens Settings as before.
+    /// Close automatically's time after each appearance, a snooze's return included; nothing with Never.
     @Test(arguments: [
-        ("no response yet", nil, false),
-        ("with the response", 0, true),
-        ("half a second after", 0.5, true),
-        ("a second after", 1, true),
-        ("later", 1.5, false),
-        ("before the response, the clock moved", -1, false),
-    ] as [(String, TimeInterval?, Bool)])
-    func reopenAfterANotificationResponse(_ name: String, after offset: TimeInterval?, ignored: Bool) {
-        let response = offset.map { _ in Self.now }
-        let time = Self.now.addingTimeInterval(offset ?? 0)
-        #expect(NotificationSchedule.ignoresReopen(lastResponse: response, now: time) == ignored)
+        (true, 600.0, 600.0),
+        (true, 60, 60),
+        (false, 600, nil),
+    ] as [(Bool, TimeInterval, TimeInterval?)])
+    func closesAutomatically(isEnabled: Bool, after: TimeInterval, closesIn expected: TimeInterval?) {
+        let appeared = Self.now.addingTimeInterval(-30)
+        #expect(
+            NotificationSchedule.autoCloseTime(appearedAt: appeared, isEnabled: isEnabled, after: after)
+                == expected.map { appeared.addingTimeInterval($0) }
+        )
+    }
+
+    /// A card on screen when Join! quit comes back at the next launch while its meeting hasn't ended and its
+    /// close-automatically time hasn't come; with Never, until its meeting ends.
+    @Test(arguments: [
+        ("appeared a minute ago", -60, true, true),
+        ("a second before it would close", -599, true, true),
+        ("its time to close came", -600, true, false),
+        ("it would have closed", -900, true, false),
+        ("Never, appeared long ago", -3000, false, true),
+    ] as [(String, TimeInterval, Bool, Bool)])
+    func aCardOnScreenAtQuitComesBack(_ name: String, appeared offset: TimeInterval, autoCloseEnabled: Bool, reshows: Bool) {
+        let meeting = Self.meeting("a", startsIn: 120)
+        let comesBack = NotificationSchedule.reshowsAfterRelaunch(
+            meeting: meeting, appearedAt: Self.now.addingTimeInterval(offset),
+            autoCloseEnabled: autoCloseEnabled, autoCloseAfter: 600, now: Self.now
+        )
+        #expect(comesBack == reshows)
+    }
+
+    @Test(arguments: [true, false])
+    func aCardWhoseMeetingEndedDoesntComeBack(autoCloseEnabled: Bool) {
+        let ended = Self.meeting("a", startsIn: -3600, duration: 3500)
+        let comesBack = NotificationSchedule.reshowsAfterRelaunch(
+            meeting: ended, appearedAt: Self.now.addingTimeInterval(-60),
+            autoCloseEnabled: autoCloseEnabled, autoCloseAfter: 600, now: Self.now
+        )
+        #expect(!comesBack)
     }
 }

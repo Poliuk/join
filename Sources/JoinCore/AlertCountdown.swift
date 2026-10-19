@@ -1,7 +1,8 @@
 import Foundation
 
 /// The wording on the full-screen alert: the countdown above the title, the Join label and the
-/// snooze choices.
+/// snooze choices. The notification card words its own countdown (`NotificationCard.Countdown`) from the
+/// same parts.
 public enum AlertCountdown {
     public enum Phase: Hashable, Sendable {
         case before
@@ -31,7 +32,7 @@ public enum AlertCountdown {
         case .starting:
             return "Starting now"
         case .started:
-            return "Started \(minutesText(now.timeIntervalSince(start))) ago"
+            return "Started \(minutesText(minutes: max(1, Int(now.timeIntervalSince(start) / 60)))) ago"
         case .ended:
             return "Ended"
         }
@@ -70,9 +71,8 @@ public enum AlertCountdown {
         max(1, Int((duration / 60).rounded()))
     }
 
-    /// "3 min", "1 hr", "1 hr 5 min"; whole minutes, rounded down.
-    private static func minutesText(_ seconds: TimeInterval) -> String {
-        let minutes = max(1, Int(seconds / 60))
+    /// "3 min", "1 hr", "1 hr 5 min": the full-screen alert's and the notification's countdowns.
+    static func minutesText(minutes: Int) -> String {
         if minutes < 60 { return "\(minutes) min" }
         let rest = minutes % 60
         return rest == 0 ? "\(minutes / 60) hr" : "\(minutes / 60) hr \(rest) min"

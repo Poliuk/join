@@ -106,6 +106,18 @@ struct SettingsOptionsTests {
         #expect(SettingsOptions.autoCloseTitle(minutes: 60) == "After 1 hour")
     }
 
+    /// The Notification box's Close automatically offers the full-screen alert's items, with its own default
+    /// of 10 minutes selected, and shows a stored custom value as the full-screen row does.
+    @Test func theNotificationsCloseAutomatically() {
+        let preset = SettingsOptions.autoCloseSelection(enabled: true, after: Preferences.defaultNotificationAutoCloseAfter)
+        #expect(preset == 10)
+        #expect(SettingsOptions.autoCloseTitle(minutes: preset) == "After 10 minutes")
+        #expect(SettingsOptions.autoCloseChoices(including: preset) == [5, 10, 15, 30, 60])
+        #expect(SettingsOptions.autoCloseChoices(including: 45) == [5, 10, 15, 30, 45, 60])
+        #expect(SettingsOptions.autoCloseTitle(minutes: 45) == "After 45 minutes")
+        #expect(SettingsOptions.autoCloseSelection(enabled: false, after: Preferences.defaultNotificationAutoCloseAfter) == nil)
+    }
+
     /// Waiting for approval in System Settings reads as on, so turning the switch off withdraws the request,
     /// and the hint stays until the user allows it.
     @Test(arguments: [
@@ -139,19 +151,26 @@ struct SettingsOptionsTests {
         Copy("Alert me row", SettingsOptions.alertMeTitle, "Alert me"),
         // Both custom fields can show on the pane at once, so VoiceOver names each for its row.
         Copy("Alert me's custom field", SettingsOptions.alertMeFieldLabel, "Alert me, minutes before the event"),
+        // Both boxes have these two rows, each kind with its own value.
+        Copy("Show on row", SettingsOptions.showOnTitle, "Show on"),
         Copy("auto-close row", SettingsOptions.autoCloseRowTitle, "Close automatically"),
         Copy("Notify me row", SettingsOptions.notifyMeTitle, "Notify me"),
-        // "Snooze actions", as the Snooze box calls them, not "snooze buttons" (2026-10-19).
+        // Join! draws the notification itself, with a Join button and a menu (2026-10-19).
         Copy("Notify me's help tag", SettingsOptions.notifyMeHelp,
-             "Sends a notification with Join and Snooze actions. macOS shows it in the corner of the screen."),
+             "Shows a notification at the top right of the screen with a Join button and a menu to snooze or dismiss it."),
         Copy("Notify me's custom field", SettingsOptions.notifyMeFieldLabel, "Notify me, minutes before the event"),
         Copy("Play sound row", SettingsOptions.playSoundTitle, "Play sound"),
+        Copy("Play sound's help tag", SettingsOptions.playSoundHelp,
+             "Plays your alert sound from System Settings › Sound when the notification appears."),
+        // Nothing Join! shows follows a Focus or screen sharing; the pause keeps it away (2026-10-19).
         Copy(
             "Notification footnote",
             SettingsOptions.notificationFootnote,
-            "How long a notification stays on screen, and whether it shows during a Focus or while you share your screen, is up to System Settings › Notifications. The full-screen alert comes up either way."
+            "Join! shows this notification itself, so it also comes up during a Focus and while you share your screen. To keep it away, pause alerts from the menu bar."
         ),
-        // "Snooze", not "snooze button": the notification offers them as actions (2026-10-19).
+        Copy("Test Notification", SettingsOptions.testNotificationTitle, "Test Notification"),
+        Copy("Test Notification's help tag", SettingsOptions.testNotificationHelp, "Shows a test notification with a sample event."),
+        // "Snooze", not "snooze button": the notification offers them in a menu (2026-10-19).
         Copy("First snooze row", SettingsOptions.firstSnoozeTitle, "First snooze"),
         Copy("Second snooze row", SettingsOptions.secondSnoozeTitle, "Second snooze"),
         Copy("First snooze's custom field", SettingsOptions.firstSnoozeFieldLabel, "First snooze, minutes"),
@@ -160,7 +179,7 @@ struct SettingsOptionsTests {
         Copy(
             "Snooze footnote",
             SettingsOptions.snoozeFootnote,
-            "The full-screen alert's snooze buttons and the notification's Snooze actions both offer these two times, then At event start."
+            "The full-screen alert's snooze buttons and the notification's menu both offer these two times, then At event start."
         ),
         Copy("Calendars' warning with none checked", SettingsOptions.noCalendarsWarning, "No calendars selected: you won't get any alerts."),
         // An account's count stands alone under its box since 2026-10-19, so it says "selected" like the pane's total.
@@ -197,10 +216,11 @@ struct SettingsOptionsTests {
     }
 
     /// The footnotes name what they point at as it's named elsewhere, so a rename can't leave them stale: the
-    /// Snooze box's the button both kinds add after the durations, Appearance's Never note the pane Alert me
-    /// is on and the button that still works.
+    /// Snooze box's the button both kinds add after the durations, the Notification box's the bell menu's
+    /// Pause alerts, Appearance's Never note the pane Alert me is on and the button that still works.
     @Test func theAlertsFootnotesNameWhatTheyPointAt() {
         #expect(SettingsOptions.snoozeFootnote.contains(AlertCountdown.snoozeUntilStartLabel))
+        #expect(SettingsOptions.notificationFootnote.contains(PauseCopy.pauseTitle.lowercased()))
         #expect(SettingsOptions.alertMeNeverNote.contains(" in \(SettingsOptions.alertsPaneTitle)."))
         #expect(SettingsOptions.alertMeNeverNote.contains(SettingsOptions.testFullScreenAlertTitle + " still works."))
     }

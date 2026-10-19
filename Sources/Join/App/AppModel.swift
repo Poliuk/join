@@ -29,7 +29,6 @@ final class AppModel {
         let fixture = FixtureCalendarService.scenario
         let defaults: UserDefaults
         let service: CalendarService
-        let notificationCenter: any NotificationCenterClient
         if let fixture {
             // Never `.standard`: a fixture run must not change real settings. Only the app's own bundle id or
             // the global domain would make this nil.
@@ -38,17 +37,9 @@ final class AppModel {
             }
             defaults = fixtureDefaults
             service = FixtureCalendarService(scenario: fixture)
-            // Same bundle id as the real app, so never the real notification center: no prompt, no posting, no
-            // responder, no removal.
-            notificationCenter = FixtureNotificationCenter(permission: FixtureNotificationCenter.environmentPermission)
         } else {
             defaults = .standard
             service = EventKitCalendarService()
-            // UNUserNotificationCenter raises in a process without an app bundle, so a `swift run` build, like
-            // its update checker, has no notifications.
-            notificationCenter = Bundle.main.bundleURL.pathExtension == "app"
-                ? SystemNotificationCenter()
-                : UnavailableNotificationCenter()
         }
         let preferences = Preferences(defaults: defaults)
         if fixture != nil, preferences.dismissedEvents.withoutSeriesRules != preferences.dismissedEvents {
@@ -63,7 +54,7 @@ final class AppModel {
         self.meetingStore = store
         let alertCoordinator = AlertCoordinator(store: store, preferences: preferences, windows: AlertWindowController(), defaults: defaults)
         let notificationCoordinator = NotificationCoordinator(
-            center: notificationCenter,
+            presenter: LoggingNotificationPresenter(),
             store: store,
             preferences: preferences,
             alerts: alertCoordinator,
@@ -77,14 +68,12 @@ final class AppModel {
         self.alertCoordinator = alertCoordinator
         self.notificationCoordinator = notificationCoordinator
         self.updateChecker = UpdateChecker(preferences: preferences, fixtureScenario: fixture)
-        // System Settings › Notifications › Join!'s link back.
-        notificationCoordinator.openSettings = { [weak self] in self?.openSettings(pane: .alerts) }
     }
 
     func start() {
         Task { await meetingStore.start() }
         if !isFixture { alertCoordinator.start() }
-        // A fixture run reads its stand-in's permission for the status line, and plans nothing.
+        // A fixture run plans nothing.
         notificationCoordinator.start()
 
         // Ticking on :00 and :30 keeps "in 4 min" in step with meetings, which start on whole minutes.
@@ -254,16 +243,6 @@ final class AppModel {
         if let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Calendars") {
             NSWorkspace.shared.open(url)
         }
-    }
-
-    /// The status line's Open System Settings: Notifications › Join!, else the Notifications pane.
-    func openNotificationSettings() {
-        closePanel?()
-        let urls = Bundle.main.bundleIdentifier.map { NotificationStatus.settingsURLs(bundleIdentifier: $0) } ?? NotificationStatus.settingsURLs()
-        for url in urls where NSWorkspace.shared.open(url) { return }
-        // Fixed URLs and the bundle id: nothing personal.
-        let tried = urls.map(\.absoluteString).joined(separator: ", ")
-        Logger.settings.error("Couldn't open the notification settings; System Settings took none of \(tried, privacy: .public)")
     }
 
     func quit() {

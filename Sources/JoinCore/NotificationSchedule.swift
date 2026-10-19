@@ -2,16 +2,15 @@ import Foundation
 
 /// The notification's planning: the second kind of alert (`AlertKind.notification`), planned by
 /// `AlertScheduler` unchanged, with Notify me's lead time and the notification's own per-meeting states. Join!
-/// posts each notification itself when its plan is due and schedules nothing with macOS ahead, so a pause,
-/// Never, the Events choices, panel dismissals, edits and cancellations take effect at once, and a quit or
-/// deleted Join! leaves no stale reminders. After sleep or a late launch a notification is sent at once unless
-/// its meeting started more than `AlertScheduler.lateAlertGrace` ago, as for the full-screen alert. No timers,
-/// no notification center, no clock reads: `now` is always passed in.
+/// shows each notification card itself when its plan is due and schedules nothing ahead, so a pause, Never,
+/// the Events choices, panel dismissals, edits and cancellations take effect at once. After sleep or a late
+/// launch a card comes at once unless its meeting started more than `AlertScheduler.lateAlertGrace` ago, as for
+/// the full-screen alert. No timers, no windows, no clock reads: `now` is always passed in.
 public enum NotificationSchedule {
-    /// The next notifications due: one for each meeting in the plan, each with its own identifier, so meetings
-    /// at the same time each get one. A pause stops them, like the full-screen alert; Never (`isEnabled` false)
-    /// stops them alone. The full-screen alert's states and its one-alert-at-a-time rule play no part: a
-    /// notification is never held back while a full-screen alert is up.
+    /// The next cards due: one for each meeting in the plan, so meetings at the same time each get one. A pause
+    /// stops them, like the full-screen alert; Never (`isEnabled` false) stops them alone. The full-screen
+    /// alert's states and its one-alert-at-a-time rule play no part: a card is never held back while a
+    /// full-screen alert is up.
     public static func nextPlan(
         meetings: [Meeting],
         states: [Meeting.ID: AlertState],
@@ -24,59 +23,61 @@ public enum NotificationSchedule {
             meetings: meetings,
             states: states,
             leadTime: leadTime,
-            isPaused: !isEnabled || pauseState.isPaused(at: now),
+            isPaused: isStopped(isEnabled: isEnabled, pauseState: pauseState, now: now),
             now: now
         )
     }
 
-    /// How long sending waits for an answer to macOS's prompt, which may go unanswered for good.
-    public static let askingHold: TimeInterval = 60
-
-    /// Whether sending waits, so a notification due at once when Notify me gets a time comes once the user has
-    /// answered macOS's prompt rather than failing before it. It waits while Notify me has a time its observer
-    /// hasn't handled yet (`handledEnabled` false), whose ask hasn't started: a preset picked from Never writes
-    /// the time before Notify me, so a re-plan for the time, the heartbeat's or the fire timer's can come first.
-    /// Then for up to `askingHold` after asking (`askedAt`); after that, whatever is due goes out, whatever the
-    /// answer.
-    public static func holdsSending(notificationsEnabled: Bool, handledEnabled: Bool, askedAt: Date?, now: Date) -> Bool {
-        if notificationsEnabled && !handledEnabled { return true }
-        guard let askedAt else { return false }
-        return now.timeIntervalSince(askedAt) < askingHold
+    /// Whether cards are stopped: alerts are paused, or Notify me is Never. Then nothing is planned and the
+    /// meetings' cards on screen close (`hiddenState`); Test Notification's card stays, as it works either way.
+    public static func isStopped(isEnabled: Bool, pauseState: PauseState, now: Date) -> Bool {
+        !isEnabled || pauseState.isPaused(at: now)
     }
 
-    /// A meeting's state once its notification is sent: done, so it isn't sent again, not even when Notify me's
-    /// time changes. A snooze or At event start (`AlertResponse.state`) plans it once more, under the same
-    /// identifier, so it replaces itself.
-    public static let sentState = AlertState.dismissed
+    /// A meeting's state while its card is on screen: planned no more, not even when Notify me's time changes,
+    /// and shown again after a relaunch while `reshowsAfterRelaunch` says so. A snooze or At event start
+    /// (`AlertResponse.state`) plans it once more.
+    public static let shownState = AlertState.showing
 
-    /// Whether a notification plays its sound: Play sound is on, and its meeting's full-screen alert isn't on
-    /// screen, so the two sounds never overlap.
+    /// A meeting's state once its card closes because alerts were paused or Notify me went to Never, which
+    /// the user didn't answer: due again, so when the pause ends or Notify me gets a time, the card comes back
+    /// at once, unless its meeting started more than `AlertScheduler.lateAlertGrace` ago.
+    public static let hiddenState = AlertState.pending
+
+    /// Whether a card plays its sound as it appears or comes back from a snooze: Play sound is on, and its
+    /// meeting's full-screen alert isn't on screen, so the two sounds never overlap.
     public static func playsSound(preference: Bool, fullScreenAlertShowing: Bool) -> Bool {
         preference && !fullScreenAlertShowing
     }
 
-    /// The delivered notifications to withdraw, as `identifiers` lists them: those whose meeting is no longer
-    /// alertable (dismissed from the panel, cancelled, moved, which gives the occurrence a new id, or now Show
-    /// in the list only or excluded) or has ended. A notification that isn't a meeting's, the demo's, is left
-    /// for the user to close. `alertable` must come from a loaded calendar: before the first read every
-    /// meeting would look gone.
-    public static func withdrawals(delivered identifiers: [String], alertable: [Meeting], now: Date) -> [String] {
-        let current = Set(alertable.lazy.filter { !$0.hasEnded(at: now) }.map(\.id))
-        return identifiers.filter { identifier in
-            guard case .meeting(let id) = NotificationIdentifier(rawValue: identifier) else { return false }
-            return !current.contains(id)
-        }
+    /// When a card that appeared at `appearedAt` closes itself, which counts as Dismiss (`AlertResponse.close`):
+    /// Close automatically's time after each appearance, a snooze's return included; nil with Never.
+    public static func autoCloseTime(appearedAt: Date, isEnabled: Bool, after: TimeInterval) -> Date? {
+        isEnabled ? appearedAt.addingTimeInterval(after) : nil
     }
 
-    /// macOS may send Join! a reopen event along with a click on a notification, and a reopen opens Settings.
-    /// Clicking a notification does nothing (the user's choice, 2026-10-16), so reopen events are ignored for
-    /// this long after a notification response.
-    public static let reopenGrace: TimeInterval = 1
+    /// Whether a card on screen when Join! quit, which appeared at `appearedAt`, comes back, silently, at the
+    /// next launch: its meeting hasn't ended and its close-automatically time hasn't come. A meeting gone from
+    /// the calendar or no longer alertable is the caller's to leave out, as for a withdrawal.
+    public static func reshowsAfterRelaunch(
+        meeting: Meeting,
+        appearedAt: Date,
+        autoCloseEnabled: Bool,
+        autoCloseAfter: TimeInterval,
+        now: Date
+    ) -> Bool {
+        guard !meeting.hasEnded(at: now) else { return false }
+        guard let closesAt = autoCloseTime(appearedAt: appearedAt, isEnabled: autoCloseEnabled, after: autoCloseAfter) else { return true }
+        return now < closesAt
+    }
 
-    /// Whether a reopen event at `now` came with the notification response at `lastResponse`, so it's ignored.
-    public static func ignoresReopen(lastResponse: Date?, now: Date) -> Bool {
-        guard let lastResponse else { return false }
-        let elapsed = now.timeIntervalSince(lastResponse)
-        return elapsed >= 0 && elapsed <= reopenGrace
+    /// The cards to withdraw, of the meetings whose cards are on screen or waiting (`shown`): those whose
+    /// meeting is no longer alertable (dismissed from the panel, cancelled, moved, which gives the occurrence a
+    /// new id, or now Show in the list only or excluded) or has ended. Test Notification's card is left for
+    /// the user to close. `alertable` must come from a loaded calendar: before the first read every meeting
+    /// would look gone.
+    public static func withdrawals(shown: [Meeting.ID], alertable: [Meeting], now: Date) -> [Meeting.ID] {
+        let current = Set(alertable.lazy.filter { !$0.hasEnded(at: now) }.map(\.id))
+        return shown.filter { $0 != DemoEvent.id && !current.contains($0) }
     }
 }

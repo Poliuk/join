@@ -16,10 +16,14 @@ public final class Preferences {
         static let leadTime = "leadTime"
         static let fullScreenAlertsEnabled = "fullScreenAlertsEnabled"
         /// Notify me, new in 1.3.0: absent before, so every earlier install reads the defaults (Never, 5 minutes
-        /// kept, sound on) and nothing is sent until the user picks a time.
+        /// kept, sound on) and no card shows until the user picks a time.
         static let notificationsEnabled = "notificationsEnabled"
         static let notificationLeadTime = "notificationLeadTime"
         static let notificationPlaysSound = "notificationPlaysSound"
+        /// The notification card's own Show on and Close automatically, new in 1.3.0 like Notify me.
+        static let notificationScreens = "notificationScreens"
+        static let notificationAutoCloseEnabled = "notificationAutoCloseEnabled"
+        static let notificationAutoCloseAfter = "notificationAutoCloseAfter"
         static let snoozeDurations = "snoozeDurations"
         static let alertScreens = "alertScreens"
         /// Earlier builds stored a Bool here; true maps to `.all`, false to `.main`.
@@ -64,6 +68,9 @@ public final class Preferences {
     nonisolated public static let defaultNotificationLeadTime: TimeInterval = 5 * 60
     nonisolated public static let defaultSnoozeDurations = SnoozeDurations(first: 60, second: 5 * 60)
     nonisolated public static let defaultAutoCloseAfter: TimeInterval = 15 * 60
+    /// The card's Close automatically: 10 minutes, so with Notify me at 5 minutes before it goes 5 minutes after
+    /// the start rather than staying on a shared screen through the meeting.
+    nonisolated public static let defaultNotificationAutoCloseAfter: TimeInterval = 10 * 60
 
     private let defaults: UserDefaults
 
@@ -72,6 +79,9 @@ public final class Preferences {
     @ObservationIgnored private var _notificationsEnabled: Bool
     @ObservationIgnored private var _notificationLeadTime: TimeInterval
     @ObservationIgnored private var _notificationPlaysSound: Bool
+    @ObservationIgnored private var _notificationScreens: AlertScreens
+    @ObservationIgnored private var _notificationAutoCloseEnabled: Bool
+    @ObservationIgnored private var _notificationAutoCloseAfter: TimeInterval
     @ObservationIgnored private var _snoozeDurations: SnoozeDurations
     @ObservationIgnored private var _alertScreens: AlertScreens
     @ObservationIgnored private var _menuBarDisplay: MenuBarDisplay
@@ -102,6 +112,11 @@ public final class Preferences {
             defaults.object(forKey: Keys.notificationLeadTime) as? TimeInterval ?? Self.defaultNotificationLeadTime
         )
         _notificationPlaysSound = defaults.object(forKey: Keys.notificationPlaysSound) as? Bool ?? true
+        _notificationScreens = defaults.string(forKey: Keys.notificationScreens).flatMap(AlertScreens.init(rawValue:)) ?? .main
+        _notificationAutoCloseEnabled = defaults.object(forKey: Keys.notificationAutoCloseEnabled) as? Bool ?? true
+        _notificationAutoCloseAfter = Self.wholeMinutesOfAtLeastOne(
+            defaults.object(forKey: Keys.notificationAutoCloseAfter) as? TimeInterval ?? Self.defaultNotificationAutoCloseAfter
+        )
         _snoozeDurations = (defaults.array(forKey: Keys.snoozeDurations) as? [TimeInterval]).flatMap(SnoozeDurations.init)
             ?? Self.defaultSnoozeDurations
         if let raw = defaults.string(forKey: Keys.alertScreens), let stored = AlertScreens(rawValue: raw) {
@@ -194,8 +209,8 @@ public final class Preferences {
     }
 
     /// False while Notify me is set to Never, the default for everyone, new installs and upgrades alike: no
-    /// notification is planned or sent, and macOS isn't asked for permission. `notificationLeadTime` keeps the
-    /// last time chosen. Independent of `fullScreenAlertsEnabled`: each kind has its own time or Never.
+    /// notification card is planned or shown, and those on screen close. `notificationLeadTime` keeps the last
+    /// time chosen. Independent of `fullScreenAlertsEnabled`: each kind has its own time or Never.
     public var notificationsEnabled: Bool {
         get { access(keyPath: \.notificationsEnabled); return _notificationsEnabled }
         set {
@@ -206,7 +221,7 @@ public final class Preferences {
         }
     }
 
-    /// Seconds before the meeting start at which the notification is sent, always a whole number of minutes,
+    /// Seconds before the meeting start at which the notification card appears, always a whole number of minutes,
     /// like `leadTime`, and set independently of it. 5 minutes by default, kept while Notify me is Never.
     public var notificationLeadTime: TimeInterval {
         get { access(keyPath: \.notificationLeadTime); return _notificationLeadTime }
@@ -218,8 +233,8 @@ public final class Preferences {
         }
     }
 
-    /// Play sound: on, a notification plays macOS's notification sound; off, it's silent. On by default.
-    /// macOS's own sound setting for Join! can still silence it (`NotificationStatus.soundOff`).
+    /// Play sound: on, a notification card plays the user's alert sound (System Settings › Sound) once as it
+    /// appears or comes back from a snooze; off, it's silent. On by default.
     public var notificationPlaysSound: Bool {
         get { access(keyPath: \.notificationPlaysSound); return _notificationPlaysSound }
         set {
@@ -230,8 +245,45 @@ public final class Preferences {
         }
     }
 
+    /// The Notification box's Show on: which screens get a card, each at its top right, with the full-screen
+    /// alert's choices and fallbacks (`AlertScreens.targetIndices`) but a value of its own. Main screen only by
+    /// default.
+    public var notificationScreens: AlertScreens {
+        get { access(keyPath: \.notificationScreens); return _notificationScreens }
+        set {
+            withMutation(keyPath: \.notificationScreens) {
+                _notificationScreens = newValue
+                defaults.set(newValue.rawValue, forKey: Keys.notificationScreens)
+            }
+        }
+    }
+
+    /// The Notification box's Close automatically: off is Never, when a card stays until it's used or
+    /// withdrawn. On by default.
+    public var notificationAutoCloseEnabled: Bool {
+        get { access(keyPath: \.notificationAutoCloseEnabled); return _notificationAutoCloseEnabled }
+        set {
+            withMutation(keyPath: \.notificationAutoCloseEnabled) {
+                _notificationAutoCloseEnabled = newValue
+                defaults.set(newValue, forKey: Keys.notificationAutoCloseEnabled)
+            }
+        }
+    }
+
+    /// How long a card stays before it closes itself, as a Dismiss would, counted from each appearance: whole
+    /// minutes, never less than one, stored or set. 10 minutes by default.
+    public var notificationAutoCloseAfter: TimeInterval {
+        get { access(keyPath: \.notificationAutoCloseAfter); return _notificationAutoCloseAfter }
+        set {
+            withMutation(keyPath: \.notificationAutoCloseAfter) {
+                _notificationAutoCloseAfter = Self.wholeMinutesOfAtLeastOne(newValue)
+                defaults.set(_notificationAutoCloseAfter, forKey: Keys.notificationAutoCloseAfter)
+            }
+        }
+    }
+
     /// The two snooze durations, stored as a two-element array of seconds: the full-screen alert's two snooze
-    /// buttons and the notification's two Snooze actions, shared by both kinds. One minute and 5 minutes by
+    /// buttons and the first two items of the notification card's menu, shared by both kinds. One minute and 5 minutes by
     /// default, and when what's stored doesn't have two entries.
     public var snoozeDurations: SnoozeDurations {
         get { access(keyPath: \.snoozeDurations); return _snoozeDurations }
@@ -292,6 +344,10 @@ public final class Preferences {
 
     private static func atLeastAMinute(_ seconds: TimeInterval) -> TimeInterval {
         max(60, seconds)
+    }
+
+    private static func wholeMinutesOfAtLeastOne(_ seconds: TimeInterval) -> TimeInterval {
+        atLeastAMinute(wholeMinutes(seconds))
     }
 
     /// A system sound name (from /System/Library/Sounds), or nil for silence.

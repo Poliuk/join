@@ -210,7 +210,7 @@ public struct PanelRow: Equatable, Identifiable, Sendable {
 /// opens a menu whose choices are worded the way macOS Calendar asks about a repeating event: This Event or
 /// All Future Events. The help tags and labels take that same `asksScope`, so they say a menu opens exactly
 /// when one does. "Alerts" covers both kinds: a dismissed event gets no full-screen alert and no notification,
-/// and one already delivered is withdrawn (`NotificationSchedule.withdrawals`).
+/// and a notification card already up is withdrawn (`NotificationSchedule.withdrawals`).
 public enum DismissCopy {
     /// The card's Dismiss button, a row's accessibility action when Dismiss doesn't ask, and the first word of
     /// the Dismiss buttons' VoiceOver labels.

@@ -68,26 +68,34 @@ public enum SettingsOptions {
     /// can show on the pane too.
     public static let alertMeFieldLabel = "\(alertMeTitle), minutes before the event"
 
-    /// The Full-screen alert box's last row, among Alert me's siblings, since
-    /// it only ever closes the full-screen alert: dimmed while Alert me is Never.
+    /// The second row of the Full-screen alert box and of the Notification box: which screens that kind comes
+    /// up on (`AlertScreens`), each kind with its own choice. Dimmed while its kind's time is Never.
+    public static let showOnTitle = "Show on"
+
+    /// The last row of the Full-screen alert box and of the Notification box, each kind with its own time,
+    /// counted from when it appears; the same items and wording in both (`autoCloseChoices`,
+    /// `autoCloseTitle`). Dimmed while its kind's time is Never.
     public static let autoCloseRowTitle = "Close automatically"
 
     /// The Notification box's first row: its own time or Never, set independently of Alert me.
     public static let notifyMeTitle = "Notify me"
-    /// Notify me's help tag. "…with Join and snooze buttons…" until 2026-10-19: the notification offers them as
-    /// actions, as the Snooze rows and footnote say.
-    public static let notifyMeHelp = "Sends a notification with Join and Snooze actions. macOS shows it in the corner of the screen."
+    /// Notify me's help tag. Join! draws the notification itself since 2026-10-19, with a Join button and a menu
+    /// (`NotificationCard`), rather than posting a macOS notification.
+    public static let notifyMeHelp = "Shows a notification at the top right of the screen with a Join button and a menu to snooze or dismiss it."
     /// What VoiceOver calls Notify me's custom minutes field and stepper.
     public static let notifyMeFieldLabel = "\(notifyMeTitle), minutes before the event"
 
-    /// The Notification box's switch: macOS's notification sound, or none. Dimmed while Notify me is Never.
+    /// The Notification box's switch: the user's alert sound, once, as a card appears or comes back from a
+    /// snooze, or none. Dimmed while Notify me is Never.
     public static let playSoundTitle = "Play sound"
+    public static let playSoundHelp = "Plays your alert sound from System Settings › Sound when the notification appears."
 
-    /// Under the Notification box: what Join! can't set for a notification.
-    public static let notificationFootnote = "How long a notification stays on screen, and whether it shows during a Focus or while you share your screen, is up to System Settings › Notifications. The full-screen alert comes up either way."
+    /// Under the Notification box, beside Test Notification: Join! can't tell when a Focus is on or the screen
+    /// is shared, so the card shows during both, like the full-screen alert, and the pause is how to keep it away.
+    public static let notificationFootnote = "Join! shows this notification itself, so it also comes up during a Focus and while you share your screen. To keep it away, pause alerts from the menu bar."
 
     /// The Snooze box's rows, the two times both kinds share. "First snooze button" and "Second snooze button"
-    /// until 2026-10-19: the notification offers them as actions, not buttons.
+    /// until 2026-10-19: the notification offers them in a menu, not as buttons.
     public static let firstSnoozeTitle = "First snooze"
     public static let secondSnoozeTitle = "Second snooze"
     /// What VoiceOver calls each row's custom minutes field and stepper.
@@ -96,17 +104,23 @@ public enum SettingsOptions {
 
     /// Under the Snooze box: that both kinds use these two times, each in its own way, then the snooze both add
     /// after them. The user asked for the section's explanation to be clearer (2026-10-19).
-    public static let snoozeFootnote = "The full-screen alert's snooze buttons and the notification's Snooze actions both offer these two times, then \(AlertCountdown.snoozeUntilStartLabel)."
+    public static let snoozeFootnote = "The full-screen alert's snooze buttons and the notification's menu both offer these two times, then \(AlertCountdown.snoozeUntilStartLabel)."
 
     // MARK: Test buttons
 
     /// Under the Full-screen alert box at its right, and under Appearance's preview box at its right: shows
     /// the full-screen alert for the demo event (`DemoEvent`). Show Demo until 2026-10-19, when the user found
-    /// the demo buttons' labels confusing. Test Notification is `TestNotificationButton`.
+    /// the demo buttons' labels confusing.
     public static let testFullScreenAlertTitle = "Test Full-Screen Alert"
     /// Its help tags, while it works and while a real full-screen alert is on screen.
     public static let testFullScreenAlertHelp = "Shows a test full-screen alert with a sample event. Press Esc to close it."
     public static let testFullScreenAlertUnavailableHelp = "Close the current full-screen alert first."
+
+    /// Under the Notification box at its right, beside the footnote: shows the demo event's card
+    /// (`NotificationCard.test`), replacing one already up. Always enabled: it works while alerts are paused,
+    /// while Notify me is Never and in a fixture run, as Test Full-Screen Alert does.
+    public static let testNotificationTitle = "Test Notification"
+    public static let testNotificationHelp = "Shows a test notification with a sample event."
 
     // MARK: Appearance pane
 

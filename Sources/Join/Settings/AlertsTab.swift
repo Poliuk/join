@@ -3,8 +3,8 @@ import JoinCore
 
 /// Both kinds of alert, each with its own time or Never and a button to try it, then the snooze durations they
 /// share: the Full-screen alert box (when, where and how loudly it comes up, and when it closes by itself, then
-/// Test Full-Screen Alert), the Notification box (when, whether it plays a sound, and what in System Settings
-/// stops it, then Test Notification), and the Snooze box. How the full-screen alert looks is on Appearance.
+/// Test Full-Screen Alert), the Notification box (when, and whether it plays a sound, then Test Notification),
+/// and the Snooze box. How the full-screen alert looks is on Appearance.
 struct AlertsTab: View {
     @Environment(AppModel.self) private var model
 
@@ -147,14 +147,9 @@ struct AlertsTab: View {
 
     // MARK: Notification
 
-    /// Notify me works as Alert me does, Never included, with its own time; the first time it leaves Never,
-    /// the notification coordinator asks macOS (`NotificationPermission.needsAsking`). Play sound is its
-    /// sibling, dimmed while it's Never. The status line under them, the box's last row, shows only while Notify me
-    /// has a time and something in System Settings stops a notification from reaching the user
-    /// (`NotificationStatus`): orange with a warning sign when none reaches the screen, secondary otherwise, with
-    /// Open System Settings, which opens Notifications › Join!. The coordinator reads it again when Join! becomes
-    /// active and when Settings becomes key, so it clears once that's fixed. Test Notification, under the box at its
-    /// right, beside the footnote, works whatever Notify me says.
+    /// Notify me works as Alert me does, Never included, with its own time. Play sound is its sibling, dimmed
+    /// while it's Never. Test Notification, under the box at its right, beside the footnote, works whatever
+    /// Notify me says.
     private var notificationSection: some View {
         @Bindable var preferences = model.preferences
         let notificationsOn = preferences.notificationsEnabled
@@ -173,11 +168,6 @@ struct AlertsTab: View {
                 help: SettingsOptions.notifyMeHelp
             )
             SettingsSwitchRow(title: SettingsOptions.playSoundTitle, isOn: $preferences.notificationPlaysSound, enabled: notificationsOn)
-            if let status = model.notificationCoordinator.status {
-                SettingsStatusRow(message: status.text, isWarning: status.isWarning) {
-                    Button(NotificationStatus.openSettingsTitle) { model.openNotificationSettings() }
-                }
-            }
         } accessory: {
             TestNotificationButtonView()
         }
@@ -232,16 +222,14 @@ struct AlertsTab: View {
     }
 }
 
-/// Test Notification, under the Notification box at its right, outside it: sends the demo event's notification. Off in a
-/// fixture run and while notifications are denied; the help tag says why (`TestNotificationButton`).
+/// Test Notification, under the Notification box at its right, outside it: shows the demo event's card. Always
+/// enabled.
 private struct TestNotificationButtonView: View {
     @Environment(AppModel.self) private var model
 
     var body: some View {
-        let button = model.notificationCoordinator.testNotificationButton
-        Button(TestNotificationButton.title) { model.notificationCoordinator.sendDemoNotification() }
-            .disabled(!button.isEnabled)
-            .help(button.help)
+        Button(SettingsOptions.testNotificationTitle) { model.notificationCoordinator.showTestNotification() }
+            .help(SettingsOptions.testNotificationHelp)
     }
 }
 
