@@ -163,6 +163,9 @@ struct SettingsOptionsTests {
             "The full-screen alert's snooze buttons and the notification's Snooze actions both offer these two times, then At event start."
         ),
         Copy("Calendars' warning with none checked", SettingsOptions.noCalendarsWarning, "No calendars selected: you won't get any alerts."),
+        // An account's count stands alone under its box since 2026-10-19, so it says "selected" like the pane's total.
+        Copy("Calendars' count", SettingsOptions.calendarsSelected(2, of: 2), "2 of 2 selected"),
+        Copy("Calendars' count with none checked", SettingsOptions.calendarsSelected(0, of: 5), "0 of 5 selected"),
         // Show Demo until the user found the demo buttons' labels confusing (2026-10-19).
         Copy("Test Full-Screen Alert", SettingsOptions.testFullScreenAlertTitle, "Test Full-Screen Alert"),
         Copy(

@@ -100,7 +100,7 @@ public enum SettingsOptions {
 
     // MARK: Test buttons
 
-    /// Under the Full-screen alert box at its right, and at the end of Appearance's Preview over bar: shows
+    /// Under the Full-screen alert box at its right, and under Appearance's preview box at its right: shows
     /// the full-screen alert for the demo event (`DemoEvent`). Show Demo until 2026-10-19, when the user found
     /// the demo buttons' labels confusing. Test Notification is `TestNotificationButton`.
     public static let testFullScreenAlertTitle = "Test Full-Screen Alert"
@@ -219,6 +219,12 @@ public enum SettingsOptions {
 
     /// The Calendars pane's orange line while every calendar is unchecked: no alerts of either kind.
     public static let noCalendarsWarning = "No calendars selected: you won't get any alerts."
+
+    /// How many calendars are checked: the pane's total at the top, and each account's under its box ("2 of 2"
+    /// beside its heading until 2026-10-19, when it moved under the box and needed the word).
+    public static func calendarsSelected(_ selected: Int, of total: Int) -> String {
+        "\(selected) of \(total) selected"
+    }
 
     /// "Updated just now", "Updated 5 minutes ago", …
     public static func updatedLabel(lastRefreshed: Date, now: Date) -> String {
