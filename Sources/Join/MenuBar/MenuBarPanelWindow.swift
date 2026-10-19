@@ -43,10 +43,12 @@ final class MenuBarPanelWindow: NSPanel {
     }
 
     /// The system menus' material: Liquid Glass on macOS 26 and later, the menu blur before that. The
-    /// SwiftUI content lays a frost over it (`PanelFrost`) so text stays readable over any backdrop.
-    private static func makeBackground(around content: NSView) -> NSView {
+    /// SwiftUI content lays a frost over it (`PanelFrost`) so text stays readable over any backdrop. Sized to
+    /// `size` and rounded to the panel's corners: the panel's, and a notification card's behind its content
+    /// (`NotificationCardWindow`).
+    static func makeBackground(around content: NSView, size: NSSize = NSSize(width: width, height: 200)) -> NSView {
         if #available(macOS 26, *) {
-            let glass = NSGlassEffectView(frame: NSRect(x: 0, y: 0, width: width, height: 200))
+            let glass = NSGlassEffectView(frame: NSRect(origin: .zero, size: size))
             // Regular is the default; set it anyway, since clear glass has no luminance adaptation at all.
             glass.style = .regular
             glass.cornerRadius = cornerRadius
@@ -63,7 +65,7 @@ final class MenuBarPanelWindow: NSPanel {
             clip.addSubview(glass)
             return clip
         }
-        let blur = NSVisualEffectView(frame: NSRect(x: 0, y: 0, width: width, height: 200))
+        let blur = NSVisualEffectView(frame: NSRect(origin: .zero, size: size))
         blur.material = .menu
         blur.blendingMode = .behindWindow
         blur.state = .active

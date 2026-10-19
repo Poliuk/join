@@ -143,7 +143,7 @@ final class AlertWindowController {
     }
 
     private func buildWindows(for session: AlertSession, on screens: AlertScreens) {
-        windows = Self.targetScreens(for: screens).map { screen in
+        windows = screens.targetScreens.map { screen in
             AlertWindow(screen: screen, session: session)
         }
         for (index, window) in windows.enumerated() {
@@ -180,19 +180,21 @@ final class AlertWindow: NSPanel {
     override var canBecomeKey: Bool { true }
 }
 
-extension AlertWindowController {
-    /// `AlertScreens` picks by index: `NSScreen.screens` starts with the screen that has the menu bar,
-    /// the main display. `NSScreen.main` would be the screen with the key window, which can be a
-    /// secondary one, say while Join!'s Settings window sits there.
-    private static func targetScreens(for choice: AlertScreens) -> [NSScreen] {
+extension AlertScreens {
+    /// The screens this choice picks now, for the full-screen alert and the notification cards. `AlertScreens`
+    /// picks by index: `NSScreen.screens` starts with the screen that has the menu bar, the main display.
+    /// `NSScreen.main` would be the screen with the key window, which can be a secondary one, say while Join!'s
+    /// Settings window sits there.
+    var targetScreens: [NSScreen] {
         let screens = NSScreen.screens
         let pointer = NSEvent.mouseLocation
         let pointerIndex = screens.firstIndex { NSMouseInRect(pointer, $0.frame, false) }
-        return choice.targetIndices(screenCount: screens.count, pointerScreenIndex: pointerIndex).map { screens[$0] }
+        return targetIndices(screenCount: screens.count, pointerScreenIndex: pointerIndex).map { screens[$0] }
     }
 }
 
-/// Lets a click on a window that isn't key (the alert on a secondary display) hit its button directly.
-final class FirstMouseHostingView<Content: View>: NSHostingView<Content> {
+/// Lets a click on a window that isn't key (the alert on a secondary display, a notification card) hit its button
+/// directly.
+class FirstMouseHostingView<Content: View>: NSHostingView<Content> {
     override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
 }

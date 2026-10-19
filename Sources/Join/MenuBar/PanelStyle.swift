@@ -99,6 +99,34 @@ nonisolated enum PanelColors {
     }
 }
 
+/// The frost between the glass and the content of the panel and the notification cards: it pins what's behind
+/// the text to a known surface while some of the glass's color and depth still shows through. Opaque with Reduce
+/// Transparency, thicker with Increase Contrast, lighter over the pre-Liquid Glass menu blur.
+struct PanelFrost: View {
+    /// A fixture run's `panelFrost` hook: an opacity to try on the real panel instead of the palette's.
+    var opacityOverride: Double? = nil
+    @Environment(\.colorSchemeContrast) private var contrast
+    @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
+
+    var body: some View {
+        Rectangle()
+            .fill(PanelColors.frost)
+            .opacity(opacity)
+            .allowsHitTesting(false)
+            .accessibilityHidden(true)
+    }
+
+    private var opacity: Double {
+        let workspace = NSWorkspace.shared
+        if reduceTransparency || workspace.accessibilityDisplayShouldReduceTransparency { return 1 }
+        if let opacityOverride { return opacityOverride }
+        if contrast == .increased || workspace.accessibilityDisplayShouldIncreaseContrast {
+            return PanelPalette.increasedContrastFrostOpacity
+        }
+        return MenuBarPanelWindow.usesGlass ? PanelPalette.frostOpacity : PanelPalette.legacyMaterialFrostOpacity
+    }
+}
+
 /// A rounded, filled button that dims while pressed. Under the pointer its fill turns `hoverFill`
 /// and the cursor becomes a pointing hand, like every clickable thing in the panel.
 struct PanelFillButtonStyle: ButtonStyle {

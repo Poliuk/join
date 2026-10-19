@@ -36,7 +36,7 @@ struct MenuBarPanelView: View {
         }
         .frame(width: MenuBarPanelWindow.width)
         .frame(maxHeight: .infinity, alignment: .top)
-        .background(PanelFrost())
+        .background(PanelFrost(opacityOverride: model.panelFrostOverride))
         .clipShape(RoundedRectangle(cornerRadius: MenuBarPanelWindow.cornerRadius, style: .continuous))
         .overlay(
             RoundedRectangle(cornerRadius: MenuBarPanelWindow.cornerRadius, style: .continuous)
@@ -156,33 +156,6 @@ struct MenuBarPanelView: View {
         GeometryReader { proxy in
             Color.clear.preference(key: key, value: proxy.size.height)
         }
-    }
-}
-
-/// The frost between the glass and the content: it pins what's behind the text to a known surface while
-/// some of the glass's color and depth still shows through. Opaque with Reduce Transparency, thicker
-/// with Increase Contrast, lighter over the pre-Liquid Glass menu blur.
-private struct PanelFrost: View {
-    @Environment(AppModel.self) private var model
-    @Environment(\.colorSchemeContrast) private var contrast
-    @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
-
-    var body: some View {
-        Rectangle()
-            .fill(PanelColors.frost)
-            .opacity(opacity)
-            .allowsHitTesting(false)
-            .accessibilityHidden(true)
-    }
-
-    private var opacity: Double {
-        let workspace = NSWorkspace.shared
-        if reduceTransparency || workspace.accessibilityDisplayShouldReduceTransparency { return 1 }
-        if let override = model.panelFrostOverride { return override }
-        if contrast == .increased || workspace.accessibilityDisplayShouldIncreaseContrast {
-            return PanelPalette.increasedContrastFrostOpacity
-        }
-        return MenuBarPanelWindow.usesGlass ? PanelPalette.frostOpacity : PanelPalette.legacyMaterialFrostOpacity
     }
 }
 
