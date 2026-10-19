@@ -28,57 +28,126 @@ enum SettingsPalette {
     }
 }
 
+/// The Settings window's measurements, in points. Every pane follows one pattern (the user's ask, 2026-10-19: "Make
+/// sure ALL setting tabs are cohesive and follow the same design pattern"), with the Alerts pane as its reference;
+/// docs/TECHNICAL_DESIGN.md §8 lists its rules.
 enum SettingsMetrics {
     static let paneWidth: CGFloat = 720
     static let panePadding = EdgeInsets(top: 20, leading: 20, bottom: 24, trailing: 20)
+    /// Between a pane's blocks: its sections, and Calendars' intro line and footer.
+    static let sectionSpacing: CGFloat = 22
+    /// From a section's heading to its box.
+    static let headingSpacing: CGFloat = 8
+    /// From a box to the line under it.
+    static let underBoxSpacing: CGFloat = 6
+    /// How far headings and text outside a box sit in from the box's edge.
+    static let edgeInset: CGFloat = 2
     /// How far a dependent row sits in from its parent; its connector line lives in this gutter.
     static let indent: CGFloat = 30
-    /// A box's padding either side of its rows.
+    /// A box's padding either side of its rows, which puts every control's right edge on one line, 12 pt in from
+    /// the box's edge. A line under a box keeps its buttons on that line with the same padding.
     static let boxInset: CGFloat = 12
+    static let rowMinHeight: CGFloat = 40
+    static let rowVerticalPadding: CGFloat = 6
+    /// Between a row's label, or a line's text, and its controls.
+    static let rowSpacing: CGFloat = 16
+    /// Between a row's controls, and between a control and the helper before it: a play button, a preview, a well.
+    static let controlSpacing: CGFloat = 8
 }
 
-/// A heading above a grouped box, and optionally a footnote under it, for what the box's rows can't say, and a
-/// button under it at its right edge, beside the footnote when there is one, outside the box (the user's ask for
-/// the Alerts pane's Test buttons, 2026-10-19).
+/// A heading above a grouped box, then, under the box, a line for what its rows can't say: a footnote in
+/// secondary text, a warning, and the buttons that act on the whole box (Test Full-Screen Alert, Test Notification,
+/// Appearance's Restore Defaults, Select All), at its right, on the line the box's controls end on, outside the box
+/// (the user's ask for the Alerts pane's Test buttons, 2026-10-19). A button that acts on one row is that row's control
+/// instead. With no title the box has no heading: only a pane's first block, at the top padding, whose content names
+/// itself (General's Open at login, Appearance's preview).
 struct SettingsSection<Content: View, Accessory: View>: View {
-    let title: String
+    let title: String?
     var footnote: String? = nil
+    /// A `SettingsWarning` under the footnote, about the box as a whole: Appearance's Never note.
+    var warning: String? = nil
     @ViewBuilder var content: Content
     @ViewBuilder var accessory: Accessory
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Text(title)
-                .font(.body.weight(.semibold))
-                .padding(.leading, 2)
-                .accessibilityAddTraits(.isHeader)
-            VStack(alignment: .leading, spacing: 6) {
+        VStack(alignment: .leading, spacing: SettingsMetrics.headingSpacing) {
+            if let title {
+                Text(title)
+                    .font(.body.weight(.semibold))
+                    .lineLimit(1)
+                    .truncationMode(.tail)
+                    .padding(.leading, SettingsMetrics.edgeInset)
+                    .accessibilityAddTraits(.isHeader)
+            }
+            VStack(alignment: .leading, spacing: SettingsMetrics.underBoxSpacing) {
                 SettingsBox { content }
-                if footnote != nil || Accessory.self != EmptyView.self {
-                    HStack(alignment: .top, spacing: 16) {
-                        if let footnote {
-                            Text(footnote)
-                                .font(.subheadline)
-                                .foregroundStyle(.secondary)
-                                .fixedSize(horizontal: false, vertical: true)
-                                .padding(.horizontal, 2)
-                                .frame(maxWidth: .infinity, alignment: .leading)
-                        } else {
-                            Spacer(minLength: 0)
-                        }
-                        // Inset like the box's rows, so the button lines up with the controls above it.
-                        accessory
-                            .padding(.trailing, SettingsMetrics.boxInset)
-                    }
-                }
+                SettingsNoteLine(footnote: footnote, warning: warning) { accessory }
             }
         }
     }
 }
 
 extension SettingsSection where Accessory == EmptyView {
-    init(title: String, footnote: String? = nil, @ViewBuilder content: () -> Content) {
-        self.init(title: title, footnote: footnote, content: content, accessory: { EmptyView() })
+    init(title: String?, footnote: String? = nil, warning: String? = nil, @ViewBuilder content: () -> Content) {
+        self.init(title: title, footnote: footnote, warning: warning, content: content, accessory: { EmptyView() })
+    }
+}
+
+/// A line outside a box: a footnote and a warning at the left, from the box's edge, and buttons at the right, on the
+/// line the box's controls end on. Under a box (`SettingsSection`), Calendars' intro line and its footer use it.
+/// Drawn only when it has something to show.
+struct SettingsNoteLine<Accessory: View>: View {
+    var footnote: String? = nil
+    var warning: String? = nil
+    @ViewBuilder var accessory: Accessory
+
+    var body: some View {
+        if hasText || hasAccessory {
+            HStack(alignment: .top, spacing: SettingsMetrics.rowSpacing) {
+                if hasText {
+                    VStack(alignment: .leading, spacing: 4) {
+                        if let footnote { SettingsFootnote(footnote) }
+                        if let warning { SettingsWarning(message: warning) }
+                    }
+                    .padding(.horizontal, SettingsMetrics.edgeInset)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                } else {
+                    Spacer(minLength: 0)
+                }
+                if hasAccessory {
+                    // Inset like a box's rows, so the buttons line up with the controls above them.
+                    HStack(spacing: SettingsMetrics.controlSpacing) { accessory }
+                        .fixedSize()
+                        .padding(.trailing, SettingsMetrics.boxInset)
+                }
+            }
+        }
+    }
+
+    private var hasText: Bool { footnote != nil || warning != nil }
+    private var hasAccessory: Bool { Accessory.self != EmptyView.self }
+}
+
+extension SettingsNoteLine where Accessory == EmptyView {
+    init(footnote: String? = nil, warning: String? = nil) {
+        self.init(footnote: footnote, warning: warning, accessory: { EmptyView() })
+    }
+}
+
+/// Secondary text outside a box: a section's footnote, Calendars' intro, counts and "Updated" label. It wraps, and
+/// carries no icon: an info note is a footnote too.
+struct SettingsFootnote: View {
+    let text: String
+
+    init(_ text: String) {
+        self.text = text
+    }
+
+    var body: some View {
+        Text(text)
+            .font(.subheadline)
+            .foregroundStyle(.secondary)
+            .fixedSize(horizontal: false, vertical: true)
     }
 }
 
@@ -144,7 +213,7 @@ struct SettingsRow<Control: View>: View {
                         Spacer(minLength: 0)
                     }
                 } else {
-                    HStack(spacing: 16) {
+                    HStack(spacing: SettingsMetrics.rowSpacing) {
                         label
                         Spacer(minLength: 0)
                         control
@@ -152,8 +221,8 @@ struct SettingsRow<Control: View>: View {
                 }
             }
             .padding(.leading, leadingInset)
-            .padding(.vertical, 6)
-            .frame(minHeight: 40)
+            .padding(.vertical, SettingsMetrics.rowVerticalPadding)
+            .frame(minHeight: SettingsMetrics.rowMinHeight)
         }
         // A dependent row hangs off its parent: its hairline starts at the indent and an elbow
         // runs down from under the parent's label to its own.
@@ -171,6 +240,8 @@ struct SettingsRow<Control: View>: View {
 
     private var label: some View {
         Text(title)
+            .lineLimit(1)
+            .truncationMode(.tail)
             .foregroundStyle(labelStyle)
             .accessibilityHidden(true)
     }
@@ -221,8 +292,82 @@ struct SettingsSwitchRow: View {
     }
 }
 
-/// A line that reads as an alert: an orange warning sign, then the message in orange. Contrast warnings
-/// sit directly under the row that causes them; Appearance's Never note sits under the preview.
+/// A box's last row, or its only one, with no label: a changing state about the box (the Notification box's
+/// status, Open at login's note, the Updates status, Calendars' "No calendars yet"), with a hairline above. Its text
+/// is secondary, or a `SettingsWarning`, which keeps its own font and colors, when the state stops the setting from
+/// working; a second or third line sits under the first. The controls that fix or refresh the state sit at the
+/// right, on the line the box's controls end on.
+struct SettingsStatusRow<Message: View, Controls: View>: View {
+    var separator = true
+    @ViewBuilder var text: Message
+    @ViewBuilder var controls: Controls
+
+    var body: some View {
+        VStack(spacing: 0) {
+            if separator {
+                SettingsSeparator()
+            }
+            HStack(spacing: SettingsMetrics.rowSpacing) {
+                VStack(alignment: .leading, spacing: 2) { text }
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                if Controls.self != EmptyView.self {
+                    HStack(spacing: SettingsMetrics.controlSpacing) { controls }
+                        .fixedSize()
+                }
+            }
+            .padding(.vertical, SettingsMetrics.rowVerticalPadding)
+            .frame(minHeight: SettingsMetrics.rowMinHeight)
+        }
+    }
+}
+
+extension SettingsStatusRow where Message == SettingsStatusMessage {
+    init(message: String, isWarning: Bool = false, separator: Bool = true, @ViewBuilder controls: () -> Controls) {
+        self.init(separator: separator, text: { SettingsStatusMessage(message: message, isWarning: isWarning) }, controls: controls)
+    }
+}
+
+extension SettingsStatusRow where Message == SettingsStatusMessage, Controls == EmptyView {
+    init(message: String, isWarning: Bool = false, separator: Bool = true) {
+        self.init(message: message, isWarning: isWarning, separator: separator, controls: { EmptyView() })
+    }
+}
+
+/// A status row's one line: a `SettingsWarning`, or plain text that takes the row's secondary style.
+struct SettingsStatusMessage: View {
+    let message: String
+    let isWarning: Bool
+
+    var body: some View {
+        if isWarning {
+            SettingsWarning(message: message)
+        } else {
+            Text(message)
+        }
+    }
+}
+
+/// A warning in a box, directly under the row that causes it, at that row's leading inset, with no hairline: the
+/// contrast warnings. An indented one hangs under a dependent row, as the tint's does under Strength.
+struct SettingsRowWarning: View {
+    let message: String
+    let indented: Bool
+
+    var body: some View {
+        SettingsWarning(message: message)
+            .padding(.leading, indented ? SettingsMetrics.indent : 0)
+            .padding(.bottom, 10)
+    }
+}
+
+/// A line that reads as an alert: an orange warning sign, then the message in orange. A status counts as a warning
+/// when something stops the setting from working; otherwise it's secondary text. It goes in one of three places: in a
+/// box, under the row that causes it (`SettingsRowWarning`); as a status row's text (`SettingsStatusRow`); or outside
+/// a box, at the left of a line under it (`SettingsNoteLine`), as Appearance's Never note and Calendars' warning with
+/// no calendar checked do.
 struct SettingsWarning: View {
     let message: String
 
@@ -383,7 +528,7 @@ struct SettingsMinutesChoice: View {
 
     var body: some View {
         SettingsRow(title: title, separator: separator) {
-            HStack(spacing: 10) {
+            HStack(spacing: SettingsMetrics.controlSpacing) {
                 if let accessory { accessory }
                 Picker(title, selection: selection) {
                     ForEach(presets, id: \.self) { minutes in
