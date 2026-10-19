@@ -68,13 +68,15 @@ public enum SettingsOptions {
     /// can show on the pane too.
     public static let alertMeFieldLabel = "\(alertMeTitle), minutes before the event"
 
-    /// The Full-screen alert box's last row, among Alert me's siblings, since it only ever closes the
-    /// full-screen alert: dimmed while Alert me is Never.
+    /// The Full-screen alert box's last setting, above Test Full-Screen Alert, among Alert me's siblings, since
+    /// it only ever closes the full-screen alert: dimmed while Alert me is Never.
     public static let autoCloseRowTitle = "Close automatically"
 
     /// The Notification box's first row: its own time or Never, set independently of Alert me.
     public static let notifyMeTitle = "Notify me"
-    public static let notifyMeHelp = "Sends a notification with Join and snooze buttons. macOS shows it in the corner of the screen."
+    /// Notify me's help tag. "…with Join and snooze buttons…" until 2026-10-19: the notification offers them as
+    /// actions, as the Snooze rows and footnote say.
+    public static let notifyMeHelp = "Sends a notification with Join and Snooze actions. macOS shows it in the corner of the screen."
     /// What VoiceOver calls Notify me's custom minutes field and stepper.
     public static let notifyMeFieldLabel = "\(notifyMeTitle), minutes before the event"
 

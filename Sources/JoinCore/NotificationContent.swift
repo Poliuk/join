@@ -199,7 +199,7 @@ public struct NotificationCategory: Hashable, Sendable {
     }
 }
 
-/// One of a notification's buttons: its identifier, which carries what it does, and its title.
+/// One of a notification's actions: its identifier, which carries what it does, and its title.
 public struct NotificationAction: Hashable, Sendable {
     public let identifier: String
     public let title: String
@@ -237,7 +237,7 @@ extension AlertResponse {
     }
 
     /// A snooze action's identifier holds its duration in whole minutes, as its title reads, so a response
-    /// to a notification delivered before the durations changed still snoozes for what its button said.
+    /// to a notification delivered before the durations changed still snoozes for what its action said.
     var notificationActionIdentifier: String? {
         switch self {
         case .join: return Self.joinIdentifier

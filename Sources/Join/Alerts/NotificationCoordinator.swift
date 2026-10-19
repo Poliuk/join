@@ -20,7 +20,7 @@ final class NotificationCoordinator {
     /// becomes key, and after asking.
     private(set) var permission: NotificationPermission = .notDetermined
 
-    /// The status line, the Notification box's last row, if any.
+    /// The status line, the Notification box's row above Test Notification, if any.
     var status: NotificationStatus? {
         NotificationStatus.current(
             notificationsEnabled: preferences.notificationsEnabled,

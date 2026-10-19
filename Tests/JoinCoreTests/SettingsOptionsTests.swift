@@ -141,8 +141,9 @@ struct SettingsOptionsTests {
         Copy("Alert me's custom field", SettingsOptions.alertMeFieldLabel, "Alert me, minutes before the event"),
         Copy("auto-close row", SettingsOptions.autoCloseRowTitle, "Close automatically"),
         Copy("Notify me row", SettingsOptions.notifyMeTitle, "Notify me"),
+        // "Snooze actions", as the Snooze box calls them, not "snooze buttons" (2026-10-19).
         Copy("Notify me's help tag", SettingsOptions.notifyMeHelp,
-             "Sends a notification with Join and snooze buttons. macOS shows it in the corner of the screen."),
+             "Sends a notification with Join and Snooze actions. macOS shows it in the corner of the screen."),
         Copy("Notify me's custom field", SettingsOptions.notifyMeFieldLabel, "Notify me, minutes before the event"),
         Copy("Play sound row", SettingsOptions.playSoundTitle, "Play sound"),
         Copy(
